@@ -1,0 +1,35 @@
+[package]
+name = "back2mw"
+description = "Конвертер содержимого Oblivion в формат Morrowind."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "back2mw"
+path = "src/lib.rs"
+
+[[bin]]
+name = "back2mw"
+path = "src/main.rs"
+
+[dependencies]
+# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+lang = { path = "../lang" }
+mesh_convert = { path = "../mesh_convert" }
+tes3_out = { path = "../tes3_out" }
+tes4_read = { path = "../tes4_read" }
+transform = { path = "../transform" }
+# Разбор config.toml (T1.1): оба крейта разрешены планом, MIT/Apache.
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+# Упаковка loose-файлов в zip (T1.10): MIT, только deflate.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+# Читаем записанный плагин библиотекой, которой он записан: сквозной тест T1.8.
+tes3 = { workspace = true, features = ["esp", "bsa"] }
+
+[lints]
+workspace = true

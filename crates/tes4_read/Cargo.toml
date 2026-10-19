@@ -1,0 +1,15 @@
+[package]
+name = "tes4_read"
+description = "Чтение плагинов TES4/TES5. Про TES3 этот крейт не знает ничего."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+lang = { path = "../lang" }
+flate2.workspace = true
+
+[lints]
+workspace = true

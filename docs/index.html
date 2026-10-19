@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>back2mw</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    // Russian for Russian-speaking browsers, English for everyone else.
+    var lang = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+    location.replace(/^(ru|uk|be)\b/i.test(lang) ? "ru/" : "en/");
+  </script>
+  <noscript><meta http-equiv="refresh" content="0; url=en/"></noscript>
+</head>
+<body>
+  <p><a href="en/">back2mw — documentation</a> · <a href="ru/">документация на русском</a></p>
+</body>
+</html>

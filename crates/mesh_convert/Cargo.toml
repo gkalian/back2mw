@@ -1,0 +1,26 @@
+[package]
+name = "mesh_convert"
+description = "NIF 20.0.0.4/5 → 4.0.0.2: геометрия, материалы, текстуры, коллизия."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+lang = { path = "../lang" }
+# Нужен для записи NIF 4.0.0.2 (T1.4). Пин через workspace (решение Р4).
+tes3 = { workspace = true, features = ["nif"] }
+
+[dev-dependencies]
+# Нужен для T1.13: чтение TES3 BSA и ESP в тестах на реальных данных.
+tes3 = { workspace = true, features = ["bsa", "esp"] }
+# T1.3a: плагин и BSA Oblivion в тесте на реальных данных. Тест границ смотрит
+# только обычные зависимости, dev-зависимость его не нарушает.
+tes4_read = { path = "../tes4_read" }
+# T2.4: дизассемблер для сверки фактов о SpeedTree с кодом Oblivion.exe (тест-инструмент
+# `tests/disasm_speedtree.rs`, в поставку не попадает).
+iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "intel"] }
+
+[lints]
+workspace = true

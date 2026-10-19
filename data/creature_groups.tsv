@@ -1,0 +1,60 @@
+# Группы анимации существа Morrowind ← клипы Oblivion. 2026-10-02, T11.5d. Читает
+# mesh_convert::creature::groups.
+#
+# Колонки через табуляцию: группа Morrowind; вид; действие — имя последовательности Oblivion без учёта
+# регистра, запасные через «|» (берётся первое, для которого в папке есть клип); стойки — приставки
+# имени файла клипа по порядку предпочтения, через запятую, «-» — файл без приставки; пояснение.
+#
+# Вид задаёт метки группы:
+#   loop        Start, Loop Start (в начале клипа), Loop Stop, Stop (в конце)
+#   turn        как loop, но поворот корня накопления замирает на первом кадре: у Morrowind актёра
+#               поворачивает движок, а не анимация (у всех 26 ванильных существ с Bip01 корень за петлю
+#               поворота не поворачивается)
+#   once        Start, Stop
+#   still       как once, но корень накопления стоит на месте
+#   attack      Start, Hit (метка Hit клипа; нет её — середина), Stop
+#   cast-self, cast-touch, cast-target
+#               Self | Touch | Target + Start, Release (метка Hit клипа), Stop — в группе SpellCast
+#   fall        клипа нет: существо заваливается набок из первого кадра Idle (решение владельца 1,
+#               2026-10-02). Одна строка даёт Death1 и, как у ванили, на том же отрезке Knockout,
+#               DeathKnockDown и DeathKnockOut; действие и стойки не читаются
+#
+# Корень накопления (2026-10-02, по переписи ванильных существ): каждая группа начинается из точки,
+# где корень стоит в первом кадре Idle; у видов attack, cast-…, turn и still он в ней и остаётся —
+# выпад удара и отскок от удара, записанные у Oblivion сдвигом корня, не переносятся. У loop и once
+# сдвиг корня — путь существа (ходьба, бег, Knockdown). Петли (loop, turn) замыкаются: последние
+# 0.2 с доводятся до позы начала.
+#
+# Решения владельца 2026-10-02 (docs/ru/types/crea.md): стойка — handtohand, где её нет — файл без
+# приставки; стойки с оружием (onehand, twohand, bow, staff) не переносятся, плавание — последним в
+# запасе: у Morrowind групп плавания у существ нет, рыба плывёт группой WalkForward, и клипы swim…
+# достаются только тому, у кого других нет (рыба-убийца). Исключение —
+# удары и реакция на удар: существу без единого удара в этих стойках (лич бьёт только посохом, призрак
+# только колдует) группы Attack нужны всё равно, поэтому в запасе у них клипы с оружием и жесты
+# заклинаний; у Hit1 и Knockdown в запасе — те же клипы стоек с оружием. Имя
+# последовательности подходит действию и с хвостом-вариантом (AttackLeft_Cross, Idle_HandtoHand). Группы с одним и
+# тем же клипом делят один отрезок ленты, как Idle и Idle2 у ванильного гуара — но не больше пяти групп
+# на отрезок: движок и Construction Set держат открытыми разом пять групп, шестая даёт «Too many
+# shared anim groups» (mesh_convert::creature::tape::MAX_OPEN_GROUPS; лишнюю строку лента не пишет).
+# Idle2…Idle5 — на отрезке Idle: пакет wander существа выбирает простой по шансам (у нас 60/20/10/10
+# на Idle2…Idle5), и группа, которой нет в ленте, осталась бы без анимации; Idle6…Idle9 пакет не
+# просит (шансы 0), их в ленте нет. Своих простоев записей
+# (KFFZ) и клипов special… здесь нет: лента одна на папку, а они у каждой записи свои.
+Idle	loop	idle	handtohand,-,swim	простой
+Idle2	loop	idle	handtohand,-,swim	тот же отрезок, что Idle
+Idle3	loop	idle	handtohand,-,swim	тот же отрезок, что Idle: простои 2…5 просит пакет wander
+Idle4	loop	idle	handtohand,-,swim	тот же отрезок, что Idle: простои 2…5 просит пакет wander
+Idle5	loop	idle	handtohand,-,swim	тот же отрезок, что Idle: простои 2…5 просит пакет wander
+WalkForward	loop	forward	handtohand,-,swim	ходьба; скорость — путь корня накопления за клип
+RunForward	loop	fastforward|forward	handtohand,-,swim	бег; нет клипа бега — ходьба
+TurnLeft	turn	turnleft	handtohand,-,swim	поворот на месте
+TurnRight	turn	turnright	handtohand,-,swim	поворот на месте
+Attack1	attack	attackleft|attackright|attackpower|attackforwardpower|casttouch|casttarget|castself	handtohand,-,staff,onehand,twohand,swim	удар; нет своего — любой другой удар, потом жест заклинания
+Attack2	attack	attackright|attackleft|attackpower|attackforwardpower|casttouch|casttarget|castself	handtohand,-,staff,onehand,twohand,swim	удар
+Attack3	attack	attackpower|attackforwardpower|attackleft|attackright|casttouch|casttarget|castself	handtohand,-,staff,onehand,twohand,swim	сильный удар
+Hit1	still	recoil|stagger	handtohand,-,staff,onehand,twohand,swim	получил удар
+Knockdown	once	stagger|recoil	handtohand,-,staff,onehand,twohand,swim	сбит с ног: у Oblivion — шаг назад
+SpellCast	cast-self	castself|casttouch|casttarget	handtohand,-,swim	заклинание
+SpellCast	cast-touch	casttouch|castself|casttarget	handtohand,-,swim	заклинание
+SpellCast	cast-target	casttarget|casttouch|castself	handtohand,-,swim	заклинание
+Death1	fall	-	-	клипа смерти у Oblivion нет (рэгдолл): своё падение набок

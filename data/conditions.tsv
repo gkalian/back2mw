@@ -1,0 +1,74 @@
+# Условия реплик Oblivion (INFO/QUST CTDA) → фильтры Morrowind. 2026-09-28, T10.5. Читает transform::dialogue.
+#
+# Колонки через табуляцию: номер функции, имя Oblivion, на ком, вид фильтра Morrowind, пояснение.
+#
+# Номер — номер функции в движке. Сверен по парам SCTX ↔ SCDA Oblivion.esm (вызов в байт-коде —
+# опкод 0x1000 + номер): 1, 14, 18, 45, 47, 48, 50, 56, 58, 59, 67, 69, 71–73, 76, 77, 80, 84,
+# 116, 125, 130, 161, 193, 249 — по совпадению слова и опкода во всех скриптах. У остальных строк
+# вызовов в скриптах нет; номер взят по порядку таблицы функций и подтверждён типом параметра в
+# CTDA (68 — CLAS, 74 — GLOB, 132 — FACT, 70 и 131 — 0/1). Все строки, включая девять без обеих
+# сверок (60–63, 66, 75, 133–135), сверены 2026-10-01 с таблицей функций движка, вынутой из
+# Oblivion.exe (сборка Nehrim) — tes4_export/oblivion_engine_tables.json проекта tes4skyrim
+# (MIT): номер, имя, опкод 0x1000 + номер и типы параметров совпали у всех 43 строк.
+#
+# «На ком»: subject — говорящий, target — цель разговора (флаг CTDA 0x02; у реплик это игрок),
+# any — не важно. Строка subject/target сильнее строки any.
+#
+# Виды (закрытый список, transform::dialogue::FilterKind):
+#   quest            — условие на квест: реплика не переносится (решение 1 фазы 10);
+#   id race class faction rank sex cell disposition
+#                    — поля INFO ONAM/RNAM/CNAM/FNAM/ранг/пол/ANAM/отношение, отрицание — «Not …»;
+#   pc_faction pc_rank — DNAM и ранг игрока;
+#   global hour      — фильтр Global (hour — GameHour);
+#   item dead        — фильтры Item и Dead;
+#   playable_race    — «Not Race» на каждую неиграбельную расу переносимых NPC;
+#   se_world         — вычисляется при конвертации: 1, если переносится SEWorld, иначе 0;
+#   прочие           — функция SCVR (номер Morrowind в пояснении).
+# Решения владельца 2026-09-28: se_world и playable_race (у Generic, MQ00, NQD* это условия
+# квеста); условия с «или» разворачиваются в копии реплики (transform::dialogue).
+# Функции, которых здесь нет, фильтра в Morrowind не имеют: реплика с ними отбрасывается (решение 1).
+# Можно ли выразить конкретное сравнение (например, «==» при фильтре «≥»), решает T10.6.
+
+56	GetQuestRunning	any	quest
+58	GetStage	any	quest
+59	GetStageDone	any	quest
+79	GetQuestVariable	any	quest
+
+72	GetIsID	subject	id	ONAM / Not ID
+69	GetIsRace	subject	race	RNAM / Not Race
+68	GetIsClass	subject	class	CNAM / Not Class
+71	GetInFaction	subject	faction	FNAM / Not Faction
+71	GetInFaction	target	pc_faction	DNAM
+73	GetFactionRank	subject	rank	FNAM + ранг говорящего
+73	GetFactionRank	target	pc_rank	DNAM + ранг игрока
+70	GetIsSex	subject	sex	пол говорящего в DATA
+70	GetIsSex	target	pc_sex	функция 38 PC Sex
+131	GetPCIsSex	any	pc_sex	функция 38 PC Sex
+67	GetInCell	subject	cell	ANAM / Not Cell
+76	GetDisposition	subject	disposition	отношение в DATA (только «не меньше»)
+74	GetGlobalValue	any	global	фильтр Global
+18	GetCurrentTime	any	hour	Global GameHour
+132	GetPCInFaction	any	pc_faction	DNAM
+193	GetPCExpelled	any	pc_expelled	функция 39 PC Expelled
+47	GetItemCount	target	item	фильтр Item: предметы игрока
+84	GetDeadCount	any	dead	фильтр Dead
+48	GetGold	target	pc_gold	функция lX PC Gold
+80	GetLevel	subject	level	функция 61 Level
+80	GetLevel	target	pc_level	функция 06 PC Level
+14	GetActorValue	target	pc_stat	функции 10–37, 51–57: характеристики и навыки игрока (data/skills.tsv)
+116	GetCrimeGold	target	pc_crime	функция 43 PC Crime Level
+41	GetClothingValue	target	pc_clothing	функция 42 PC Clothing Modifier
+249	GetPCFame	any	pc_reputation	функция 05 PC Reputation
+134	SameRaceAsPC	any	same_race	функция 45 Same Race
+135	SameSexAsPC	any	same_sex	функция 44 Same Sex
+133	SameFactionAsPC	any	same_faction	функция 46 Same Faction
+60	GetFactionRankDifference	subject	rank_difference	функция 47 Faction Rank Difference
+45	GetDetected	subject	detected	функция 48 Detected
+61	GetAlarmed	subject	alarmed	функция 49 Alarmed
+63	GetAttacked	subject	attacked	функция 62 Attacked
+50	GetTalkedToPC	subject	talked_to_pc	функция 63 Talked to PC
+66	GetShouldAttack	subject	should_attack	функция 71 Should Attack
+62	IsRaining	any	weather	функция 59 Weather (дождь)
+75	IsSnowing	any	weather	функция 59 Weather (снег)
+254	GetIsPlayableRace	subject	playable_race	«Not Race» на неиграбельные расы
+365	GetPlayerInSEWorld	any	se_world	по переносимому миру; номер сверен по байт-коду

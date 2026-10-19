@@ -1,0 +1,22 @@
+[package]
+name = "gui"
+description = "Графический интерфейс back2mw (Windows)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "back2mw-gui"
+path = "src/main.rs"
+
+[dependencies]
+# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+lang = { path = "../lang" }
+back2mw = { path = "../back2mw" }
+# Интерфейс и выбор папки. Оба — MIT/Apache; по явной просьбе владельца (графическое приложение).
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow"] }
+rfd = { version = "0.15", default-features = false }
+
+[lints]
+workspace = true

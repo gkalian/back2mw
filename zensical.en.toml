@@ -1,0 +1,165 @@
+# English documentation site (Zensical + Catppuccin theme). The Russian one is zensical.toml;
+# both share the page structure, so keep the nav of the two files in step.
+#
+# Locally:  pip install -r docs/requirements.txt
+#           python docs/gen_tables.py   — tables from data/*.tsv (before serve/build)
+#           zensical serve -f zensical.en.toml                — preview at http://localhost:8000
+#           zensical build --clean -f zensical.en.toml        — builds into site/en
+# Publishing — .github/workflows/docs.yml (GitHub Pages).
+
+[project]
+site_name = "back2mw"
+site_description = "Converter of Oblivion content into the Morrowind format"
+site_url = "https://gkalian.github.io/back2mw/en/"
+repo_url = "https://github.com/gkalian/back2mw"
+repo_name = "gkalian/back2mw"
+docs_dir = "docs/en"
+site_dir = "site/en"
+copyright = "back2mw — MIT. The Elder Scrolls, Morrowind and Oblivion are trademarks of ZeniMax Media."
+
+nav = [
+  { "About" = "index.md" },
+  { "For users" = [
+    "usage.md",
+    "gui.md",
+    "losses.md",
+  ] },
+  { "Record types" = [
+    "types/index.md",
+    { "Models and statics" = [
+      "types/stat.md",
+      "types/tree.md",
+      "types/gras.md",
+    ] },
+    { "Items" = [
+      "types/weap.md",
+      "types/ammo.md",
+      "types/armo-clot.md",
+      "types/misc.md",
+      "types/slgm.md",
+      "types/book.md",
+      "types/alch-ingr.md",
+      "types/appa.md",
+    ] },
+    { "Magic" = [
+      "types/mgef.md",
+      "types/ench-spel.md",
+    ] },
+    { "World objects" = [
+      "types/acti-furn.md",
+      "types/door.md",
+      "types/cont-flor.md",
+      "types/ligh.md",
+      "types/lvli.md",
+    ] },
+    { "World" = [
+      "types/worldspace.md",
+      "types/land.md",
+      "types/regn.md",
+      "types/interior.md",
+      "types/refr.md",
+      "types/pgrd.md",
+    ] },
+    { "Actors" = [
+      "types/race.md",
+      "types/clas.md",
+      "types/fact.md",
+      "types/npc.md",
+      "types/faces.md",
+      "types/crea.md",
+    ] },
+    { "Sound, dialogue, scripts" = [
+      "types/soun.md",
+      "types/dial.md",
+      "types/glob.md",
+      "types/scpt.md",
+    ] },
+    "types/not-converted.md",
+  ] },
+  { "Resources" = [
+    "resources/meshes.md",
+    "resources/textures.md",
+    "resources/audio.md",
+  ] },
+  { "For developers" = [
+    "dev.md",
+    "architecture.md",
+    "pipeline.md",
+    { "Formats" = [
+      "formats/tes4.md",
+      "formats/tes3.md",
+      "formats/nif-oblivion.md",
+      "formats/spt.md",
+    ] },
+  ] },
+]
+
+[project.theme]
+name = "catppuccin"
+language = "en"
+features = [
+  "navigation.tabs",
+  "navigation.sections",
+  "navigation.indexes",
+  "navigation.path",
+  "navigation.top",
+  "navigation.instant",
+  "navigation.tracking",
+  "search.highlight",
+  "content.code.copy",
+  "toc.follow",
+]
+
+# The four Catppuccin flavors, cycled by the toggle.
+[[project.theme.palette]]
+scheme = "catppuccin-mocha"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Macchiato"
+
+[[project.theme.palette]]
+scheme = "catppuccin-macchiato"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/cloud-moon"
+toggle.name = "Frappé"
+
+[[project.theme.palette]]
+scheme = "catppuccin-frappe"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/cloud-sun"
+toggle.name = "Latte"
+
+[[project.theme.palette]]
+scheme = "catppuccin-latte"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Mocha"
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.superfences]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.toc]
+permalink = true
+
+# Mapping tables from data/*.tsv: python docs/gen_tables.py → docs/_generated/
+[project.markdown_extensions.pymdownx.snippets]
+base_path = ["docs/_generated/en"]
+check_paths = true
+
+# Language switcher. Links are relative to the language root (site/en), so they work
+# wherever the site is published.
+[[project.extra.alternate]]
+name = "Русский"
+link = "../ru/"
+lang = "ru"
+
+[[project.extra.alternate]]
+name = "English"
+link = "./"
+lang = "en"

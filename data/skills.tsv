@@ -1,0 +1,38 @@
+# Навыки Oblivion (21) → навыки Morrowind (27). 2026-09-27, T7.1. Читает transform::skills.
+#
+# Колонки через табуляцию: навык Oblivion, основной навык Morrowind, добавочные (через запятую
+# или пусто), пояснение для людей.
+# Имена Oblivion — как в tes4_read::SKILL_NAMES; Morrowind — как в transform::skills::MW_SKILLS.
+# Каждый навык Oblivion — ровно в одной строке, каждый навык Morrowind — ровно один раз (либо
+# основным, либо добавочным): 21 основной + 6 добавочных = 27. Проверяет тест.
+#
+# Как используется:
+# - бонус расы Oblivion переходит на основной навык (у Morrowind 7 мест под бонусы, как у Oblivion);
+# - 7 основных навыков класса → их основные навыки: первые 5 — основные Morrowind, 2 —
+#   второстепенные; ещё 3 второстепенных — добавочные навыки тех же основных, по порядку;
+# - отложенный вариант «числа Oblivion»: навык Morrowind получает значение своего навыка Oblivion.
+#
+# У Morrowind без пары: Short Blade, Spear, Axe, Medium Armor, Enchant, Unarmored — их дают
+# ближайшие по смыслу навыки Oblivion.
+
+Armorer	Armorer
+Athletics	Athletics
+Blade	LongBlade	ShortBlade,Spear	клинки Oblivion — и длинные, и короткие; копий у Oblivion нет, ближе всего клинок
+Block	Block
+Blunt	BluntWeapon	Axe	топоры у Oblivion — дробящее оружие
+HandToHand	HandToHand
+HeavyArmor	HeavyArmor	MediumArmor	средней брони у Oblivion нет
+Alchemy	Alchemy
+Alteration	Alteration
+Conjuration	Conjuration
+Destruction	Destruction
+Illusion	Illusion
+Mysticism	Mysticism	Enchant	отдельного навыка зачарования у Oblivion нет, ближе всего мистицизм
+Restoration	Restoration
+Acrobatics	Acrobatics	Unarmored	бездоспешного боя у Oblivion нет; ловкость уклонения ближе всего к акробатике
+LightArmor	LightArmor
+Marksman	Marksman
+Mercantile	Mercantile
+Security	Security
+Sneak	Sneak
+Speechcraft	Speechcraft

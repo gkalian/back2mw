@@ -1,0 +1,25 @@
+# Sample config.toml. The window creates and updates the file itself; by hand you only need the
+# optional keys below. Command-line flags override the file.
+
+# Game data folders (the window fills them in).
+# source_data = 'C:\Program Files (x86)\Steam\steamapps\common\Oblivion\Data'
+# target_data = 'C:\Program Files (x86)\Steam\steamapps\common\Morrowind\Data Files'
+
+# Language of the window, the log and the error messages: "en" (default) or "ru".
+# Console: --lang.
+# language = "en"
+
+# Worldspace offset in Morrowind cells, [dx, dy]. Without the key the world is placed east of
+# vanilla Morrowind. Keep the value once you have saves on the converted land: the world must
+# be built in the same place every time. Console: --offset dx,dy.
+# offset = [48, 3]
+
+# World map for MWSE: Morrowind's world map does not reach the converted land, so with this key
+# the drawn world map from Oblivion and an MWSE-Lua mod that shows it in the map window are put
+# next to the plugin. Needs MWSE (https://www.nexusmods.com/morrowind/mods/45468); without it the
+# files are simply unused. Console: --lua-map.
+# lua_map = true
+
+# Checking the result with the independent readers from OpenMW (optional).
+# esmtool = 'C:\OpenMW\esmtool.exe'
+# niftest = 'C:\OpenMW\niftest.exe'

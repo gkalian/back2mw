@@ -1,0 +1,16 @@
+[package]
+name = "transform"
+description = "Преобразования TES4/TES5 → TES3. Единственное место, знающее обе игры."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+lang = { path = "../lang" }
+tes4_read = { path = "../tes4_read" }
+tes3_out = { path = "../tes3_out" }
+
+[lints]
+workspace = true

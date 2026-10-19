@@ -1,0 +1,85 @@
+name: CI
+
+# Только на изменения кода и того, что читает код и тесты (docs/notes_en.tsv встроен в
+# transform: английские причины выброшенных эффектов). Документация собирается своим workflow
+# (docs.yml), релиз — по тегу (release.yml). `branches` нужен, чтобы пуш тега не запускал CI
+# повторно: релиз сам гоняет тесты. Списки путей у push и pull_request должны совпадать.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "crates/**"
+      - "data/**"
+      - "docs/notes_en.tsv"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "data/**"
+      - "docs/notes_en.tsv"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Формат
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        # Интерфейс собирается и проверяется на Windows (job ниже): на Linux ему нужны системные
+        # библиотеки окна, а целевая платформа программы — только Windows.
+        run: cargo clippy --workspace --exclude gui --all-targets --all-features -- -D warnings
+
+      # Инструмент, а не игра: `esmtool` — независимый читатель TES3, которым
+      # проверяется наш собственный вывод. `command -v` стоит здесь нарочно —
+      # если пакет перестанет его ставить, шаг обязан упасть, а не дать тестам
+      # тихо пропустить проверку.
+      - name: esmtool из OpenMW
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openmw
+          command -v esmtool
+
+      # Тесты намеренно не требуют установленных игр: всё, что проверяется,
+      # строится на синтетических данных. Это то, чего не может референс —
+      # его тесты просят Oblivion.esm, и CI их не прогоняет.
+      - name: Тесты
+        env:
+          BACK2MW_REQUIRE_ESMTOOL: 1
+        run: cargo test --workspace --exclude gui --all-targets
+
+  gui-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy интерфейса
+        run: cargo clippy -p gui -p back2mw --all-targets -- -D warnings
+      - name: Тесты
+        run: cargo test -p gui -p back2mw --all-targets

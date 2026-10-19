@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Нижняя граница задана библиотекой Greatness7/tes3: она требует 1.88 и edition 2024.
+rust-version = "1.88"
+license = "MIT"
+
+[workspace.dependencies]
+flate2 = "1"
+# Пин обязателен: API нестабилен. Ветка main, не master.
+# ВНИМАНИЕ: крейт `tes3` на crates.io — занятое имя, НЕ эта библиотека.
+tes3 = { git = "https://github.com/Greatness7/tes3", rev = "e61ad140b51d889ae5aa30914ba2a20fd51bf2e0", default-features = false }
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+# Нас интересует корректность двоичных форматов, поэтому арифметику и приведения
+# держим под присмотром отдельно, а не через огульный pedantic.
+cast_possible_truncation = "warn"
+
+# Урезанная отладочная информация: номера строк в трассировках есть, а target-msvc/debug
+# в 2–3 раза меньше. Пошаговая отладка в дебаггере — неудобна.
+[profile.dev]
+debug = "line-tables-only"

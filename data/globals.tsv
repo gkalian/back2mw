@@ -1,0 +1,22 @@
+# Движковые глобальные переменные Oblivion (GLOB) → ванильные переменные Morrowind. 2026-10-01,
+# T11.1. Читает transform::globals.
+#
+# Колонки через табуляцию: EDID Oblivion, ID Morrowind или «-», пояснение.
+#
+# Эти переменные ведёт движок (время, дата), поэтому своя копия `ob_…` никогда бы не менялась:
+# ссылки ведут на ванильную переменную Morrowind, своя запись не пишется. «-» — у Morrowind.esm
+# пары нет: переменная не переносится, ссылки на неё не выражаются.
+#
+# Правило вне таблицы: GLOB, чей EDID совпал с ванильной переменной Morrowind.esm (без учёта
+# регистра, например PCVampire), тоже ведёт на ванильную — как условия реплик с T10.6. Остальные
+# переносятся своими записями `ob_…`.
+#
+# Значения ванили (Morrowind.esm, 2026-10-01): GameHour f, TimeScale f, Month s, Day s, Year s;
+# DaysPassed в Morrowind.esm нет (появляется в Tribunal).
+
+GameHour	GameHour	час суток
+GameDay	Day	день месяца
+GameMonth	Month	месяц
+GameYear	Year	год
+TimeScale	TimeScale	скорость игрового времени
+GameDaysPassed	-	дней с начала игры; у Morrowind.esm нет (DaysPassed — Tribunal)

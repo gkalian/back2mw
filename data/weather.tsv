@@ -1,0 +1,51 @@
+# Погода Oblivion (WTHR, по EDID) → тип погоды Morrowind. 2026-09-25. Читает transform::weather.
+#
+# Колонки через табуляцию: EDID, тип, пояснение для людей.
+# Типы Morrowind (порядок WEAT): clear cloudy foggy overcast rain thunder ash blight snow blizzard.
+#
+# Погода, которой здесь нет (из модов), определяется по классу в WTHR DATA[11]:
+# 0x08 → snow, 0x04 → rain, 0x02 → cloudy, 0x01 → clear, иначе overcast.
+# Таблица нужна, потому что одного класса мало: туман и пасмурно у Oblivion тоже «облачно» (0x02),
+# гроза — «дождь» (0x04), а у погоды планов Обливиона класс 0.
+#
+# blight не используется никогда: в Morrowind моровая буря заражает игрока моровыми болезнями.
+# snow и blizzard — погода Bloodmoon; работает ли она у плагина с единственным мастером
+# Morrowind.esm, не проверено.
+
+Clear	clear
+Cloudy	cloudy
+Fog	foggy
+Overcast	overcast
+Rain	rain
+Thunderstorm	thunder
+Snow	snow
+DefaultWeather	clear
+MS14Sky	clear	небо квеста MS14
+CamoranWeather	clear	Рай Камората; класс 0xC1 — мусор в старших битах
+ThunderstormKvatch	thunder
+SEClear	clear
+SEClear01	clear
+SEClear03	clear
+SEClearBlue	clear
+SEClearTrans	clear
+TestBlissClear	clear
+SECloudy	cloudy
+SEFog	foggy
+SEManiaFog	foggy
+SEOrderedFringe	foggy	DATA совпадает с SEFog
+SE13JiggyWeather	foggy	DATA совпадает с SEFog
+SEOvercast	overcast
+SEWaitingRoomWeather	overcast	DATA совпадает с SEOvercast, класс 0x08 — ошибка источника
+SERain	rain
+SEThunderstorm	thunder
+SE32GloomStorm	thunder
+SE09SummoningWeather	thunder
+SETestAsh	ash
+SigilWhiteOut	foggy	вспышка камня Сигила
+OblivionSigil	ash	планы Обливиона: красное небо — ближе всего пепельная буря
+Obliviondefault	ash
+OblivionMountainFog	ash
+OblivionStormOblivion	ash
+OblivionStormTamriel	ash
+OblivionStormTamrielMQ16	ash
+OblivionElectrical	thunder

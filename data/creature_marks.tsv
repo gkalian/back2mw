@@ -1,0 +1,16 @@
+# Метки клипов существ Oblivion → метки ленты Morrowind. 2026-10-02, T11.5d. Читает
+# mesh_convert::creature::groups.
+#
+# Колонки через табуляцию: метка Oblivion без учёта регистра и пробелов вокруг двоеточия; метка
+# Morrowind («-» — не переносится); пояснение.
+#
+# `Enum: <слот>` — звук существа из записи CREA по слоту CSDT; у Morrowind то же делает метка
+# `SoundGen: <вид>`, а сам звук задаёт запись SNDG (T11.6). Метки, которых здесь нет (`Hit`, `Attach`,
+# `Blend: n`, `m:L`, `a:R`, настройки экспортёра), либо разбирает вид группы, либо движку Morrowind не нужны.
+enum: left	SoundGen: Left	шаг левой
+enum: right	SoundGen: Right	шаг правой
+enum: backleft	SoundGen: Left	шаг задней левой: у Morrowind задних ног нет
+enum: backright	SoundGen: Right	шаг задней правой
+enum: aware	SoundGen: Moan	заметил цель
+enum: attack	SoundGen: Roar	атакует
+enum: idle	-	звук простоя на каждом круге петли: у Morrowind пары нет

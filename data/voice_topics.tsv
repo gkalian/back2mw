@@ -1,0 +1,42 @@
+# Голосовые и служебные темы Oblivion (DIAL типов Combat 2, Persuasion 3, Detection 4, Service 5,
+# Misc 6; по EDID) → ванильные темы Morrowind. 2026-09-29, T10.7. Читает transform::dialogue::voice.
+#
+# Колонки через табуляцию: EDID Oblivion, имя темы Morrowind, тип (voice | persuasion), пояснение.
+# Тема Morrowind — ванильная, того же типа в Morrowind.esm: реплики дописываются в её начало.
+# Движок спрашивает голос и убеждение только по своим именам, поэтому новой такой темы не бывает.
+#
+# Темы, которых здесь нет, пары в Morrowind не имеют и не переносятся (карточка T10.7): Yield,
+# AcceptYield, *NoCrime, Detection (Noticed, Seen, Unseen, Lost), Service кроме ServiceRefusal
+# (Barter*, Repair, Recharge, Training), ObserveCombat, Corpse, TimeToGo, BRIBE, PERSUASION_ENTER/EXIT,
+# BOAST_*, JOKE_*. Пустые у Oblivion AdmireSuccess, TauntFail и т. п. (реплик нет) — тоже нет.
+#
+# Решения владельца 2026-09-29: реакции мини-игры убеждения — ADMIRE → Admire, COERCE → Intimidate
+# (LOVE/LIKE — Success, DISLIKE/HATE — Fail), BOAST и JOKE не переносятся; Assault и Murder → Alarm,
+# как в черновике карточки (у ванили в Alarm одна реплика, когда движок её говорит — проверить в
+# игре, T10.9).
+#
+# Решение владельца 2026-10-01: HELLO (DIAL тип 1, Conversation) — оклик проходящему игроку, пара —
+# голос Hello. Из тем типа 1 переносится только та, у которой есть строка здесь
+# (transform::dialogue::selection_kind); остальные — разговоры NPC между собой, не переносятся.
+
+HELLO	Hello	voice	оклик проходящему игроку; у Oblivion тип темы Conversation
+Attack	Attack	voice
+PowerAttack	Attack	voice	силовой удар — тот же боевой клич
+Hit	Hit	voice
+Flee	Flee	voice
+Steal	Thief	voice
+Pickpocket	Thief	voice
+Trespass	Intruder	voice
+Assault	Alarm	voice
+Murder	Alarm	voice
+Idle	Idle	voice
+InfoRefusal	Info Refusal	persuasion	у Morrowind — тип убеждения
+ServiceRefusal	Service Refusal	persuasion	у Morrowind — тип убеждения
+ADMIRELOVE	Admire Success	persuasion
+ADMIRELIKE	Admire Success	persuasion
+ADMIREDISLIKE	Admire Fail	persuasion
+ADMIREHATE	Admire Fail	persuasion
+COERCELOVE	Intimidate Success	persuasion
+COERCELIKE	Intimidate Success	persuasion
+COERCEDISLIKE	Intimidate Fail	persuasion
+COERCEHATE	Intimidate Fail	persuasion

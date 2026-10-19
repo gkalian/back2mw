@@ -1,0 +1,24 @@
+# Расы Oblivion (RACE, по EDID) → расы Morrowind. 2026-09-27, T7.2. Читает transform::races.
+#
+# Колонки через табуляцию: EDID Oblivion, цель, донор, пояснение для людей.
+# Цель — ID ванильной расы Morrowind.esm (своя запись не пишется) или «own»: своя запись RACE с
+# данными расы Oblivion и телом — копиями BODY ванильной расы-донора (решение владельца
+# 2026-09-27). Донор — ID ванильной расы; нужен только у «own».
+#
+# Раса, которой здесь нет (из модов), становится своей с донором Imperial — с отметкой в отчёте.
+
+Imperial	Imperial
+Breton	Breton
+Nord	Nord
+Redguard	Redguard
+DarkElf	Dark Elf
+HighElf	High Elf
+WoodElf	Wood Elf
+Orc	Orc
+Khajiit	Khajiit
+Argonian	Argonian
+GoldenSaint	own	High Elf	Золотые Святые — высокие светлые «эльфы» Шеогората
+DarkSeducer	own	Dark Elf	Тёмные Соблазнительницы — тёмные «эльфы»
+Dremora	own	Dark Elf	дреморы — даэдра в облике тёмных людей
+Sheogorath	own	Imperial	Шеогорат и его облики
+VampireRace	own	Imperial	служебная раса вампиров Oblivion

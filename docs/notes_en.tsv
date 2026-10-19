@@ -1,0 +1,122 @@
+# English notes for the mapping tables on the English site (docs/gen_tables.py).
+# data/*.tsv stay the source of truth. The converter reads only the `effects` rows of dropped
+# effects (crates/transform/src/effects.rs): they are the reason shown in the log when messages
+# are in English, and a test requires one for every dropped effect.
+#
+# Columns (tab-separated): table (data/<table>.tsv), key (first column of the row), English note.
+# A row of data/*.tsv whose note contains Cyrillic and has no line here keeps the Russian note,
+# and gen_tables.py prints a warning — add the translation here.
+#
+# table	key	note
+creatures	rat	rat (r\Rust rat.NIF)
+creatures	mudcrab	mudcrab
+creatures	skeleton	skeleton; biped with a weapon, as in Oblivion
+creatures	zombie	zombie — the walking dead of Morrowind
+creatures	ghost	ghost
+creatures	scamp	scamp
+creatures	clannfear	clannfear
+creatures	daedroth	daedroth
+creatures	flameatronach	flame atronach
+creatures	frostatronach	frost atronach
+creatures	stormatronach	storm atronach
+creatures	slaughterfish	slaughterfish
+creatures	hunger	Hunger (a daedra of Sheogorath)
+effects	BAGR	Bound Greaves: Morrowind has no bound greaves
+effects	BA01	quest service effect, unnamed
+effects	BA02	quest service effect, unnamed
+effects	BA03	quest service effect, unnamed
+effects	BA04	quest service effect, unnamed
+effects	BA05	quest service effect, unnamed
+effects	BA06	quest service effect, unnamed
+effects	BW01	Bound Order Weapon: quest weapon, no counterpart
+effects	BW02	Bound Order Weapon: quest weapon, no counterpart
+effects	BW03	Bound Order Weapon: quest weapon, no counterpart
+effects	BW04	Bound Order Weapon: quest weapon, no counterpart
+effects	BW05	Bound Order Weapon: quest weapon, no counterpart
+effects	BW06	Bound Order Weapon: quest weapon, no counterpart
+effects	BW07	Bound Order Weapon: quest weapon, no counterpart
+effects	CALM	Calm → Calm Humanoid (Oblivion has one effect for everyone)
+effects	DARK	service effect, unused
+effects	DTCT	Detect Life → Detect Animal (in Morrowind it detects living creatures)
+effects	DUMY	service effect, unnamed
+effects	LOCK	Lock → Lock (Oblivion marks it "do not use")
+effects	MYHL	Summon Mythic Dawn Helm: quest armor, no counterpart
+effects	MYTH	Summon Mythic Dawn Armor: quest armor, no counterpart
+effects	POSN	Poison → Poison (unused in Oblivion.esm)
+effects	REAN	Reanimate: raise a corpse, no counterpart
+effects	REDG	Reflect Damage: Morrowind has no weapon damage reflection
+effects	RSWD	service effect, unnamed
+effects	SEFF	Script Effect: Oblivion scripts are not converted
+effects	ZSPD	Summon Spider Daedra: Morrowind has no similar creature
+effects	Z003	Summon Spiderling: Morrowind has no similar creature
+effects	Z004	Summon Flesh Atronach: Morrowind has no similar creature
+effects	Z005	Summon Bear: in Morrowind this is a Bloodmoon effect (139)
+effects	Z009	Summon Dark Seducer: Morrowind has no similar creature
+effects	Z011	Wabba Summon: service effect
+effects	Z012	Summon Decrepit Shambles: Morrowind has no similar creature
+effects	Z013	Summon Shambles: Morrowind has no similar creature
+effects	Z014	Summon Replete Shambles: Morrowind has no similar creature
+effects	Z016	Summon Mangled Flesh Atronach: Morrowind has no similar creature
+effects	Z017	Summon Torn Flesh Atronach: Morrowind has no similar creature
+effects	Z018	Summon Stitched Flesh Atronach: Morrowind has no similar creature
+effects	Z019	Summon Sewn Flesh Atronach: Morrowind has no similar creature
+globals	GameHour	hour of the day
+globals	GameDay	day of the month
+globals	GameMonth	month
+globals	GameYear	year
+globals	TimeScale	game time speed
+globals	GameDaysPassed	days since the game started; not in Morrowind.esm (DaysPassed is Tribunal)
+races	GoldenSaint	Golden Saints — tall fair "elves" of Sheogorath
+races	DarkSeducer	Dark Seducers — dark "elves"
+races	Dremora	dremora — daedra in the shape of dark humans
+races	Sheogorath	Sheogorath and his guises
+races	VampireRace	Oblivion's service race for vampires
+skills	Blade	Oblivion blades are both long and short; Oblivion has no spears, Blade is the closest
+skills	Blunt	axes are blunt weapons in Oblivion
+skills	HeavyArmor	Oblivion has no medium armor
+skills	Mysticism	Oblivion has no separate Enchant skill, Mysticism is the closest
+skills	Acrobatics	Oblivion has no Unarmored; evasive agility is closest to Acrobatics
+voice_topics	HELLO	a call to the passing player; in Oblivion the topic type is Conversation
+voice_topics	PowerAttack	power attack — the same battle cry
+voice_topics	InfoRefusal	a persuasion type in Morrowind
+voice_topics	ServiceRefusal	a persuasion type in Morrowind
+weather	MS14Sky	sky of quest MS14
+weather	CamoranWeather	Camoran's Paradise; class 0xC1 is garbage in the high bits
+weather	SEOrderedFringe	DATA matches SEFog
+weather	SE13JiggyWeather	DATA matches SEFog
+weather	SEWaitingRoomWeather	DATA matches SEOvercast, class 0x08 is a source error
+weather	SigilWhiteOut	flash of a Sigil Stone
+weather	OblivionSigil	planes of Oblivion: red sky — an ash storm is closest
+creature_groups	Idle	idle
+creature_groups	Idle2	the same stretch as Idle
+creature_groups	WalkForward	walking; the speed is the path of the accumulation root over the clip
+creature_groups	RunForward	running; no running clip — the walk
+creature_groups	TurnLeft	turning on the spot
+creature_groups	TurnRight	turning on the spot
+creature_groups	Attack1	a blow; none of its own — any other blow, then a spell gesture
+creature_groups	Attack2	a blow
+creature_groups	Attack3	a strong blow
+creature_groups	Hit1	took a hit
+creature_groups	Knockdown	knocked down: in Oblivion — a step back
+creature_groups	SpellCast	a spell
+creature_groups	Death1	Oblivion has no death clip (ragdoll): an own fall onto the side
+creature_marks	enum: left	left step
+creature_marks	enum: right	right step
+creature_marks	enum: backleft	back left step: Morrowind has no back feet
+creature_marks	enum: backright	back right step
+creature_marks	enum: aware	noticed a target
+creature_marks	enum: attack	attacks
+creature_marks	enum: idle	an idle sound on every round of the loop: Morrowind has no counterpart
+creature_groups	Idle3	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_groups	Idle4	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_groups	Idle5	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_groups	Idle6	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_groups	Idle7	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_groups	Idle8	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_groups	Idle9	the same stretch as Idle: idles 3…9 are requested by the wander package
+creature_souls	0	no soul
+creature_souls	1	petty — the Petty gem
+creature_souls	2	lesser — Lesser
+creature_souls	3	common — Common
+creature_souls	4	greater — Greater
+creature_souls	5	grand — Grand

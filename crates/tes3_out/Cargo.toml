@@ -1,0 +1,18 @@
+[package]
+name = "tes3_out"
+description = "Вывод в формате TES3. Единственное место, знающее байтовую раскладку Morrowind."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+lang = { path = "../lang" }
+# Пин — через workspace (решение Р4 в docs/ru/architecture.md).
+# Пин коммита обязателен: README библиотеки прямо предупреждает, что API
+# нестабилен. ВНИМАНИЕ: крейт `tes3` на crates.io — это НЕ эта библиотека.
+tes3 = { workspace = true, features = ["esp", "bsa"] }
+
+[lints]
+workspace = true

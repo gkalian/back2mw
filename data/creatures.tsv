@@ -1,0 +1,25 @@
+# Существа-доноры: папка модели существа Oblivion → ванильное существо Morrowind того же вида. 2026-10-01,
+# T11.3. Читает transform::creatures.
+#
+# Колонки через табуляцию: папка (`creatures\<папка>\…` в MODL, без учёта регистра), ID существа
+# Morrowind.esm, пояснение.
+#
+# Решения владельца 2026-10-01 (docs/ru/types/crea.md): от донора — модель, звуки (CNAM = донор),
+# душа, кровь и то, что умеет его анимация (двуногое, оружие и щит, плавает, летает, ходит); остальное —
+# числа Oblivion. Только точные пары: вид тот же. Все 13 папок Oblivion.esm однородны по виду (части NIFZ
+# разных записей — варианты одного существа, замер 2026-10-01). Папки, которых здесь нет, своей
+# модели ждут в T11.5 и пока не переносятся.
+
+rat	rat	крыса (r\Rust rat.NIF)
+mudcrab	mudcrab	грязевой краб
+skeleton	skeleton	скелет; двуногий с оружием, как у Oblivion
+zombie	bonewalker	зомби — ходячий мертвец Morrowind
+ghost	ancestor_ghost	призрак
+scamp	scamp	скамп
+clannfear	clannfear	клэнфир
+daedroth	daedroth	даэдрот
+flameatronach	atronach_flame	огненный атронах
+frostatronach	atronach_frost	ледяной атронах
+stormatronach	atronach_storm	грозовой атронах
+slaughterfish	slaughterfish	рыба-убийца
+hunger	hunger	Голод (даэдра Шеогората)

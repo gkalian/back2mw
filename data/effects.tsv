@@ -1,0 +1,169 @@
+# Эффекты Oblivion (MGEF, код EFIT) → эффекты Morrowind (номер 0…136, эффекты Morrowind.esm).
+# T2.1b, 2026-09-25. Читает transform::effects.
+#
+# Колонки через табуляцию:
+#   код      — код эффекта Oblivion (EDID записи MGEF);
+#   эффект   — номер эффекта Morrowind или «-»: аналога нет, эффект выбрасывается с замечанием;
+#   параметр — что брать из актёрского значения EFIT: attribute (0…7, порядок атрибутов у игр
+#              один), skill (12…32 → навык Morrowind по таблице навыков), «-» — ничего;
+#   остальное — пояснение для людей.
+#
+# 137+ (Summon Fabricant, Wolf, Bear, Bonewolf) — эффекты Tribunal и Bloodmoon: у плагина с
+# единственным мастером Morrowind.esm их нет, поэтому сюда не пишутся.
+#
+# Коды, которых нет в таблице, выбрасываются с замечанием «эффекта нет в таблице».
+#
+# код	эффект	параметр	Oblivion → Morrowind
+ABAT	85	attribute	Absorb Attribute → Absorb Attribute
+ABFA	88	-	Absorb Fatigue → Absorb Fatigue
+ABHE	86	-	Absorb Health → Absorb Health
+ABSK	89	skill	Absorb Skill → Absorb Skill
+ABSP	87	-	Absorb Magicka → Absorb Magicka
+BABO	129	-	Bound Boots → Bound Boots
+BACU	127	-	Bound Cuirass → Bound Cuirass
+BAGA	131	-	Bound Gauntlets → Bound Gloves
+BAGR	-	-	Bound Greaves: у Morrowind призванных поножей нет
+BAHE	128	-	Bound Helmet → Bound Helm
+BASH	130	-	Bound Shield → Bound Shield
+BA01	-	-	служебный эффект квеста, без имени
+BA02	-	-	служебный эффект квеста, без имени
+BA03	-	-	служебный эффект квеста, без имени
+BA04	-	-	служебный эффект квеста, без имени
+BA05	-	-	служебный эффект квеста, без имени
+BA06	-	-	служебный эффект квеста, без имени
+BRDN	7	-	Burden → Burden
+BW01	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW02	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW03	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW04	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW05	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW06	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW07	-	-	Bound Order Weapon: оружие квеста, аналога нет
+BW08	120	-	Bound Priest Dagger → Bound Dagger
+BWAX	123	-	Bound Axe → Bound Battle Axe
+BWBO	125	-	Bound Bow → Bound Longbow
+BWDA	120	-	Bound Dagger → Bound Dagger
+BWMA	122	-	Bound Mace → Bound Mace
+BWSW	121	-	Bound Sword → Bound Longsword
+CALM	49	-	Calm → Calm Humanoid (у Oblivion один эффект на всех)
+CHML	40	-	Chameleon → Chameleon
+CHRM	44	-	Charm → Charm
+COCR	118	-	Command Creature → Command Creature
+COHU	119	-	Command Humanoid → Command Humanoid
+CUDI	69	-	Cure Disease → Cure Common Disease
+CUPA	73	-	Cure Paralysis → Cure Paralyzation
+CUPO	72	-	Cure Poison → Cure Poison
+DARK	-	-	служебный эффект, не используется
+DEMO	53	-	Demoralize → Demoralize Humanoid
+DGAT	22	attribute	Damage Attribute → Damage Attribute
+DGFA	25	-	Damage Fatigue → Damage Fatigue
+DGHE	23	-	Damage Health → Damage Health
+DGSP	24	-	Damage Magicka → Damage Magicka
+DIAR	38	-	Disintegrate Armor → Disintegrate Armor
+DIWE	37	-	Disintegrate Weapon → Disintegrate Weapon
+DRAT	17	attribute	Drain Attribute → Drain Attribute
+DRFA	20	-	Drain Fatigue → Drain Fatigue
+DRHE	18	-	Drain Health → Drain Health
+DRSK	21	skill	Drain Skill → Drain Skill
+DRSP	19	-	Drain Magicka → Drain Magicka
+DSPL	57	-	Dispel → Dispel
+DTCT	64	-	Detect Life → Detect Animal (у Morrowind — обнаружение живых существ)
+DUMY	-	-	служебный эффект, без имени
+FIDG	14	-	Fire Damage → Fire Damage
+FISH	4	-	Fire Shield → Fire Shield
+FOAT	79	attribute	Fortify Attribute → Fortify Attribute
+FOFA	82	-	Fortify Fatigue → Fortify Fatigue
+FOHE	80	-	Fortify Health → Fortify Health
+FOMM	84	-	Fortify Magicka Multiplier → Fortify Magicka Multiplier
+FOSK	83	skill	Fortify Skill → Fortify Skill
+FOSP	81	-	Fortify Magicka → Fortify Magicka
+FRDG	16	-	Frost Damage → Frost Damage
+FRNZ	51	-	Frenzy → Frenzy Humanoid
+FRSH	6	-	Frost Shield → Frost Shield
+FTHR	8	-	Feather → Feather
+INVI	39	-	Invisibility → Invisibility
+LGHT	41	-	Light → Light
+LISH	5	-	Shock Shield → Lightning Shield
+LOCK	12	-	Lock → Lock (у Oblivion помечен «не использовать»)
+MYHL	-	-	Summon Mythic Dawn Helm: броня квеста, аналога нет
+MYTH	-	-	Summon Mythic Dawn Armor: броня квеста, аналога нет
+NEYE	43	-	Night-Eye → Night Eye
+OPEN	13	-	Open → Open
+PARA	45	-	Paralyze → Paralyze
+POSN	27	-	Poison → Poison (в Oblivion.esm не используется)
+RALY	55	-	Rally → Rally Humanoid
+REAN	-	-	Reanimate: поднять труп, аналога нет
+REAT	74	attribute	Restore Attribute → Restore Attribute
+REDG	-	-	Reflect Damage: отражения урона оружием у Morrowind нет
+REFA	77	-	Restore Fatigue → Restore Fatigue
+REHE	75	-	Restore Health → Restore Health
+RESP	76	-	Restore Magicka → Restore Magicka
+RFLC	68	-	Reflect Spell → Reflect
+RSDI	94	-	Resist Disease → Resist Common Disease
+RSFI	90	-	Resist Fire → Resist Fire
+RSFR	91	-	Resist Frost → Resist Frost
+RSMA	93	-	Resist Magic → Resist Magicka
+RSNW	98	-	Resist Normal Weapons → Resist Normal Weapons
+RSPA	99	-	Resist Paralysis → Resist Paralysis
+RSPO	97	-	Resist Poison → Resist Poison
+RSSH	92	-	Resist Shock → Resist Shock
+RSWD	-	-	служебный эффект, без имени
+SABS	67	-	Spell Absorption → Spell Absorption
+SEFF	-	-	Script Effect: скрипты Oblivion не переносятся
+SHDG	15	-	Shock Damage → Shock Damage
+SHLD	3	-	Shield → Shield
+SLNC	46	-	Silence → Silence
+STMA	136	-	Stunted Magicka → Stunted Magicka
+STRP	58	-	Soul Trap → Soul Trap
+SUDG	135	-	Sun Damage → Sun Damage
+TELE	59	-	Telekinesis → Telekinesis
+TURN	101	-	Turn Undead → Turn Undead
+VAMP	133	-	Vampirism → Vampirism
+WABR	0	-	Water Breathing → Water Breathing
+WAWA	2	-	Water Walking → Water Walking
+WKDI	32	-	Weakness to Disease → Weakness to Common Disease
+WKFI	28	-	Weakness to Fire → Weakness to Fire
+WKFR	29	-	Weakness to Frost → Weakness to Frost
+WKMA	31	-	Weakness to Magic → Weakness to Magicka
+WKNW	36	-	Weakness to Normal Weapons → Weakness to Normal Weapons
+WKPO	35	-	Weakness to Poison → Weakness to Poison
+WKSH	30	-	Weakness to Shock → Weakness to Shock
+ZCLA	103	-	Summon Clannfear → Summon Clannfear
+ZDAE	104	-	Summon Daedroth → Summon Daedroth
+ZDRE	105	-	Summon Dremora → Summon Dremora
+ZDRL	105	-	Summon Dremora Lord → Summon Dremora
+ZFIA	114	-	Summon Flame Atronach → Summon Flame Atronach
+ZFRA	115	-	Summon Frost Atronach → Summon Frost Atronach
+ZGHO	106	-	Summon Ghost → Summon Ancestral Ghost
+ZHDZ	108	-	Summon Headless Zombie → Summon Least Bonewalker
+ZLIC	110	-	Summon Lich → Summon Bonelord
+ZSCA	102	-	Summon Scamp → Summon Scamp
+ZSKA	107	-	Summon Skeleton Guardian → Summon Skeleton
+ZSKC	107	-	Summon Skeleton Champion → Summon Skeleton
+ZSKE	107	-	Summon Skeleton → Summon Skeleton
+ZSKH	107	-	Summon Skeleton Hero → Summon Skeleton
+ZSPD	-	-	Summon Spider Daedra: похожего существа у Morrowind нет
+ZSTA	116	-	Summon Storm Atronach → Summon Storm Atronach
+ZWRA	106	-	Summon Faded Wraith → Summon Ancestral Ghost
+ZWRL	106	-	Summon Gloom Wraith → Summon Ancestral Ghost
+ZXIV	105	-	Summon Xivilai → Summon Dremora
+ZZOM	108	-	Summon Zombie → Summon Least Bonewalker
+Z001	106	-	Summon Rufio's Ghost → Summon Ancestral Ghost
+Z002	106	-	Summon Ancestor Guardian → Summon Ancestral Ghost
+Z003	-	-	Summon Spiderling: похожего существа у Morrowind нет
+Z004	-	-	Summon Flesh Atronach: похожего существа у Morrowind нет
+Z005	-	-	Summon Bear: у Morrowind это эффект Bloodmoon (139)
+Z006	112	-	Summon Gluttonous Hunger → Summon Hunger
+Z007	112	-	Summon Ravenous Hunger → Summon Hunger
+Z008	112	-	Summon Voracious Hunger → Summon Hunger
+Z009	-	-	Summon Dark Seducer: похожего существа у Morrowind нет
+Z010	113	-	Summon Golden Saint → Summon Golden Saint
+Z011	-	-	Wabba Summon: служебный эффект
+Z012	-	-	Summon Decrepit Shambles: похожего существа у Morrowind нет
+Z013	-	-	Summon Shambles: похожего существа у Morrowind нет
+Z014	-	-	Summon Replete Shambles: похожего существа у Morrowind нет
+Z015	112	-	Summon Hunger → Summon Hunger
+Z016	-	-	Summon Mangled Flesh Atronach: похожего существа у Morrowind нет
+Z017	-	-	Summon Torn Flesh Atronach: похожего существа у Morrowind нет
+Z018	-	-	Summon Stitched Flesh Atronach: похожего существа у Morrowind нет
+Z019	-	-	Summon Sewn Flesh Atronach: похожего существа у Morrowind нет
