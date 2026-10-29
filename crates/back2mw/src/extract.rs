@@ -306,7 +306,20 @@ pub fn list_directory(
     let loose = prefix
         .split('\\')
         .filter(|s| !s.is_empty())
-        .fold(data_dir.to_owned(), |p, s| p.join(s));
+        .fold(data_dir.to_owned(), |p, s| {
+            // Folder names in `Data` are matched without regard to case, like on Windows: on a
+            // case-sensitive file system `Sound/FX/Foot` must still be found by `sound\fx\foot`.
+            let actual = fs::read_dir(&p).ok().and_then(|entries| {
+                entries
+                    .flatten()
+                    .map(|e| e.file_name())
+                    .find(|n| n.to_string_lossy().eq_ignore_ascii_case(s))
+            });
+            match actual {
+                Some(name) => p.join(name),
+                None => p.join(s),
+            }
+        });
     if let Ok(entries) = fs::read_dir(&loose) {
         for e in entries.flatten().filter(|e| e.path().is_file()) {
             let path = format!("{prefix}{}", e.file_name().to_string_lossy().to_lowercase());

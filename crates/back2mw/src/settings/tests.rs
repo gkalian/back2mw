@@ -18,10 +18,20 @@ impl Drop for Temp {
     }
 }
 
+/// An absolute path on this system: `D:\…` on Windows, `/…` elsewhere. A Windows path is relative
+/// on Linux, and settings resolve relative paths against the config folder.
+fn abs(rest: &str) -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(format!("D:\\{}", rest.replace('/', "\\")))
+    } else {
+        PathBuf::from(format!("/{rest}"))
+    }
+}
+
 fn sample() -> Settings {
     Settings {
-        source_data: Some(PathBuf::from("D:\\Games\\Oblivion\\Data")),
-        target_data: Some(PathBuf::from("D:\\Games\\Morrowind\\Data Files")),
+        source_data: Some(abs("Games/Oblivion/Data")),
+        target_data: Some(abs("Games/Morrowind/Data Files")),
         selected_plugins: vec!["Oblivion.esm".to_owned(), "Mod A.esp".to_owned()],
         pack_bsa: true,
         morrowind_prices: true,
@@ -31,10 +41,10 @@ fn sample() -> Settings {
         language: Some("en".to_owned()),
         build_only: true,
         package_zip: true,
-        work_dir: Some(PathBuf::from("D:\\back2mw\\work")),
-        output_dir: Some(PathBuf::from("D:\\back2mw\\out")),
-        esmtool: Some(PathBuf::from("D:\\OpenMW\\esmtool.exe")),
-        niftest: Some(PathBuf::from("D:\\OpenMW\\niftest.exe")),
+        work_dir: Some(abs("back2mw/work")),
+        output_dir: Some(abs("back2mw/out")),
+        esmtool: Some(abs("OpenMW/esmtool.exe")),
+        niftest: Some(abs("OpenMW/niftest.exe")),
     }
 }
 
@@ -112,7 +122,7 @@ fn the_cli_reads_the_same_file() {
     let path = t.0.join("config.toml");
     save(&path, &sample()).unwrap();
     let c = crate::config::load(&path, crate::config::Overrides::default()).unwrap();
-    assert_eq!(c.source_data, Path::new("D:\\Games\\Oblivion\\Data"));
+    assert_eq!(c.source_data, abs("Games/Oblivion/Data"));
     assert_eq!(c.selected_plugins, ["Oblivion.esm", "Mod A.esp"]);
     assert!(c.pack_bsa);
     assert!(c.morrowind_prices, "the window key reaches the console too");
