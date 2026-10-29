@@ -1,15 +1,15 @@
-//! Границы между крейтами как тест, а не как договорённость.
+//! Crate boundaries as a test, not as an agreement.
 //!
-//! Правила из `docs/ru/architecture.md`:
+//! Rules from `docs/en/architecture.md`:
 //!
-//! 1. `tes4_read` не знает про TES3, `tes3_out` не знает про форматы источника.
-//!    Всё знание «как одно превращается в другое» живёт в `transform`.
-//! 2. Байтовая раскладка TES3 — только в `tes3_out`.
-//! 3. `lang` (язык сообщений) виден всем и сам не зависит ни от кого: иначе через него крейты
-//!    узнали бы друг о друге в обход правил выше.
+//! 1. `tes4_read` knows nothing about TES3, `tes3_out` knows nothing about the source formats. All
+//!    knowledge of "how one turns into the other" lives in `transform`.
+//! 2. The TES3 byte layout lives only in `tes3_out`.
+//! 3. `lang` (the message language) is visible to everyone and depends on nobody itself: otherwise
+//!    crates would learn about each other through it, bypassing the rules above.
 //!
-//! Именно этого не сделал референс: у него целевой формат растворён более чем в
-//! сотне файлов, и второй целевой формат туда уже не добавить.
+//! This is exactly what the reference did not do: its target format is dissolved across more than a
+//! hundred files, and a second target format can no longer be added there.
 
 use std::process::Command;
 
@@ -27,11 +27,11 @@ fn dependencies_of(package: &str) -> String {
         ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
-        .expect("cargo tree запускается");
+        .expect("cargo tree runs");
 
     assert!(
         output.status.success(),
-        "cargo tree для {package} завершился с ошибкой:\n{}",
+        "cargo tree for {package} failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).into_owned()
@@ -42,15 +42,15 @@ fn source_reader_knows_nothing_about_the_target() {
     let deps = dependencies_of("tes4_read");
     assert!(
         !deps.contains("tes3_out"),
-        "tes4_read не должен видеть tes3_out:\n{deps}"
+        "tes4_read must not see tes3_out:\n{deps}"
     );
     assert!(
         !deps.contains("tes3 v"),
-        "tes4_read не должен тянуть библиотеку TES3:\n{deps}"
+        "tes4_read must not pull in the TES3 library:\n{deps}"
     );
     assert!(
         !deps.contains("transform"),
-        "tes4_read не должен зависеть от преобразований:\n{deps}"
+        "tes4_read must not depend on the transforms:\n{deps}"
     );
 }
 
@@ -59,16 +59,16 @@ fn target_writer_knows_nothing_about_the_source() {
     let deps = dependencies_of("tes3_out");
     assert!(
         !deps.contains("tes4_read"),
-        "tes3_out не должен видеть tes4_read:\n{deps}"
+        "tes3_out must not see tes4_read:\n{deps}"
     );
     assert!(
         !deps.contains("transform"),
-        "tes3_out не должен зависеть от преобразований:\n{deps}"
+        "tes3_out must not depend on the transforms:\n{deps}"
     );
 }
 
-/// Только прямые зависимости (`--depth 1`): `tes3` виден в дереве `transform`
-/// транзитивно через `tes3_out`, и это решение Р1, а не нарушение.
+/// Direct dependencies only (`--depth 1`): `tes3` is visible in the `transform` tree transitively
+/// through `tes3_out`, and that is decision D1, not a violation.
 fn direct_dependencies_of(package: &str) -> String {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let output = Command::new(cargo)
@@ -85,34 +85,34 @@ fn direct_dependencies_of(package: &str) -> String {
         ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
-        .expect("cargo tree запускается");
+        .expect("cargo tree runs");
     assert!(
         output.status.success(),
-        "cargo tree для {package} завершился с ошибкой:\n{}",
+        "cargo tree for {package} failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
-/// Р1 (`docs/ru/architecture.md`): `transform` берёт типы источника из `tes4_read` и зовёт
-/// `tes3_out`, но байтовую раскладку TES3 знать не должен — то есть не зависеть от `tes3`
-/// напрямую. Про `mesh_convert` он тоже не знает: меши — забота `back2mw`.
+/// D1 (`docs/en/architecture.md`): `transform` takes the source types from `tes4_read` and calls
+/// `tes3_out`, but must not know the TES3 byte layout — that is, must not depend on `tes3`
+/// directly. It knows nothing about `mesh_convert` either: meshes are `back2mw`'s concern.
 #[test]
 fn transform_is_the_only_place_that_may_know_both() {
     let deps = direct_dependencies_of("transform");
     for expected in ["tes4_read", "tes3_out"] {
         assert!(
             deps.contains(expected),
-            "transform должен видеть {expected}:\n{deps}"
+            "transform must see {expected}:\n{deps}"
         );
     }
     assert!(
         !deps.contains("tes3 v"),
-        "transform не должен зависеть от библиотеки TES3 напрямую:\n{deps}"
+        "transform must not depend on the TES3 library directly:\n{deps}"
     );
     assert!(
         !deps.contains("mesh_convert"),
-        "transform не должен зависеть от mesh_convert:\n{deps}"
+        "transform must not depend on mesh_convert:\n{deps}"
     );
 }
 
@@ -122,7 +122,7 @@ fn mesh_convert_is_independent_of_the_record_side() {
     for forbidden in ["tes4_read", "tes3_out", "transform"] {
         assert!(
             !deps.contains(forbidden),
-            "mesh_convert не должен зависеть от {forbidden}:\n{deps}"
+            "mesh_convert must not depend on {forbidden}:\n{deps}"
         );
     }
 }
@@ -132,19 +132,19 @@ fn source_reader_does_not_know_mesh_convert() {
     let deps = dependencies_of("tes4_read");
     assert!(
         !deps.contains("mesh_convert"),
-        "tes4_read не должен зависеть от mesh_convert:\n{deps}"
+        "tes4_read must not depend on mesh_convert:\n{deps}"
     );
 }
 
-/// `lang` — общий язык сообщений: от него зависят все крейты, поэтому у него самого
-/// зависимостей быть не может — ни наших, ни внешних.
+/// `lang` is the shared message language: every crate depends on it, so it cannot have dependencies
+/// of its own — neither ours nor external.
 #[test]
 fn lang_depends_on_nothing() {
     let deps = dependencies_of("lang");
     assert_eq!(
         deps.lines().filter(|l| !l.trim().is_empty()).count(),
         1,
-        "у lang не должно быть зависимостей:\n{deps}"
+        "lang must have no dependencies:\n{deps}"
     );
     for package in [
         "tes4_read",
@@ -154,10 +154,7 @@ fn lang_depends_on_nothing() {
         "back2mw",
     ] {
         let deps = direct_dependencies_of(package);
-        assert!(
-            deps.contains("lang v"),
-            "{package} должен видеть lang:\n{deps}"
-        );
+        assert!(deps.contains("lang v"), "{package} must see lang:\n{deps}");
     }
 }
 
@@ -167,7 +164,7 @@ fn the_binary_is_allowed_to_see_everything() {
     for expected in ["tes4_read", "transform", "mesh_convert", "tes3_out"] {
         assert!(
             deps.contains(expected),
-            "back2mw должен видеть {expected}:\n{deps}"
+            "back2mw must see {expected}:\n{deps}"
         );
     }
 }

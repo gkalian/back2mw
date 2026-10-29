@@ -1,7 +1,7 @@
 use super::*;
 use tes4_read::synth;
 
-/// Уникальный временный каталог теста.
+/// A unique temporary directory for the test.
 struct Temp(PathBuf);
 
 impl Temp {
@@ -20,7 +20,7 @@ impl Drop for Temp {
 }
 
 fn write_bsa(path: &Path, files: &[(&str, &[u8])]) {
-    // Настоящие BSA хранят папки с обратной косой чертой; синтетика — как передано.
+    // Real BSAs store folders with backslashes; synthetic ones — as passed.
     let owned: Vec<(String, &[u8])> = files
         .iter()
         .map(|(p, d)| (p.replace('/', "\\"), *d))
@@ -77,7 +77,7 @@ fn a_changed_archive_is_extracted_again() {
     let want = wanted(&["meshes/a/rock.nif"]);
     extract(&bsa, &want, &work).unwrap();
 
-    // Тот же путь, другое содержимое и размер архива.
+    // The same path, different contents and archive size.
     write_bsa(
         &bsa,
         &[

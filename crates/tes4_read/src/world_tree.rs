@@ -1,11 +1,12 @@
-//! Обход worldspace в дереве групп.
+//! Traversing a worldspace in the group tree.
 //!
-//! Порядок, проверенный на `SEWorld` (2026-09-25, `docs/ru/formats/tes4.md`, «Внешний мир»): группа
-//! `WRLD` верхнего уровня → запись `WRLD` → сразу за ней группа её детей (тип 1, метка — `FormID`
-//! worldspace) → постоянная ячейка без `XCLC` и блоки (тип 4) → подблоки (тип 5) → запись `CELL`
-//! и сразу за ней группа её детей (тип 6, метка — `FormID` ячейки) → постоянные (тип 8), временные
-//! (тип 9, там `LAND`) и видимые издали (тип 10) дети. Детей ячейки связываем по метке группы, а
-//! не по соседству: так надёжнее, если порядок в чужом плагине окажется другим.
+//! The order checked on `SEWorld` (2026-09-25, `docs/en/formats/tes4.md`, "Exterior world"): a
+//! top-level `WRLD` group → a `WRLD` record → right after it, the group of its children (type 1,
+//! the label is the worldspace `FormID`) → the persistent cell without `XCLC` and blocks (type 4) →
+//! sub-blocks (type 5) → a `CELL` record and right after it, the group of its children (type 6, the
+//! label is the cell `FormID`) → persistent (type 8), temporary (type 9, with `LAND`) and
+//! visible-distant (type 10) children. A cell's children are tied by the group label, not by
+//! adjacency: this is more robust if the order in someone else's plugin turns out different.
 
 use std::collections::HashMap;
 
@@ -14,31 +15,31 @@ use crate::container::{Entry, Group, Plugin, Record};
 use crate::error::Result;
 use crate::schema::FromFields;
 
-/// Группа детей worldspace.
+/// The worldspace children group.
 const GROUP_WORLD_CHILDREN: i32 = 1;
-/// Группа детей ячейки.
+/// The cell children group.
 const GROUP_CELL_CHILDREN: i32 = 6;
 
-/// Ячейка worldspace и её дети.
+/// A worldspace cell and its children.
 #[derive(Debug)]
 pub struct WorldCell<'a> {
     pub cell: &'a Record,
-    /// `LAND`, если есть.
+    /// `LAND`, if present.
     pub land: Option<&'a Record>,
-    /// Прочие дети в порядке файла: `REFR`, `ACHR`, `ACRE`, `PGRD`.
+    /// Other children in file order: `REFR`, `ACHR`, `ACRE`, `PGRD`.
     pub children: Vec<&'a Record>,
 }
 
-/// Worldspace целиком.
+/// A whole worldspace.
 #[derive(Debug)]
 pub struct WorldTree<'a> {
     pub record: &'a Record,
     pub world: Worldspace,
-    /// Ячейки в порядке файла, включая постоянную (без `XCLC`).
+    /// Cells in file order, including the persistent one (without `XCLC`).
     pub cells: Vec<WorldCell<'a>>,
 }
 
-/// Все worldspace плагина: запись и разобранные поля, в порядке файла.
+/// All worldspaces of the plugin: the record and the parsed fields, in file order.
 pub fn worldspaces(plugin: &Plugin) -> Result<Vec<(&Record, Worldspace)>> {
     plugin
         .groups
@@ -53,8 +54,8 @@ pub fn worldspaces(plugin: &Plugin) -> Result<Vec<(&Record, Worldspace)>> {
         .collect()
 }
 
-/// Все worldspace файла (`FormID` из файла и поля) без разбора ячеек — для списка в интерфейсе.
-/// Порядок — как у [`worldspaces`].
+/// All worldspaces of the file (`FormID` from the file and the fields) without parsing cells — for
+/// the list in the interface. The order is as in [`worldspaces`].
 pub fn list_worldspaces(bytes: &[u8]) -> Result<Vec<(u32, Worldspace)>> {
     crate::container::top_group_records(bytes, *b"WRLD")?
         .iter()
@@ -63,7 +64,7 @@ pub fn list_worldspaces(bytes: &[u8]) -> Result<Vec<(u32, Worldspace)>> {
         .collect()
 }
 
-/// Worldspace с `EDID = editor_id` (без учёта регистра); `None` — такого нет.
+/// The worldspace with `EDID = editor_id` (case-insensitive); `None` means there is none.
 pub fn find_worldspace<'a>(plugin: &'a Plugin, editor_id: &str) -> Result<Option<WorldTree<'a>>> {
     for (record, world) in worldspaces(plugin)? {
         if !world.editor_id.eq_ignore_ascii_case(editor_id) {
@@ -98,10 +99,11 @@ pub fn find_worldspace<'a>(plugin: &'a Plugin, editor_id: &str) -> Result<Option
     Ok(None)
 }
 
-/// Все внутренние ячейки плагина с детьми, в порядке файла.
+/// All interior cells of the plugin with their children, in file order.
 ///
-/// Лежат в группе `CELL` верхнего уровня: блоки (тип 2) → подблоки (тип 3) → запись `CELL` и
-/// группа её детей (тип 6) — как у внешних, только без worldspace (OpenMW `esm4/reader.cpp`).
+/// They lie in the top-level `CELL` group: blocks (type 2) → sub-blocks (type 3) → a `CELL` record
+/// and the group of its children (type 6) — as for exterior ones, only without a worldspace (OpenMW
+/// `esm4/reader.cpp`).
 pub fn interior_cells(plugin: &Plugin) -> Vec<WorldCell<'_>> {
     let mut cells = Vec::new();
     let mut index = HashMap::new();
@@ -124,7 +126,8 @@ fn collect<'a>(group: &'a Group, cells: &mut Vec<WorldCell<'a>>, index: &mut Has
             }
             Entry::Record(_) => {}
             Entry::Group(g) if g.group_type == GROUP_CELL_CHILDREN => {
-                // Дети ячейки, для которой записи нет, в плагине без мастера бессмысленны.
+                // Children of a cell that has no record are meaningless in a plugin without a
+                // master.
                 if let Some(&at) = index.get(&u32::from_le_bytes(g.label)) {
                     cell_children(g, &mut cells[at]);
                 }
@@ -231,7 +234,7 @@ mod tests {
         assert!(tree.cells[2].land.is_none());
         assert!(find_worldspace(&plugin, "Nope").unwrap().is_none());
 
-        // Лёгкий обход даёт то же, что полный разбор.
+        // The light traversal gives the same as the full parse.
         let light = list_worldspaces(&bytes).unwrap();
         let full: Vec<(u32, Worldspace)> = worldspaces(&plugin)
             .unwrap()

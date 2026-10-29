@@ -1,7 +1,7 @@
-//! Актёры (фаза 7): `RACE`, дальше `CLAS`, `FACT`, `NPC_`.
+//! Actors (phase 7): `RACE`, then `CLAS`, `FACT`, `NPC_`.
 //!
-//! Модель — простые структуры с номерами навыков и атрибутов Morrowind; решения о значениях
-//! принимает `transform`. Здесь только перевод в типы `tes3::esp`.
+//! The model is simple structures with Morrowind skill and attribute numbers; decisions about the
+//! values are made by `transform`. Here there is only the conversion into `tes3::esp` types.
 
 use tes3::esp::{
     AttributeId, Class as EspClass, ClassData, Faction as EspFaction, FactionData, FactionFlags,
@@ -11,41 +11,41 @@ use tes3::esp::{
 
 use crate::records::SKILLS;
 
-/// Раса. Свои расы пишутся только для рас Oblivion, которых у Morrowind нет (решение владельца
-/// 2026-09-27); тела для них — копии `BODY` ванильной расы-донора.
+/// A race. Our own races are written only for Oblivion races that Morrowind lacks (owner's decision
+/// 2026-09-27); their bodies are copies of the `BODY` records of a vanilla donor race.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Race {
     pub id: String,
     pub name: String,
     pub description: String,
-    /// ID врождённых заклинаний (`NPCS`).
+    /// IDs of innate spells (`NPCS`).
     pub spells: Vec<String>,
-    /// Навык Morrowind (0…26) и бонус; не больше 7 — столько мест в `RADT`.
+    /// A Morrowind skill (0…26) and a bonus; no more than 7 — that is how many places `RADT` has.
     pub skill_bonuses: Vec<(u8, i8)>,
-    /// `[мужчины, женщины]`, атрибуты Strength … Luck.
+    /// `[male, female]`, attributes Strength … Luck.
     pub attributes: [[u8; 8]; 2],
-    /// Мужчины, женщины.
+    /// Male, female.
     pub height: [f32; 2],
     pub weight: [f32; 2],
-    /// Звериная раса (Argonian, Khajiit): другие ступни и анимация.
+    /// A beast race (Argonian, Khajiit): different feet and animation.
     pub beast: bool,
 }
 
-/// Класс. Непригоден для игрока (как почти все классы Oblivion — 90 из 111).
+/// A class. Not playable (like almost all Oblivion classes — 90 of 111).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
     pub id: String,
     pub name: String,
     pub description: String,
-    /// Главные атрибуты, 0…7.
+    /// Major attributes, 0…7.
     pub attributes: [u8; 2],
-    /// 0 бой, 1 магия, 2 скрытность.
+    /// 0 combat, 1 magic, 2 stealth.
     pub specialization: u8,
-    /// Навыки Morrowind, 0…26.
+    /// Morrowind skills, 0…26.
     pub major: [u8; 5],
     pub minor: [u8; 5],
-    /// Услуги в битах Morrowind (`ServiceFlags`). У NPC с автоподсчётом движок берёт услуги из
-    /// класса, а не из NPC (OpenMW `mwclass/npc.cpp`, `getServices`).
+    /// Services in Morrowind bits (`ServiceFlags`). For an NPC with auto-calculation the engine
+    /// takes services from the class, not from the NPC (OpenMW `mwclass/npc.cpp`, `getServices`).
     pub services: u32,
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn class(c: Class) -> TES3Object {
     let attribute = |n: u8| {
         *ATTRIBUTES
             .get(usize::from(n))
-            .expect("номер атрибута из transform — 0…7")
+            .expect("an attribute number from transform is 0…7")
     };
     let [a1, a2] = c.attributes.map(attribute);
     let [j1, j2, j3, j4, j5] = c.major.map(skill);
@@ -98,21 +98,21 @@ pub(crate) fn class(c: Class) -> TES3Object {
     })
 }
 
-/// Фракция. Требования рангов и любимые навыки — по умолчанию: вступление и повышение — через
-/// диалоги (фаза 10).
+/// A faction. Rank requirements and favored skills are the defaults: joining and promotion go
+/// through dialogue (phase 10).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Faction {
     pub id: String,
     pub name: String,
-    /// До 10 имён рангов, каждое не длиннее 31 знака (`RNAM` — 32 байта с нулём).
+    /// Up to 10 rank names, each no longer than 31 characters (`RNAM` is 32 bytes with the zero).
     pub ranks: Vec<String>,
-    /// ID другой фракции и отношение (у ванили −8…3).
+    /// The ID of another faction and the reaction (−8…3 in vanilla).
     pub reactions: Vec<(String, i32)>,
     pub hidden: bool,
 }
 
 pub(crate) fn faction(f: Faction) -> TES3Object {
-    assert!(f.ranks.len() <= 10, "transform отдаёт не больше 10 рангов");
+    assert!(f.ranks.len() <= 10, "transform gives no more than 10 ranks");
     let mut flags = FactionFlags::default();
     if f.hidden {
         flags.insert(FactionFlags::HIDDEN_FROM_PC);
@@ -128,7 +128,7 @@ pub(crate) fn faction(f: Faction) -> TES3Object {
             .map(|(faction, reaction)| FactionReaction { faction, reaction })
             .collect(),
         data: FactionData {
-            // Любые допустимые: без требований (нули) атрибуты ни на что не влияют.
+            // Anything valid: without requirements (zeros) the attributes affect nothing.
             favored_attributes: [AttributeId::Strength, AttributeId::Intelligence],
             favored_skills: [SkillId::None; 7],
             flags,
@@ -137,54 +137,56 @@ pub(crate) fn faction(f: Faction) -> TES3Object {
     })
 }
 
-/// NPC с автоподсчётом характеристик (решение владельца 2026-09-27): атрибуты, навыки,
-/// здоровье, магию и усталость движок считает по классу, расе и уровню.
+/// An NPC with auto-calculated stats (owner's decision 2026-09-27): the engine computes attributes,
+/// skills, health, magicka and fatigue from the class, race and level.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Npc {
     pub id: String,
     pub name: String,
     pub race: String,
     pub class: String,
-    /// Фракция и ранг (0…9); у Morrowind фракция одна.
+    /// Faction and rank (0…9); a Morrowind NPC has one faction.
     pub faction: Option<(String, i8)>,
-    /// ID `BODY` головы и причёски.
+    /// `BODY` IDs of the head and hair.
     pub head: String,
     pub hair: String,
-    /// `base_animkna.nif` у звериных рас, как в ванили; у прочих пусто.
+    /// `base_animkna.nif` for beast races, as in vanilla; empty for the others.
     pub mesh: String,
     pub female: bool,
     pub essential: bool,
     pub respawn: bool,
     pub level: i16,
     pub gold: u32,
-    /// Число (отрицательное — пополняется, как в ванили) и ID предмета или `LEVI`; ID ≤ 31 знака.
+    /// A count (negative means it restocks, as in vanilla) and the ID of an item or `LEVI`; ID ≤ 31
+    /// characters.
     pub inventory: Vec<(i32, String)>,
     pub spells: Vec<String>,
     pub ai: NpcAi,
-    /// `SCRI`: скрипт-метка `ob_npc` (решение 2 фазы 10, T10.6); пусто — без скрипта.
+    /// `SCRI`: the marker script `ob_npc` (decision 2 of phase 10, T10.6); empty means no script.
     pub script: String,
 }
 
-/// ИИ NPC: `AIDT` и один пакет wander.
+/// NPC AI: `AIDT` and one wander package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NpcAi {
     pub hello: i16,
     pub fight: i8,
     pub flee: i8,
     pub alarm: i8,
-    /// Услуги — те же, что у класса: движок у NPC с автоподсчётом читает класс (T7.3).
+    /// Services — the same as the class's: for an NPC with auto-calculation the engine reads the
+    /// class (T7.3).
     pub services: u32,
-    /// Радиус wander; 0 — стоит на месте.
+    /// Wander radius; 0 means it stands in place.
     pub wander_distance: u16,
     pub wander_duration: u16,
-    /// idle2…idle9, как `AI_W`.
+    /// idle2…idle9, as in `AI_W`.
     pub idles: [u8; 8],
 }
 
 pub(crate) fn npc(n: Npc) -> TES3Object {
     use tes3::esp::{AiData, AiPackage, AiWanderPackage};
-    // IS_BASE стоит у всех NPC `Morrowind.esm`, у автоподсчётных — вместе с AUTO_CALCULATE
-    // (0x18 у 1 003 из 2 675, 2026-09-27).
+    // IS_BASE is set on all NPCs of `Morrowind.esm`, on auto-calculated ones together with
+    // AUTO_CALCULATE (0x18 on 1,003 of 2,675, 2026-09-27).
     let mut flags = NpcFlags::IS_BASE | NpcFlags::AUTO_CALCULATE;
     flags.set(NpcFlags::FEMALE, n.female);
     flags.set(NpcFlags::ESSENTIAL, n.essential);
@@ -243,15 +245,16 @@ pub(crate) fn npc(n: Npc) -> TES3Object {
     })
 }
 
-/// Существо (T11.3). Решения о значениях — у `transform`: модель и звуки донора, числа Oblivion.
+/// A creature (T11.3). Decisions about the values are made by `transform`: the donor's model and
+/// sounds, Oblivion's numbers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Creature {
     pub id: String,
     pub name: String,
     pub mesh: String,
-    /// `CNAM` — существо, чьи `SNDG` звучат (у существ-доноров — сам донор).
+    /// `CNAM` — the creature whose `SNDG` sounds play (for donor creatures, the donor itself).
     pub sound: String,
-    /// `NPDT` тип: 0 обычное, 1 даэдра, 2 нежить, 3 гуманоид.
+    /// `NPDT` type: 0 normal, 1 daedra, 2 undead, 3 humanoid.
     pub kind: u8,
     pub level: u32,
     /// Strength … Luck.
@@ -263,7 +266,7 @@ pub struct Creature {
     pub combat: u8,
     pub magic: u8,
     pub stealth: u8,
-    /// Все три атаки (мин, макс).
+    /// All three attacks (min, max).
     pub attack: (u32, u32),
     pub gold: u32,
     pub biped: bool,
@@ -273,14 +276,14 @@ pub struct Creature {
     pub walks: bool,
     pub essential: bool,
     pub respawn: bool,
-    /// Кровь: 0 красная, 1 пыль скелета, 2 искры металла (`FLAG` биты 10…12).
+    /// Blood: 0 red, 1 skeleton dust, 2 metal sparks (`FLAG` bits 10…12).
     pub blood_type: u8,
-    /// `XSCL`; `None` — 1.0, поле не пишется.
+    /// `XSCL`; `None` means 1.0, the field is not written.
     pub scale: Option<f32>,
-    /// Число и ID предмета или `LEVI`; ID ≤ 31 знака.
+    /// A count and the ID of an item or `LEVI`; ID ≤ 31 characters.
     pub inventory: Vec<(i32, String)>,
     pub spells: Vec<String>,
-    /// `AIDT` и пакет wander — как у NPC; услуги у существ — 0.
+    /// `AIDT` and a wander package — as for NPCs; creatures have no services (0).
     pub ai: NpcAi,
 }
 
@@ -289,7 +292,8 @@ pub(crate) fn creature(c: Creature) -> TES3Object {
         AiData, AiPackage, AiWanderPackage, Creature as EspCreature, CreatureData, CreatureFlags,
         CreatureType,
     };
-    // IS_BASE стоит у всех существ `Morrowind.esm` (у доноров T11.3 — проверено 2026-10-01).
+    // IS_BASE is set on all creatures of `Morrowind.esm` (on the T11.3 donors — checked
+    // 2026-10-01).
     let mut flags = CreatureFlags::IS_BASE;
     flags.set(CreatureFlags::BIPED, c.biped);
     flags.set(CreatureFlags::WEAPON_AND_SHIELD, c.weapon_and_shield);
@@ -381,13 +385,13 @@ pub(crate) fn creature(c: Creature) -> TES3Object {
 fn skill(n: u8) -> SkillId {
     *SKILLS
         .get(usize::from(n))
-        .expect("номер навыка из transform — 0…26")
+        .expect("a skill number from transform is 0…26")
 }
 
 pub(crate) fn race(r: Race) -> TES3Object {
     assert!(
         r.skill_bonuses.len() <= 7,
-        "transform отдаёт не больше 7 бонусов: у Oblivion их тоже 7"
+        "transform gives no more than 7 bonuses: Oblivion has 7 too"
     );
     let mut slots = [(SkillId::None, 0i32); 7];
     for (slot, &(s, bonus)) in slots.iter_mut().zip(&r.skill_bonuses) {
@@ -431,7 +435,7 @@ pub(crate) fn race(r: Race) -> TES3Object {
             luck: pair(7),
             height: r.height,
             weight: r.weight,
-            // Не игровая: игроку этими расами не играть (как и в Oblivion).
+            // Not playable: the player cannot play these races (as in Oblivion).
             flags,
         },
     })
@@ -504,7 +508,7 @@ mod tests {
             [tes3::esp::AiPackage::Wander(w)] => {
                 assert_eq!((w.distance, w.duration, w.idle2, w.idle5), (512, 5, 60, 10));
             }
-            other => panic!("пакеты {other:?}"),
+            other => panic!("packages {other:?}"),
         }
     }
 

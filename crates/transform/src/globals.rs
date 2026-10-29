@@ -1,10 +1,10 @@
-//! Глобальные переменные: `GLOB` Oblivion → `GLOB` Morrowind (T11.1).
+//! Global variables: Oblivion `GLOB` → Morrowind `GLOB` (T11.1).
 //!
-//! Три пути (T11.1): движковые переменные (время, дата) — на ванильные
-//! по таблице `data/globals.tsv`; переменная с именем ванильной (`PCVampire`) — на ванильную, как
-//! условия реплик с T10.6; остальные — своими записями `ob_…`. Значение у обеих игр хранится `f32`
-//! при любом типе, поэтому тип и число переносятся как есть, а `transform` только следит, чтобы
-//! целое поместилось в свой тип.
+//! Three paths (T11.1): engine variables (time, date) map onto vanilla ones via the
+//! `data/globals.tsv` table; a variable with the name of a vanilla one (`PCVampire`) maps onto the
+//! vanilla one, like response conditions since T10.6; the rest become our own `ob_…` records. Both
+//! games store the value as `f32` whatever the type, so the type and number are carried over as is,
+//! and `transform` only makes sure an integer fits its type.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -15,15 +15,16 @@ use tes4_read::{FromFields, GlobalKind, Plugin};
 use crate::ids::IdAllocator;
 use crate::objects::ObjectsError;
 
-/// `data/globals.tsv`, встроенный в сборку.
+/// `data/globals.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/globals.tsv");
 
-/// Встроенная таблица, разобранная один раз на прогон.
+/// The built-in table, parsed once per run.
 pub static ENGINE_GLOBALS: LazyLock<GlobalTable> = LazyLock::new(|| {
-    GlobalTable::parse(TABLE).expect("data/globals.tsv встроена в сборку и проверена тестом")
+    GlobalTable::parse(TABLE)
+        .expect("data/globals.tsv is built into the binary and checked by a test")
 });
 
-/// `EDID` Oblivion (в нижнем регистре) → ID ванильной переменной Morrowind или `None` («-»).
+/// Oblivion `EDID` (lower case) → the ID of the vanilla Morrowind variable or `None` ("-").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalTable {
     rows: HashMap<String, Option<String>>,
@@ -62,7 +63,7 @@ impl GlobalTable {
         Ok(Self { rows })
     }
 
-    /// Строка таблицы: `Some(Some(id))` — ванильная пара, `Some(None)` — пары нет, `None` — строки нет.
+    /// A table row: `Some(Some(id))` — a vanilla pair, `Some(None)` — no pair, `None` — no row.
     pub fn row(&self, edid: &str) -> Option<Option<&str>> {
         self.rows
             .get(&edid.to_ascii_lowercase())
@@ -70,20 +71,20 @@ impl GlobalTable {
     }
 }
 
-/// Куда ведёт переменная Oblivion.
+/// Where an Oblivion variable goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    /// Ванильная переменная Morrowind: своя запись не пишется.
+    /// A vanilla Morrowind variable: no record of our own is written.
     Vanilla(String),
-    /// Движковая переменная без пары в `Morrowind.esm`: не переносится.
+    /// An engine variable without a pair in `Morrowind.esm`: not carried over.
     Unsupported,
-    /// Своя запись `ob_…`.
+    /// Our own `ob_…` record.
     Own,
 }
 
-/// Решение для одной переменной. `vanilla` — ванильные переменные мастера: ключ в нижнем
-/// регистре, значение — ID как в мастере. Таблица сильнее совпадения имён; ID из таблицы, которого
-/// нет у мастера, — тоже «не переносится» (другой мастер, другой набор).
+/// The decision for one variable. `vanilla` are the master's vanilla variables: the key in lower
+/// case, the value the ID as in the master. The table beats a name match; a table ID the master
+/// lacks also means "not carried over" (another master, another set).
 pub fn resolve(edid: &str, vanilla: &HashMap<String, String>) -> Target {
     match ENGINE_GLOBALS.row(edid) {
         Some(Some(id)) => vanilla
@@ -96,8 +97,9 @@ pub fn resolve(edid: &str, vanilla: &HashMap<String, String>) -> Target {
     }
 }
 
-/// Значение для записи Morrowind: тип Oblivion и его число. Нецелое у целого типа отбрасывает
-/// дробь, выход за тип зажимается — оба случая с замечанием; `NaN` движок читает как 0.
+/// The value for the Morrowind record: the Oblivion type and its number. A non-integer for an
+/// integer type drops the fraction, going out of the type's range clamps — both with a note; the
+/// engine reads `NaN` as 0.
 pub fn value(kind: GlobalKind, raw: f32) -> (GlobalValue, Option<String>) {
     if raw.is_nan() {
         let zero = match kind {
@@ -115,7 +117,7 @@ pub fn value(kind: GlobalKind, raw: f32) -> (GlobalValue, Option<String>) {
         GlobalKind::Float => (GlobalValue::Float(raw), None),
         GlobalKind::Short => {
             let clamped = raw.trunc().clamp(f32::from(i16::MIN), f32::from(i16::MAX));
-            #[expect(clippy::cast_possible_truncation, reason = "зажато в диапазон i16")]
+            #[expect(clippy::cast_possible_truncation, reason = "clamped to the i16 range")]
             let v = clamped as i16;
             let n = if clamped != raw.trunc() {
                 note(lang::tr(
@@ -133,10 +135,11 @@ pub fn value(kind: GlobalKind, raw: f32) -> (GlobalValue, Option<String>) {
             (GlobalValue::Short(v), n)
         }
         GlobalKind::Long => {
-            // Предел f32-целых без потерь — 2^24: больше `tes3` не запишет (проверка точности).
+            // The limit of lossless f32 integers is 2^24: `tes3` will not write more (the precision
+            // check).
             const EXACT: f32 = 16_777_216.0;
             let clamped = raw.trunc().clamp(-EXACT, EXACT);
-            #[expect(clippy::cast_possible_truncation, reason = "зажато в ±2^24")]
+            #[expect(clippy::cast_possible_truncation, reason = "clamped to ±2^24")]
             let v = clamped as i32;
             let n = if clamped != raw.trunc() {
                 note(lang::tr(
@@ -156,31 +159,32 @@ pub fn value(kind: GlobalKind, raw: f32) -> (GlobalValue, Option<String>) {
     }
 }
 
-/// Итог по плагину.
+/// Result for a plugin.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConvertedGlobals {
-    /// Свои записи, в порядке файла.
+    /// Our own records, in file order.
     pub globals: Vec<Global>,
-    /// Абсолютный `FormID` → ванильная переменная Morrowind (своей записи нет).
+    /// Absolute `FormID` → a vanilla Morrowind variable (no record of our own).
     pub vanilla: Vec<(u32, String)>,
     pub report: GlobalsReport,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GlobalsReport {
-    /// `GLOB` источника, включая отброшенные фильтром.
+    /// Source `GLOB`, including those dropped by the filter.
     pub seen: usize,
-    /// Легли на ванильные переменные.
+    /// Mapped onto vanilla variables.
     pub to_vanilla: usize,
-    /// Движковые без пары у мастера (`EDID`).
+    /// Engine ones without a pair in the master (`EDID`).
     pub unsupported: Vec<String>,
     pub filtered_out: usize,
-    /// Мастер записи не установлен.
+    /// The record's master is not installed.
     pub unresolved_master: usize,
     pub problems: Vec<String>,
 }
 
-/// Все `GLOB` плагина. `keep` — фильтр по `EDID` (`--only`); `vanilla` — как у [`resolve`].
+/// All `GLOB` of the plugin. `keep` is the filter by `EDID` (`--only`); `vanilla` — as in
+/// [`resolve`].
 pub fn convert(
     plugin: &Plugin,
     ids: &mut IdAllocator,
@@ -221,7 +225,7 @@ pub fn convert(
             }
             Target::Unsupported => out.report.unsupported.push(source.editor_id),
             Target::Own => {
-                // Переопределение в моде получает ID мастера — как у объектов.
+                // An override in a mod gets the master's ID — as for objects.
                 let reused = ids.id_for(form_id).map(str::to_owned);
                 let id = match reused
                     .map_or_else(|| ids.allocate(form_id, Some(&source.editor_id)), Ok)

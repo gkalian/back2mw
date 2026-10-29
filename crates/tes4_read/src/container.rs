@@ -1,13 +1,13 @@
-//! Контейнер плагина TES4/TES5: дерево `GRUP`, заголовки записей, распаковка.
+//! The TES4/TES5 plugin container: the `GRUP` tree, record headers, decompression.
 //!
-//! Различия двух форматов, которые здесь важны:
+//! The differences between the two formats that matter here:
 //!
 //! | | TES4 | TES5 |
 //! |---|---|---|
-//! | заголовок записи | 20 байт | 24 байта (плюс `formVersion` и `vcs2`) |
-//! | заголовок группы | 20 байт | 24 байта |
-//! | `dataSize` записи | **без** заголовка | без заголовка |
-//! | `groupSize` группы | **включая** заголовок | включая заголовок |
+//! | record header | 20 bytes | 24 bytes (plus `formVersion` and `vcs2`) |
+//! | group header | 20 bytes | 24 bytes |
+//! | record `dataSize` | **without** the header | without the header |
+//! | group `groupSize` | **including** the header | including the header |
 
 use std::io::Read;
 
@@ -15,7 +15,7 @@ use crate::error::{Error, Result};
 
 pub type Tag = [u8; 4];
 
-/// Флаг в заголовке записи: данные сжаты zlib.
+/// A record header flag: the data is zlib-compressed.
 pub const FLAG_COMPRESSED: u32 = 0x0004_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub enum GameFormat {
 }
 
 impl GameFormat {
-    /// Одинаков для записей и для групп.
+    /// The same for records and groups.
     pub const fn header_len(self) -> usize {
         match self {
             Self::Tes4 => 20,
@@ -40,9 +40,9 @@ pub struct RecordHeader {
     pub flags: u32,
     pub form_id: u32,
     pub vcs1: u32,
-    /// Только TES5, иначе 0.
+    /// TES5 only, otherwise 0.
     pub form_version: u16,
-    /// Только TES5, иначе 0.
+    /// TES5 only, otherwise 0.
     pub vcs2: u16,
 }
 
@@ -52,7 +52,7 @@ impl RecordHeader {
     }
 }
 
-/// Запись с уже распакованными данными: выше по стеку сжатие никого не касается.
+/// A record with already decompressed data: further up the stack nobody cares about compression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record {
     pub header: RecordHeader,
@@ -75,7 +75,7 @@ pub enum Entry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plugin {
     pub format: GameFormat,
-    /// Запись `TES4` — заголовок файла. В дереве групп её нет.
+    /// The `TES4` record is the file header. It is not in the group tree.
     pub header: Record,
     pub groups: Vec<Group>,
 }
@@ -94,8 +94,8 @@ impl Plugin {
             if &tag == b"GRUP" {
                 groups.push(parse_group(&mut cur, format)?);
             } else {
-                // Запись на верхнем уровне вне группы: в корректных плагинах не
-                // встречается, но глотать молча нельзя — иначе потеряем данные.
+                // A top-level record outside a group: it does not occur in valid plugins, but
+                // swallowing it silently is not allowed — otherwise we would lose data.
                 let stray = parse_record(&mut cur, tag, format)?;
                 groups.push(Group {
                     label: tag,
@@ -112,12 +112,12 @@ impl Plugin {
         })
     }
 
-    /// Мастера плагина (`MAST`) по порядку.
+    /// The plugin's masters (`MAST`) in order.
     pub fn masters(&self) -> Result<Vec<String>> {
         masters_of(&self.header)
     }
 
-    /// Все записи в порядке файла, в глубину. Заголовок `TES4` не входит.
+    /// All records in file order, depth-first. The `TES4` header is not included.
     pub fn records(&self) -> RecordIter<'_> {
         RecordIter {
             stack: self.groups.iter().rev().map(|g| g.entries.iter()).collect(),
@@ -129,8 +129,8 @@ impl Plugin {
     }
 }
 
-/// Обход дерева без рекурсии: глубина вложенности групп в плагинах Bethesda
-/// доходит до шести уровней, и стек кадров тут ни к чему.
+/// Tree traversal without recursion: group nesting in Bethesda plugins goes up to six levels, and a
+/// call stack is of no use here.
 #[derive(Debug)]
 pub struct RecordIter<'a> {
     stack: Vec<std::slice::Iter<'a, Entry>>,
@@ -153,20 +153,20 @@ impl<'a> Iterator for RecordIter<'a> {
     }
 }
 
-/// Флаг `ESM` в заголовке записи `TES4`.
+/// The `ESM` flag in the `TES4` record header.
 pub const FLAG_MASTER: u32 = 0x0000_0001;
 
-/// Заголовок плагина без разбора групп: дёшево читается у любого файла, в том числе большого.
+/// A plugin header without parsing groups: cheap to read for any file, including a large one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginHeader {
     pub format: GameFormat,
-    /// Стоит флаг `ESM` (мастер-файл).
+    /// The `ESM` flag is set (a master file).
     pub is_master: bool,
-    /// Имена мастеров (`MAST`) в порядке файла: индекс в них — старший байт `FormID`.
+    /// Master names (`MAST`) in file order: the index into them is the high byte of `FormID`.
     pub masters: Vec<String>,
 }
 
-/// Читает только запись `TES4` из начала файла.
+/// Reads only the `TES4` record from the start of the file.
 pub fn read_header(bytes: &[u8]) -> Result<PluginHeader> {
     let format = detect_format(bytes)?;
     let mut cur = Cursor::new(bytes, 0);
@@ -179,8 +179,9 @@ pub fn read_header(bytes: &[u8]) -> Result<PluginHeader> {
     })
 }
 
-/// Записи верхней группы `label` без вложенных групп: те пропускаются по размеру, не
-/// распаковываясь. Так список worldspace `Oblivion.esm` (250 МБ) читается без разбора ячеек.
+/// Records of the top-level group `label` without nested groups: those are skipped by size, without
+/// decompression. This way the worldspace list of `Oblivion.esm` (250 MB) is read without parsing
+/// cells.
 pub fn top_group_records(bytes: &[u8], label: Tag) -> Result<Vec<Record>> {
     let format = detect_format(bytes)?;
     let mut cur = Cursor::new(bytes, 0);
@@ -197,7 +198,7 @@ pub fn top_group_records(bytes: &[u8], label: Tag) -> Result<Vec<Record>> {
         let at = cur.abs_pos();
         let size = cur.u32()?;
         let group_label = cur.tag()?;
-        // Прочитано: GRUP(4) + size(4) + label(4).
+        // Read so far: GRUP(4) + size(4) + label(4).
         cur.skip(header_len - 12)?;
         let content_len = (size as usize)
             .checked_sub(header_len)
@@ -212,7 +213,7 @@ pub fn top_group_records(bytes: &[u8], label: Tag) -> Result<Vec<Record>> {
             if &tag == b"GRUP" {
                 let at = inner.abs_pos();
                 let size = inner.u32()?;
-                // Размер группы включает её заголовок, из которого прочитано 8 байт.
+                // The group size includes its header, of which 8 bytes have been read.
                 let rest = (size as usize)
                     .checked_sub(8)
                     .ok_or(Error::BadGroupSize { at, size })?;
@@ -233,9 +234,9 @@ fn masters_of(header: &Record) -> Result<Vec<String>> {
         .collect())
 }
 
-/// TES4 и TES5 различаются длиной заголовка, поэтому угадать формат по самому
-/// заголовку нельзя. Работает то, что у TES4 сразу за 20-байтным заголовком
-/// начинается поле `HEDR`, а у TES5 на этом месте ещё два поля заголовка.
+/// TES4 and TES5 differ in header length, so the format cannot be guessed from the header itself.
+/// What works is that in TES4 the `HEDR` field starts right after the 20-byte header, while in TES5
+/// that place still holds two header fields.
 fn detect_format(bytes: &[u8]) -> Result<GameFormat> {
     if bytes.len() < 24 {
         return Err(Error::Truncated {
@@ -244,7 +245,7 @@ fn detect_format(bytes: &[u8]) -> Result<GameFormat> {
             have: bytes.len(),
         });
     }
-    let first: Tag = bytes[..4].try_into().expect("срез ровно 4 байта");
+    let first: Tag = bytes[..4].try_into().expect("the slice is exactly 4 bytes");
     if &first != b"TES4" {
         return Err(Error::NotAPlugin { found: first });
     }
@@ -291,7 +292,7 @@ fn parse_group(cur: &mut Cursor<'_>, format: GameFormat) -> Result<Group> {
     let group_type = cur.i32()?;
 
     let header_len = format.header_len();
-    // Прочитано: GRUP(4) + size(4) + label(4) + type(4).
+    // Read so far: GRUP(4) + size(4) + label(4) + type(4).
     cur.skip(header_len - 16)?;
 
     let content_len = (group_size as usize)
@@ -323,7 +324,7 @@ fn parse_entries(content: &[u8], base: usize, format: GameFormat) -> Result<Vec<
     Ok(entries)
 }
 
-/// Сжатая запись: `u32` распакованного размера, затем поток zlib.
+/// A compressed record: a `u32` of the uncompressed size, then a zlib stream.
 fn decompress(raw: &[u8], at: usize) -> Result<Vec<u8>> {
     if raw.len() < 4 {
         return Err(Error::Truncated {
@@ -332,7 +333,8 @@ fn decompress(raw: &[u8], at: usize) -> Result<Vec<u8>> {
             have: raw.len(),
         });
     }
-    let expected = u32::from_le_bytes(raw[..4].try_into().expect("срез ровно 4 байта")) as usize;
+    let expected =
+        u32::from_le_bytes(raw[..4].try_into().expect("the slice is exactly 4 bytes")) as usize;
 
     let mut out = Vec::with_capacity(expected);
     flate2::read::ZlibDecoder::new(&raw[4..])
@@ -355,8 +357,8 @@ fn decompress(raw: &[u8], at: usize) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Курсор по срезу, помнящий своё смещение в файле: ошибка без файловой
-/// позиции на двоичном формате бесполезна.
+/// A slice cursor that remembers its offset in the file: on a binary format an error without a file
+/// position is useless.
 struct Cursor<'a> {
     data: &'a [u8],
     pos: usize,
@@ -395,24 +397,33 @@ impl<'a> Cursor<'a> {
     }
 
     fn tag(&mut self) -> Result<Tag> {
-        Ok(self.take(4)?.try_into().expect("срез ровно 4 байта"))
+        Ok(self
+            .take(4)?
+            .try_into()
+            .expect("the slice is exactly 4 bytes"))
     }
 
     fn u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(
-            self.take(2)?.try_into().expect("срез ровно 2 байта"),
+            self.take(2)?
+                .try_into()
+                .expect("the slice is exactly 2 bytes"),
         ))
     }
 
     fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(
-            self.take(4)?.try_into().expect("срез ровно 4 байта"),
+            self.take(4)?
+                .try_into()
+                .expect("the slice is exactly 4 bytes"),
         ))
     }
 
     fn i32(&mut self) -> Result<i32> {
         Ok(i32::from_le_bytes(
-            self.take(4)?.try_into().expect("срез ровно 4 байта"),
+            self.take(4)?
+                .try_into()
+                .expect("the slice is exactly 4 bytes"),
         ))
     }
 }

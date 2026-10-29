@@ -1,19 +1,20 @@
-//! Архив BSA Morrowind (T1.10).
+//! A Morrowind BSA archive (T1.10).
 //!
-//! BSA Oblivion (v103) читает `tes4_read::bsa`; писать в формате Morrowind — дело этого
-//! модуля, через `tes3::bsa`. Библиотека хранит имя файла как передано и по нему считает хеш,
-//! поэтому имена здесь приводятся к виду, в котором их ищет Morrowind: нижний регистр, `\`.
+//! Oblivion BSA (v103) is read by `tes4_read::bsa`; writing in the Morrowind format is this
+//! module's job, through `tes3::bsa`. The library stores a file name as passed and computes the
+//! hash from it, so the names here are brought to the form in which Morrowind looks them up: lower
+//! case, `\`.
 
 use std::io;
 
-/// Файл для архива: путь относительно `Data Files` и содержимое.
+/// A file for the archive: the path relative to `Data Files` and the contents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveFile {
     pub path: String,
     pub data: Vec<u8>,
 }
 
-/// Приводит путь к виду архива: нижний регистр, разделитель `\`, без пустых сегментов.
+/// Brings a path to the archive form: lower case, `\` separator, no empty segments.
 pub fn archive_name(path: &str) -> String {
     path.to_ascii_lowercase()
         .split(['/', '\\'])
@@ -22,8 +23,8 @@ pub fn archive_name(path: &str) -> String {
         .join("\\")
 }
 
-/// Собирает BSA. Порядок входа не влияет на результат: библиотека упорядочивает записи по
-/// хешу. Пустой список и совпадение хешей у разных имён — ошибка.
+/// Builds a BSA. The input order does not affect the result: the library sorts the records by hash.
+/// An empty list and a hash collision between different names are errors.
 pub fn build_bsa(files: &[ArchiveFile]) -> io::Result<Vec<u8>> {
     let mut builder = tes3::bsa::Builder::new();
     for f in files {
@@ -43,21 +44,22 @@ pub fn build_bsa(files: &[ArchiveFile]) -> io::Result<Vec<u8>> {
     builder.save_bytes()
 }
 
-/// Итог [`build_bsa_partial`].
+/// Result of [`build_bsa_partial`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartialArchive {
-    /// Байты архива.
+    /// Archive bytes.
     pub bytes: Vec<u8>,
-    /// Пути файлов, вошедших в архив (в порядке входа).
+    /// Paths of the files that went into the archive (in input order).
     pub packed: Vec<String>,
-    /// Файлы, которые в архив не вошли: у них тот же 64-битный хеш, что у уже добавленного.
-    /// Формат BSA Morrowind ищет файл по хешу, и двух файлов с одним хешем в нём быть не может,
-    /// поэтому такие файлы нужно оставить loose.
+    /// Files that did not go into the archive: they have the same 64-bit hash as one already added.
+    /// The Morrowind BSA format looks a file up by hash, and it cannot hold two files with the same
+    /// hash, so such files have to stay loose.
     pub rejected: Vec<String>,
 }
 
-/// Как [`build_bsa`], но файл с уже занятым хешем не ломает сборку, а попадает в `rejected`.
-/// Хеш у Morrowind слабый, и на десятках тысяч имён коллизии реальны.
+/// Like [`build_bsa`], but a file with an already taken hash does not break the build and goes into
+/// `rejected` instead. Morrowind's hash is weak, and with tens of thousands of names collisions are
+/// real.
 pub fn build_bsa_partial(files: &[ArchiveFile]) -> io::Result<PartialArchive> {
     let mut seen = std::collections::HashSet::new();
     let mut keep: Vec<&ArchiveFile> = Vec::new();
@@ -126,7 +128,7 @@ mod tests {
     #[test]
     fn an_empty_archive_and_non_ascii_names_are_errors() {
         assert!(build_bsa(&[]).is_err());
-        assert!(build_bsa(&[file("meshes/скала.nif", b"x")]).is_err());
+        assert!(build_bsa(&[file("meshes/βράχος.nif", b"x")]).is_err());
     }
 }
 
@@ -134,7 +136,7 @@ mod tests {
 mod partial_tests {
     use super::*;
 
-    /// Два разных имени с одним хешем находятся перебором: хеш слабый.
+    /// Two different names with the same hash are found by brute force: the hash is weak.
     fn colliding_pair() -> (String, String) {
         let mut seen = std::collections::HashMap::new();
         for i in 0..2_000_000u32 {
@@ -144,7 +146,7 @@ mod partial_tests {
                 return (prev, name);
             }
         }
-        panic!("коллизия не нашлась");
+        panic!("no collision was found");
     }
 
     #[test]
@@ -166,7 +168,7 @@ mod partial_tests {
         ];
         assert!(
             build_bsa(&files).is_err(),
-            "обычная сборка на коллизии падает"
+            "the ordinary build fails on a collision"
         );
         let r = build_bsa_partial(&files).unwrap();
         assert_eq!(r.packed, [a.clone(), "meshes/x.nif".to_owned()]);

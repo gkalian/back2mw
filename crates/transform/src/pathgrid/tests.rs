@@ -17,7 +17,7 @@ fn link(point: u16, target: [f32; 3]) -> ExternalEdge {
     ExternalEdge { point, target }
 }
 
-/// Сетка ячейки Morrowind `target` из тех `grids`, чьи ячейки в неё попадают, — как в
+/// The grid of Morrowind cell `target` from those `grids` whose cells fall into it — as in
 /// `convert_exterior`.
 fn exterior(
     target: (i32, i32),
@@ -36,8 +36,8 @@ fn exterior(
 
 #[test]
 fn four_source_grids_merge_into_local_coordinates() {
-    // Целевая ячейка (1, -1): мировые X 8192…16384, Y −8192…0. Юго-западный источник (2, −2),
-    // северо-восточный (3, −1).
+    // Target cell (1, -1): world X 8192…16384, Y −8192…0. The south-western source is (2, −2), the
+    // north-eastern (3, −1).
     let sw = grid(
         0,
         (2, -2),
@@ -64,14 +64,15 @@ fn links_inside_the_block_become_edges_and_outside_ones_are_lost() {
         &[&[], &[]],
     );
     west.grid.external = vec![
-        // В восточного соседа той же ячейки Morrowind — точка в 0.5 юнита от заявленной.
+        // Into the eastern neighbor in the same Morrowind cell — a point 0.5 units from the
+        // declared one.
         link(0, [4200.0, 100.5, 0.0]),
-        // В ячейку Morrowind западнее — теряется.
+        // Into the Morrowind cell to the west — lost.
         link(1, [-50.0, 100.0, 0.0]),
-        // Точка ровно на кромке x = 0 принадлежит западной соседке: по координате её отнесли бы
-        // к этой ячейке, но это чужая сетка — связь теряется.
+        // A point exactly on the edge x = 0 belongs to the western neighbor: by coordinate it would
+        // be assigned to this cell, but it is another grid — the link is lost.
         link(1, [0.0, 200.0, 0.0]),
-        // В ту же ячейку, но точки там нет.
+        // Into the same cell, but there is no point there.
         link(1, [6000.0, 6000.0, 0.0]),
     ];
     let east = grid(0, (1, 0), &[[4200.0, 100.0, 0.0]], &[&[]]);
@@ -83,7 +84,7 @@ fn links_inside_the_block_become_edges_and_outside_ones_are_lost() {
     );
     let mut report = PathGridReport::default();
     let g = exterior((0, 0), &[west, east, far_west], &mut report).unwrap();
-    // Связь записана у обоих концов, хотя в источнике была только у западной точки.
+    // The link is written at both ends, although in the source it was only at the western point.
     assert_eq!(g.edges, [vec![2], vec![], vec![0]]);
     assert_eq!(
         (
@@ -97,8 +98,8 @@ fn links_inside_the_block_become_edges_and_outside_ones_are_lost() {
 
 #[test]
 fn links_do_not_cross_into_another_worldspace() {
-    // Город (мир 1) стоит на тех же координатах, что и точка острова, но связь острова ведёт
-    // только в точки острова.
+    // The city (world 1) stands at the same coordinates as the island's point, but the island's
+    // link leads only to island points.
     let mut island = grid(0, (0, 0), &[[4000.0, 100.0, 0.0]], &[&[]]);
     island.grid.external = vec![link(0, [4200.0, 100.0, 0.0])];
     let city = grid(1, (1, 0), &[[4200.0, 100.0, 0.0]], &[&[]]);

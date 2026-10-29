@@ -1,22 +1,22 @@
-//! Предметы инвентаря (T2.1): `MISC`, `KEYM`, `SGST` → `MISC`; `SLGM` → ванильный камень душ
-//! Morrowind; `BOOK` → `BOOK`; `ALCH` → `ALCH`; `INGR` → `INGR`; `APPA` → `APPA`; `AMMO` →
-//! `WEAP` (стрела).
+//! Inventory items (T2.1): `MISC`, `KEYM`, `SGST` → `MISC`; `SLGM` → a vanilla Morrowind soul gem;
+//! `BOOK` → `BOOK`; `ALCH` → `ALCH`; `INGR` → `INGR`; `APPA` → `APPA`; `AMMO` → `WEAP` (an arrow).
 //!
-//! Правила и измерения — `docs/ru/formats/tes4.md`, «Предметы» (2026-09-24, 2026-09-25):
+//! Rules and measurements — `docs/en/formats/tes4.md`, "Items" (2026-09-24, 2026-09-25):
 //!
-//! * Камень душ Morrowind — не отдельный тип записи, а `MISC`, который движок узнаёт по ID
-//!   (`Misc_SoulGem_*`); свой `MISC` с нашим префиксом камнем не станет. Поэтому `SLGM` не
-//!   пишется, а отображается на ванильный камень той же вместимости (T2.1a).
-//! * Картинки в книгах переносятся (`<img src>` → файл в `BookArt\`), T2.1a.
-//! * Навык книги у Oblivion — индекс 0…20 в порядке его навыков (проверено по `EDID` учебников
-//!   `SKLx…`), у Morrowind — свой номер; переводится по имени навыка, «Клинок» → «Длинный клинок».
-//! * Качество аппарата у Oblivion — проценты (10, 25, 50, 75, 100), у Morrowind — множитель
-//!   (подмастерье 0.5 … тайный мастер 2.0): качество / 50.
-//! * Стрелы: верхний урон по шести парам (железо 8 → 3, сталь 9 → 4, серебро 10 → 3, стекло
-//!   13 → 6, эбонит 14 → 10, даэдрика 15 → 15) — кусочно-линейно через монотонные точки;
-//!   нижний `max(1, верх − 5)` совпадает со всеми парами.
-//! * Эффекты зелий и ингредиентов — по общей таблице `transform::effects` (T2.1b); у сигильских
-//!   камней не переносятся: у Morrowind это простой предмет.
+//! * A Morrowind soul gem is not a separate record type but a `MISC` that the engine recognizes by
+//!   ID (`Misc_SoulGem_*`); our own `MISC` with our prefix will not become a soul gem. So `SLGM` is
+//!   not written but mapped onto a vanilla gem of the same capacity (T2.1a).
+//! * Images in books are carried over (`<img src>` → a file in `BookArt\`), T2.1a.
+//! * A book's skill in Oblivion is an index 0…20 in its skill order (checked against the `EDID`s of
+//!   the skill books `SKLx…`), in Morrowind it has its own number; it is converted by skill name,
+//!   "Blade" → "Long Blade".
+//! * Apparatus quality in Oblivion is a percentage (10, 25, 50, 75, 100), in Morrowind a multiplier
+//!   (apprentice 0.5 … secret master 2.0): quality / 50.
+//! * Arrows: the maximum damage via six pairs (iron 8 → 3, steel 9 → 4, silver 10 → 3, glass 13 →
+//!   6, ebony 14 → 10, daedric 15 → 15) — piecewise linear through monotonic points; the minimum
+//!   `max(1, max − 5)` matches all pairs.
+//! * Potion and ingredient effects go through the shared `transform::effects` table (T2.1b); for
+//!   sigil stones they are not carried over: in Morrowind it is a plain item.
 
 use tes3_out::{Effect, Item, ItemKind, MAX_FIELD_LEN, Object, Weapon, WeaponKind, WeaponStats};
 use tes4_read::{Item as Source, ItemData};
@@ -26,10 +26,10 @@ use crate::paths::book_art_path;
 use crate::skills::SKILLS;
 use crate::weapons::display_name;
 
-/// Ванильные камни душ Morrowind по вместимости Oblivion (`SLCP` 1…5: мелкий … великий).
-/// Движок отличает камень душ от прочего `MISC` только по ID (по документации сообщества —
-/// MWSE, OpenMW; в движке не проверено), поэтому ID берутся из `Morrowind.esm` как есть
-/// (измерено 2026-09-25: цены 10, 20, 40, 60, 200 — у Morrowind вместимость задаёт цена).
+/// Vanilla Morrowind soul gems by Oblivion capacity (`SLCP` 1…5: petty … grand). The engine tells a
+/// soul gem from other `MISC` only by ID (per community documentation — MWSE, OpenMW; not verified
+/// in the engine), so the IDs are taken from `Morrowind.esm` as is (measured 2026-09-25: values 10,
+/// 20, 40, 60, 200 — in Morrowind the value sets the capacity).
 const SOUL_GEMS: [&str; 5] = [
     "Misc_SoulGem_Petty",
     "Misc_SoulGem_Lesser",
@@ -38,21 +38,22 @@ const SOUL_GEMS: [&str; 5] = [
     "Misc_SoulGem_Grand",
 ];
 
-/// Звезда Азуры Morrowind — многоразовый великий камень.
+/// Morrowind's Azura's Star — a reusable grand soul gem.
 const AZURAS_STAR: &str = "Misc_SoulGem_Azura";
 
-/// `FormID` звезды Азуры в `Oblivion.esm` (`AzurasStar`). Флага многоразовости у `SLGM` нет —
-/// запись узнаётся по `FormID`.
+/// `FormID` of Azura's Star in `Oblivion.esm` (`AzurasStar`). `SLGM` has no reusable flag — the
+/// record is recognized by `FormID`.
 const AZURAS_STAR_FORM_ID: u32 = 0x0000_0193;
 
-/// Ванильный камень душ Morrowind для `SLGM` (абсолютный `form_id`). `None` — вместимость вне
-/// 1…5 (у `Oblivion.esm` такой один: квестовый `Mg17BlackSoulGem`, вместимость 0): такой камень
-/// остаётся простым предметом.
+/// The vanilla Morrowind soul gem for an `SLGM` (absolute `form_id`). `None` means the capacity is
+/// outside 1…5 (`Oblivion.esm` has one such: the quest `Mg17BlackSoulGem`, capacity 0): such a gem
+/// stays a plain item.
 ///
-/// Чёрные камни Oblivion (душа NPC) — все с вместимостью 5 и становятся великими: в Morrowind
-/// душу NPC не поймать ни в какой камень (решение владельца, 2026-09-25). Душа внутри
-/// заполненных (`SOUL`) теряется: у Morrowind душа — свойство экземпляра в инвентаре или мире,
-/// а не записи; вернуть её можно будет при переносе размещений и содержимого контейнеров.
+/// Oblivion black soul gems (an NPC soul) all have capacity 5 and become grand: in Morrowind an
+/// NPC's soul cannot be caught in any gem (owner's decision, 2026-09-25). The soul inside filled
+/// gems (`SOUL`) is lost: in Morrowind a soul is a property of an instance in the inventory or the
+/// world, not of the record; it can be brought back when carrying over placements and container
+/// contents.
 pub fn soul_gem_target(form_id: u32, source: &Source) -> Option<&'static str> {
     let ItemData::SoulGem { capacity, .. } = source.data else {
         return None;
@@ -65,8 +66,8 @@ pub fn soul_gem_target(form_id: u32, source: &Source) -> Option<&'static str> {
         .and_then(|i| SOUL_GEMS.get(i).copied())
 }
 
-/// Опорные точки верхнего урона стрелы (урон Oblivion → верх `chop` Morrowind). Серебро (10 → 3)
-/// не ложится на монотонную кривую и в неё не входит.
+/// Control points of an arrow's maximum damage (Oblivion damage → Morrowind `chop` maximum). Silver
+/// (10 → 3) does not fit a monotonic curve and is not part of it.
 const ARROW_CURVE: [(f32, f32); 6] = [
     (0.0, 1.0),
     (8.0, 3.0),
@@ -76,7 +77,7 @@ const ARROW_CURVE: [(f32, f32); 6] = [
     (15.0, 15.0),
 ];
 
-/// Ёмкость зачарования стрел — медиана ванили Morrowind.
+/// Arrow enchantment capacity — the vanilla Morrowind median.
 const ARROW_ENCHANT: u16 = 12;
 
 fn arrow_max(damage: u16) -> u8 {
@@ -94,20 +95,20 @@ fn arrow_max(damage: u16) -> u8 {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "значение округлено и зажато в 1..=255"
+        reason = "the value is rounded and clamped to 1..=255"
     )]
     let out = r as u8;
     out
 }
 
-/// Урон стрелы Morrowind (`chop` min, max).
+/// Morrowind arrow damage (`chop` min, max).
 pub fn arrow_damage(damage: u16) -> [u8; 2] {
     let max = arrow_max(damage);
     [max.saturating_sub(5).max(1), max]
 }
 
-/// Номер шрифта Oblivion в тексте книги → имя шрифта Morrowind. 1–3 и 5 — обычный текст, 4 —
-/// даэдрический (так же их понимает референс для Skyrim).
+/// Oblivion font number in book text → Morrowind font name. 1–3 and 5 are normal text, 4 is Daedric
+/// (the reference reads them the same way for Skyrim).
 fn font_name(number: &str) -> &'static str {
     if number.trim_matches('"') == "4" {
         "Daedric"
@@ -116,18 +117,18 @@ fn font_name(number: &str) -> &'static str {
     }
 }
 
-/// Текст книги Morrowind и картинки, на которые он ссылается.
+/// Morrowind book text and the images it references.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BookText {
     pub text: String,
-    /// `src` картинок как в источнике (относительно `Textures\Menus\`), в порядке появления, без
-    /// повторов. В тексте они уже заменены на [`book_art_path`].
+    /// The images' `src` as in the source (relative to `Textures\Menus\`), in order of appearance,
+    /// without repeats. In the text they are already replaced by [`book_art_path`].
     pub images: Vec<String>,
-    /// Картинки, убранные из текста: `src` нет или он не представим (не ASCII).
+    /// Images removed from the text: no `src`, or it cannot be represented (not ASCII).
     pub dropped: Vec<String>,
 }
 
-/// Байтовый диапазон `src=…` в теге (вместе с кавычками) и значение без кавычек.
+/// The byte range of `src=…` in the tag (with the quotes) and the value without quotes.
 fn src_attribute(tag: &str) -> Option<(std::ops::Range<usize>, &str)> {
     let at = tag.to_ascii_lowercase().find("src=")?;
     let value_start = at + 4;
@@ -147,9 +148,9 @@ fn src_attribute(tag: &str) -> Option<(std::ops::Range<usize>, &str)> {
     Some((at..value_start + len, value))
 }
 
-/// Текст книги Oblivion → текст Morrowind: номера шрифтов (`<font face=1>`) заменяются именами,
-/// `src` картинок (`<img src="book/…">`, относительно `Textures\Menus\`) — именами файлов в
-/// `BookArt\` ([`book_art_path`]); размеры `width`/`height` остаются как есть.
+/// Oblivion book text → Morrowind text: font numbers (`<font face=1>`) are replaced by names, image
+/// `src` (`<img src="book/…">`, relative to `Textures\Menus\`) by file names in `BookArt\`
+/// ([`book_art_path`]); the `width`/`height` sizes stay as is.
 pub fn book_text(text: &str) -> BookText {
     let mut result = BookText::default();
     let out = &mut result.text;
@@ -199,18 +200,18 @@ pub fn book_text(text: &str) -> BookText {
     result
 }
 
-/// Предмет Morrowind и что к нему прилагается.
+/// A Morrowind item and what comes with it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConvertedItem {
     pub object: Object,
-    /// Замечания о потерях.
+    /// Notes about losses.
     pub notes: Vec<String>,
-    /// Картинки из текста книги (`src` источника, см. [`BookText::images`]).
+    /// Images from the book text (source `src`, see [`BookText::images`]).
     pub book_art: Vec<String>,
 }
 
-/// Предмет Morrowind из предмета Oblivion; `id`, `mesh`, `icon` уже выданы. Камни душ, которые
-/// ложатся на ванильные ([`soul_gem_target`]), сюда не попадают — вызывающий проверяет раньше.
+/// A Morrowind item from an Oblivion item; `id`, `mesh`, `icon` are already issued. Soul gems that
+/// map onto vanilla ones ([`soul_gem_target`]) do not get here — the caller checks earlier.
 pub fn convert_item(source: &Source, id: &str, mesh: &str, icon: &str) -> ConvertedItem {
     let mut notes = Vec::new();
     let mut book_art = Vec::new();
@@ -222,8 +223,8 @@ pub fn convert_item(source: &Source, id: &str, mesh: &str, icon: &str) -> Conver
             "name {full:?} truncated to {name:?}"
         ));
     }
-    // Эффекты переносятся у зелий и ингредиентов (T2.1b); у сигильских камней — нет: у Morrowind
-    // это простой предмет, зачаровывать им нельзя.
+    // Effects are carried over for potions and ingredients (T2.1b); not for sigil stones: in
+    // Morrowind it is a plain item and cannot be used for enchanting.
     let mut effects = Vec::new();
     match source.data {
         ItemData::Potion { .. } | ItemData::Ingredient { .. } => {
@@ -278,7 +279,7 @@ pub fn convert_item(source: &Source, id: &str, mesh: &str, icon: &str) -> Conver
             }
             book_art = converted.images;
             let text = converted.text;
-            // Номер навыка Oblivion 0…20 → основной навык Morrowind (`data/skills.tsv`).
+            // Oblivion skill number 0…20 → the major Morrowind skill (`data/skills.tsv`).
             let skill = usize::try_from(*teaches)
                 .ok()
                 .and_then(|i| SKILLS.primary.get(i).copied());
@@ -290,15 +291,15 @@ pub fn convert_item(source: &Source, id: &str, mesh: &str, icon: &str) -> Conver
                 enchantment: String::new(),
             })
         }
-        // Зелье пьют — у Morrowind его эффекты всегда «на себя», какая бы дальность ни стояла
-        // у эффекта Oblivion.
+        // A potion is drunk — in Morrowind its effects are always "self", whatever range the
+        // Oblivion effect had.
         ItemData::Potion { .. } => item(ItemKind::Potion {
             effects: effects
                 .into_iter()
                 .map(|e| Effect { range: 0, ..e })
                 .collect(),
         }),
-        // У ингредиента Morrowind четыре слота; у ингредиентов `Oblivion.esm` эффектов 1 или 4.
+        // A Morrowind ingredient has four slots; ingredients of `Oblivion.esm` have 1 or 4 effects.
         ItemData::Ingredient { .. } => {
             if effects.len() > 4 {
                 notes.push(lang::tr!(
@@ -364,11 +365,11 @@ mod tests {
         assert_eq!(
             arrow_damage(10),
             [1, 5],
-            "серебро: у ванили 1–3, но кривая монотонна"
+            "silver: vanilla has 1–3, but the curve is monotonic"
         );
         assert!(
             arrow_damage(30)[1] > 15,
-            "за последней точкой растёт дальше"
+            "beyond the last point it keeps growing"
         );
     }
 
@@ -392,7 +393,7 @@ mod tests {
     #[test]
     fn image_sources_with_spaces_quotes_or_none_are_handled() {
         let t = book_text(
-            "<img src=\"book/birthsign_the lady.dds\" width=256><img src='book/a.dds'><IMG SRC=book/a.dds height=5><img width=3><img src=\"book/скала.dds\">",
+            "<img src=\"book/birthsign_the lady.dds\" width=256><img src='book/a.dds'><IMG SRC=book/a.dds height=5><img width=3><img src=\"book/rocher_é.dds\">",
         );
         let lady = book_art_path("book/birthsign_the lady.dds").unwrap();
         let a = book_art_path("book/a.dds").unwrap();
@@ -401,7 +402,10 @@ mod tests {
             format!("<img src=\"{lady}\" width=256><img src=\"{a}\"><IMG src=\"{a}\" height=5>")
         );
         assert_eq!(t.images, ["book/birthsign_the lady.dds", "book/a.dds"]);
-        assert_eq!(t.dropped, ["<img width=3>", "<img src=\"book/скала.dds\">"]);
+        assert_eq!(
+            t.dropped,
+            ["<img width=3>", "<img src=\"book/rocher_é.dds\">"]
+        );
     }
 
     fn soul_gem(capacity: u8, soul: u8) -> Source {
@@ -440,7 +444,7 @@ mod tests {
         assert_eq!(
             soul_gem_target(0x0001_0000, &soul_gem(5, 5)),
             Some("Misc_SoulGem_Grand"),
-            "заполненный — тот же пустой камень"
+            "a filled gem is the same empty gem"
         );
         assert_eq!(
             soul_gem_target(AZURAS_STAR_FORM_ID, &soul_gem(5, 0)),

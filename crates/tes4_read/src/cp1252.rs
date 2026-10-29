@@ -1,8 +1,8 @@
-//! Декодирование Windows-1252 — кодировки строк в плагинах Bethesda.
+//! Windows-1252 decoding — the string encoding in Bethesda plugins.
 //!
-//! Отдельной зависимости это не стоит: от Latin-1 cp1252 отличается только
-//! диапазоном 0x80..=0x9F, то есть таблицей из 32 символов. Всё остальное
-//! совпадает с кодовыми точками Unicode один в один.
+//! It is not worth a separate dependency: cp1252 differs from Latin-1 only in the 0x80..=0x9F
+//! range, that is, a table of 32 characters. Everything else matches Unicode code points one to
+//! one.
 
 const HIGH: [char; 32] = [
     '\u{20AC}', '\u{0081}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
@@ -11,8 +11,8 @@ const HIGH: [char; 32] = [
     '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}', '\u{0153}', '\u{009D}', '\u{017E}', '\u{0178}',
 ];
 
-/// Декодирует байты как cp1252. Завершающие нули отбрасываются: строки в
-/// плагинах хранятся с NUL, но он не часть значения.
+/// Decodes bytes as cp1252. Trailing zeros are dropped: strings in plugins are stored with a NUL,
+/// but it is not part of the value.
 pub fn decode_zstring(bytes: &[u8]) -> String {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     decode(&bytes[..end])
@@ -42,9 +42,9 @@ mod tests {
 
     #[test]
     fn high_range_is_cp1252_not_latin1() {
-        // 0x92 — правая одинарная кавычка в cp1252, а не управляющий символ Latin-1.
+        // 0x92 is the right single quotation mark in cp1252, not a Latin-1 control character.
         assert_eq!(decode(&[0x92]), "\u{2019}");
-        // 0x80 — знак евро.
+        // 0x80 is the euro sign.
         assert_eq!(decode(&[0x80]), "\u{20AC}");
     }
 

@@ -1,36 +1,36 @@
-//! Вычисление сплайна Безье SpeedTree так, как это делает `Oblivion.exe` (T2.4b).
+//! Evaluating a SpeedTree Bézier spline the way `Oblivion.exe` does it (T2.4b).
 //!
-//! Сверено дизассемблером (`tests/disasm_speedtree.rs`, 2026-09-27):
+//! Checked by disassembly (`tests/disasm_speedtree.rs`, 2026-09-27):
 //!
-//! * разбор `0x786af0`, добавление точки `0x7860d0`: направление касательной нормируется
-//!   (`0x78e6a0`, нулевое остаётся нулевым), длина касательной — абсолютная; между опорными
-//!   точками `P_i` и `P_{i+1}` — управляющие `P_i + длина_i · d_i` и `P_{i+1} − длина_{i+1} ·
-//!   d_{i+1}`;
-//! * точка кривой `0x7844a0`: `t` зажимается в `0…1`, `u = t · (n − 1)`, отрезок `i` с
-//!   `i ≤ u < i + 1`, внутри — де Кастельжо (`0x783e70`) по доле `u − trunc(u)`; если такого
-//!   отрезка нет (`u ≥ n − 1`) — последняя опорная точка; при `n ≤ 1` — ноль;
-//! * таблица `0x786350`: 500 точек кривой при `t = i/500`; `table[0]` — первая, `table[499]` —
-//!   последняя из них (`t = 499/500`, не конец кривой!), `table[k]` для `k = 1…498` — при
-//!   `x = k/500` линейной интерполяцией между соседними точками кривой (поиск отрезка идёт
-//!   вперёд от прошлого найденного, не найден — остаётся прошлый);
-//! * вычисление `0x784210`: `i = trunc(x · 499)`, шаг таблицы считается равным `1/499` (хотя
-//!   строилась она с шагом `1/500` — так у движка), `i = 499` — последняя запись;
-//!   результат — `min + (max − min) · y` и **всегда** `+ RandomRange(−разброс, +разброс)`:
-//!   число из генератора берётся даже при нулевом разбросе.
+//! * parsing `0x786af0`, adding a point `0x7860d0`: the tangent direction is normalized
+//!   (`0x78e6a0`, zero stays zero), the tangent length is absolute; between control points `P_i`
+//!   and `P_{i+1}` the handles are `P_i + length_i · d_i` and `P_{i+1} − length_{i+1} · d_{i+1}`;
+//! * a curve point `0x7844a0`: `t` is clamped to `0…1`, `u = t · (n − 1)`, segment `i` with
+//!   `i ≤ u < i + 1`, inside it de Casteljau (`0x783e70`) by the fraction `u − trunc(u)`; if there
+//!   is no such segment (`u ≥ n − 1`) — the last control point; with `n ≤ 1` — zero;
+//! * the table `0x786350`: 500 curve points at `t = i/500`; `table[0]` is the first, `table[499]`
+//!   the last of them (`t = 499/500`, not the end of the curve!), `table[k]` for `k = 1…498` is at
+//!   `x = k/500` by linear interpolation between neighboring curve points (the segment search goes
+//!   forward from the last one found; if not found, the last one stays);
+//! * evaluation `0x784210`: `i = trunc(x · 499)`, the table step is taken as `1/499` (although the
+//!   table was built with step `1/500` — that is how the engine does it), `i = 499` is the last
+//!   entry; the result is `min + (max − min) · y` and **always**
+//!   `+ RandomRange(−variance, +variance)`: a number is drawn from the generator even with zero
+//!   variance.
 
 use super::model::BezierSpline;
 use super::rng::Rng;
 
-/// Размер таблицы.
+/// Table size.
 const TABLE: usize = 500;
 
-/// Шаг таблицы, каким его считает вычисление: `f64` `0xa8b9f8` = 1/499.
+/// The table step as the evaluation counts it: `f64` `0xa8b9f8` = 1/499.
 const STEP: f64 = 0.002_004_008_041_694_760_3;
 
-/// `x · c` с константой `f64`, которой нет в `f32`: одно округление до `f32`.
+/// `x · c` with an `f64` constant that does not exist in `f32`: one rounding to `f32`.
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "x87 с точностью 24 бита: результат операции — f32"
+    reason = "x87 with 24-bit precision: the result of an operation is f32"
 )]
 fn mul_f64(x: f32, c: f64) -> f32 {
     (f64::from(x) * c) as f32
@@ -40,17 +40,17 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
 }
 
-/// Сплайн, готовый к вычислению: диапазон, разброс и таблица `y` на 500 точек.
+/// A spline ready for evaluation: range, variation and a 500-point `y` table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Spline {
     pub min: f32,
     pub max: f32,
     pub variance: f32,
-    /// `(x, y)` записей таблицы.
+    /// `(x, y)` of the table entries.
     table: Vec<[f32; 2]>,
 }
 
-/// Управляющий многоугольник: `[P0, c0, c1', P1, c1, c2', P2, …]`.
+/// Control polygon: `[P0, c0, c1', P1, c1, c2', P2, …]`.
 fn control_polygon(points: &[[f32; 5]]) -> Vec<[f32; 2]> {
     let mut out: Vec<[f32; 2]> = Vec::with_capacity(points.len() * 3);
     let mut previous: Option<([f32; 2], [f32; 2], f32)> = None;
@@ -71,21 +71,21 @@ fn control_polygon(points: &[[f32; 5]]) -> Vec<[f32; 2]> {
     out
 }
 
-/// Точка кривой при параметре `t` (`0x7844a0`).
+/// A curve point at parameter `t` (`0x7844a0`).
 fn curve_point(polygon: &[[f32; 2]], anchors: usize, t: f32) -> [f32; 2] {
     if anchors <= 1 {
         return [0.0, 0.0];
     }
     let t = t.clamp(0.0, 1.0);
-    #[expect(clippy::cast_precision_loss, reason = "опорных точек единицы")]
+    #[expect(clippy::cast_precision_loss, reason = "a handful of control points")]
     let u = t * (anchors - 1) as f32;
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "u ≥ 0: trunc, как _ftol у движка"
+        reason = "u ≥ 0: trunc, like the engine's _ftol"
     )]
     let whole = u as usize;
-    #[expect(clippy::cast_precision_loss, reason = "опорных точек единицы")]
+    #[expect(clippy::cast_precision_loss, reason = "a handful of control points")]
     let frac = u - whole as f32;
     if whole >= anchors - 1 {
         return polygon[3 * (anchors - 1)];
@@ -98,11 +98,11 @@ fn curve_point(polygon: &[[f32; 2]], anchors: usize, t: f32) -> [f32; 2] {
 }
 
 impl Spline {
-    /// Строит таблицу по сплайну из `.spt`.
+    /// Builds the table from a spline in an `.spt`.
     pub fn new(spline: &BezierSpline) -> Self {
         let polygon = control_polygon(&spline.points);
         let anchors = spline.points.len();
-        #[expect(clippy::cast_precision_loss, reason = "индексы до 500")]
+        #[expect(clippy::cast_precision_loss, reason = "indices up to 500")]
         let fraction = |i: usize| i as f32 / TABLE as f32;
         let curve: Vec<[f32; 2]> = (0..TABLE)
             .map(|i| curve_point(&polygon, anchors, fraction(i)))
@@ -128,48 +128,50 @@ impl Spline {
         }
     }
 
-    /// Значение кривой в `0…1` до масштаба и разброса (`x` вне `0…1` зажимается: у движка это
-    /// выход за таблицу).
+    /// The curve value in `0…1` before scale and variation (`x` outside `0…1` is clamped: in the
+    /// engine this is reading past the table).
     pub fn curve(&self, x: f32) -> f32 {
         let x = x.clamp(0.0, 1.0);
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "trunc, как _ftol у движка; x зажат в 0…1"
+            reason = "trunc, like the engine's _ftol; x is clamped to 0…1"
         )]
         let i = (x * 499.0) as usize;
         if i >= TABLE - 1 {
             return self.table[TABLE - 1][1];
         }
-        #[expect(clippy::cast_precision_loss, reason = "индексы до 500")]
+        #[expect(clippy::cast_precision_loss, reason = "indices up to 500")]
         let offset = mul_f64(i as f32, STEP);
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "x87 с точностью 24 бита: результат операции — f32"
+            reason = "x87 with 24-bit precision: the result of an operation is f32"
         )]
         let frac = (f64::from(x - offset) / STEP) as f32;
         lerp(self.table[i][1], self.table[i + 1][1], frac)
     }
 
-    /// Значение без разброса: `min + (max − min) · y`.
+    /// The value without variation: `min + (max − min) · y`.
     pub fn value(&self, x: f32) -> f32 {
         (self.max - self.min) * self.curve(x) + self.min
     }
 
-    /// Второй вычислитель (`0x784370`, у возмущения): ближайшая запись таблицы
-    /// `trunc(x·499 + 0.5)`, и только `RandomRange(−разброс·y, +разброс·y)` — без `min`/`max`.
+    /// The second evaluator (`0x784370`, for disturbance): the nearest table entry
+    /// `trunc(x·499 + 0.5)`, and only `RandomRange(−variance·y, +variance·y)` — without
+    /// `min`/`max`.
     pub fn noise(&self, x: f32, rng: &mut Rng) -> f32 {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "trunc, как _ftol у движка; x зажат в 0…1"
+            reason = "trunc, like the engine's _ftol; x is clamped to 0…1"
         )]
         let i = ((x.clamp(0.0, 1.0) * 499.0 + 0.5) as usize).min(TABLE - 1);
         let y = self.table[i][1];
         rng.range(-self.variance * y, self.variance * y)
     }
 
-    /// Вычисление движка (`0x784210`): значение и разброс, число из генератора берётся всегда.
+    /// The engine's evaluation (`0x784210`): the value and the variation; a number from the
+    /// generator is always drawn.
     pub fn evaluate(&self, x: f32, rng: &mut Rng) -> f32 {
         let value = self.value(x);
         rng.range(-self.variance, self.variance) + value

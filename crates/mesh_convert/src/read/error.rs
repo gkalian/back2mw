@@ -2,47 +2,48 @@ use std::fmt;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Ошибки чтения NIF источника. Каждая несёт позицию в файле или имя поля: у NIF
-/// нет размеров блоков, и сообщение без позиции не даёт понять, где съехали.
+/// Errors reading a source NIF. Each carries a position in the file or a field name: NIF has no
+/// block sizes, and a message without a position does not tell where things went off.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    /// Данные кончились раньше, чем требует структура.
+    /// The data ended earlier than the structure requires.
     Truncated { at: usize, need: usize, have: usize },
-    /// Файл не начинается со строки заголовка NIF.
+    /// The file does not start with a NIF header line.
     NotANif { found: String },
-    /// Читаем только 20.0.0.4 и 20.0.0.5; 10.x — другое семейство раскладок, и
-    /// пытаться его читать по тем же правилам нельзя.
+    /// We read only 20.0.0.4 and 20.0.0.5; 10.x is a different family of layouts, and trying to
+    /// read it by the same rules is not allowed.
     UnsupportedVersion { version: u32 },
-    /// Порядок байтов не little-endian.
+    /// The byte order is not little-endian.
     UnsupportedEndian { flag: u8 },
-    /// Однобайтовое булево — не 0 и не 1.
+    /// A one-byte boolean is neither 0 nor 1.
     InvalidBool { at: usize, value: u8 },
-    /// Ссылка на блок — отрицательная, но не −1.
+    /// A block reference is negative but not −1.
     InvalidRef { at: usize, value: i32 },
-    /// Блок типа, которого ридер не знает. Размеров блоков в файле нет, поэтому
-    /// пропустить его физически нельзя — файл не читается целиком.
+    /// A block of a type the reader does not know. The file has no block sizes, so it is physically
+    /// impossible to skip it — the file cannot be read in full.
     UnsupportedBlock { index: usize, type_name: String },
-    /// Разобрали все блоки, а курсор не в конце: раскладка какого-то блока не та.
-    /// Несёт последний разобранный блок — первая точка, где стоит искать съезд.
+    /// All blocks were parsed, but the cursor is not at the end: some block's layout is wrong.
+    /// Carries the last parsed block — the first place to look for the drift.
     TrailingData {
         last_block: usize,
         last_type: String,
         pos: usize,
         len: usize,
     },
-    /// Ошибка внутри блока: без номера и типа блока позиция в файле почти бесполезна.
+    /// An error inside a block: without the block's number and type the file position is almost
+    /// useless.
     InBlock {
         index: usize,
         type_name: String,
         source: Box<Error>,
     },
-    /// Значение перечисления, от которого зависит раскладка, — не из известных.
+    /// A value of an enumeration the layout depends on is not among the known ones.
     UnknownValue {
         at: usize,
         field: &'static str,
         value: u32,
     },
-    /// Индекс типа блока указывает за пределы таблицы типов.
+    /// A block type index points outside the type table.
     BadBlockTypeIndex {
         block: usize,
         index: u16,

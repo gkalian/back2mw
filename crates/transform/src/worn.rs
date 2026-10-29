@@ -1,25 +1,27 @@
-//! Броня и одежда: `ARMO`/`CLOT` Oblivion → `ARMO`/`CLOT` + `BODY` Morrowind (T9.2c, T9.2d).
+//! Armor and clothing: Oblivion `ARMO`/`CLOT` → Morrowind `ARMO`/`CLOT` + `BODY` (T9.2c, T9.2d).
 //!
-//! Правила выведены из измерений (`docs/ru/formats/tes4.md`, «`ARMO`/`CLOT` → …», 2026-09-24):
+//! The rules are derived from measurements (`docs/en/formats/tes4.md`, "`ARMO`/`CLOT` →
+//! `ARMO`/`CLOT` + `BODY`", 2026-09-24):
 //!
-//! * **Слоты.** Верх тела → кираса (одежда: рубашка, с низом — мантия), низ → поножи (штаны),
-//!   кисть → **две** вещи, левая и правая (у Morrowind перчатки парные), ступня → сапоги с
-//!   двумя частями тела, голова+волосы → шлем на часть `Head`, только волосы → шлем на часть
-//!   `Hair` (так и у ванильных шлемов Morrowind: 43 на `Head`, 29 на `Hair`), щит → щит на части
-//!   `Wrist` (как у ванильных щитов), кольца и амулеты — без частей тела, даже если вещь заодно
-//!   закрывает слоты тела (у одежды кольцо и амулет проверяются первыми). Одежда на голову
-//!   (капюшоны) — **шлем** с рейтингом 0: у одежды Morrowind слота головы нет (решение владельца
-//!   2026-09-27).
-//! * **Одна часть тела на меш.** Броня Oblivion — один скиннинговый меш на всю вещь; ванильная
-//!   кираса со скиннингом (`lords_cuirass_unique`) тоже держит одну часть `Chest`.
-//! * **Рейтинг брони.** Oblivion хранит броню ×100 и пропорционально слоту (кираса 1.0, поножи
-//!   0.6, кисть/ступня/голова 0.4, щит 1.2 — одинаково у всех материалов). Morrowind даёт всем
-//!   частям одного материала один рейтинг. Приведённый к кирасе рейтинг Oblivion переводится
-//!   кусочно-линейно через пары материалов: железо 10 → 10, сталь 11.25 → 15, орочье 13.75 → 30,
-//!   эбонит 15 → 60, даэдрическое 18.75 → 80. Лёгкая броня (нет флага тяжёлой) идёт с
-//!   поправкой ×7/6, выведенной из единственной лёгкой пары: стекло 12.5 → 50.
-//! * **Вес и цена** переносятся как есть (вес задаёт класс брони в Morrowind, и железо остаётся
-//!   тяжёлым, стекло — лёгким); у пары перчаток делятся пополам на две вещи.
+//! * **Slots.** Upper body → cuirass (clothing: shirt, with the lower body — robe), lower body →
+//!   greaves (pants), hand → **two** items, left and right (Morrowind gauntlets come in pairs),
+//!   foot → boots with two body parts, head+hair → a helmet on the `Head` part, hair only → a
+//!   helmet on the `Hair` part (as with vanilla Morrowind helmets: 43 on `Head`, 29 on `Hair`),
+//!   shield → a shield on the `Wrist` parts (as with vanilla shields), rings and amulets — without
+//!   body parts, even if the item also covers body slots (for clothing the ring and amulet are
+//!   checked first). Head clothing (hoods) becomes a **helmet** with rating 0: Morrowind clothing
+//!   has no head slot (owner's decision 2026-09-27).
+//! * **One body part per mesh.** Oblivion armor is one skinned mesh for the whole item; the vanilla
+//!   skinned cuirass (`lords_cuirass_unique`) also holds one `Chest` part.
+//! * **Armor rating.** Oblivion stores armor ×100 and proportional to the slot (cuirass 1.0,
+//!   greaves 0.6, hand/foot/head 0.4, shield 1.2 — the same for all materials). Morrowind gives all
+//!   parts of one material the same rating. The Oblivion rating normalized to the cuirass is
+//!   converted piecewise linearly through material pairs: iron 10 → 10, steel 11.25 → 15, orcish
+//!   13.75 → 30, ebony 15 → 60, daedric 18.75 → 80. Light armor (no heavy flag) gets a ×7/6
+//!   correction derived from the only light pair: glass 12.5 → 50.
+//! * **Weight and value** are carried over as is (weight sets the armor class in Morrowind, and
+//!   iron stays heavy, glass light); for a pair of gauntlets they are split in half between two
+//!   items.
 
 use tes3_out::{
     Armor, ArmorKind, BodyPart, BodyPartKind, Clothing, ClothingKind, MAX_FIELD_LEN, Object,
@@ -34,39 +36,39 @@ use crate::ids::{DEFAULT_MAX_LEN, variant_id};
 use crate::paths::short_path;
 use crate::weapons::display_name;
 
-/// Сторона тела у половины меша.
+/// The body side of a mesh half.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Side {
     Left,
     Right,
 }
 
-/// Меш на теле, который стадия мешей собирает на скелете Morrowind.
+/// A body mesh that the meshes stage builds on the Morrowind skeleton.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BodyMesh {
-    /// Модель источника, относительно `Meshes\`.
+    /// The source model, relative to `Meshes\`.
     pub model: String,
     pub female: bool,
-    /// Оставить только эту половину (перчатки, обувь).
+    /// Keep only this half (gauntlets, footwear).
     pub side: Option<Side>,
-    /// Узел слота в `base_anim.nif`: по нему движок выбирает формы `Tri <узел>` скиннингового
-    /// меша (`mesh_convert::skin::name_shapes`).
+    /// The slot node in `base_anim.nif`: the engine picks the `Tri <node>` shapes of a skinned mesh
+    /// by it (`mesh_convert::skin::name_shapes`).
     pub node: &'static str,
-    /// Слот `INDX` этой части: под ним движок тело прячет, и кожу Oblivion здесь не убирают
-    /// ([`bone_slots`]).
+    /// The `INDX` slot of this part: the engine hides the body under it, and Oblivion skin is not
+    /// removed here ([`bone_slots`]).
     pub slot: u8,
-    /// Путь результата в плагине (короткий, `transform::paths`).
+    /// The result path in the plugin (short, `transform::paths`).
     pub mesh: String,
 }
 
-/// Результат по одной записи.
+/// The result for one record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WornConverted {
-    /// Вещи: одна, у перчаток — две (правая, затем левая).
+    /// Items: one, for gauntlets two (right, then left).
     pub items: Vec<Object>,
-    /// Части тела и меши к ним.
+    /// Body parts and their meshes.
     pub bodies: Vec<(BodyPart, BodyMesh)>,
-    /// Потери, о которых стоит сказать.
+    /// Losses worth mentioning.
     pub notes: Vec<String>,
 }
 
@@ -76,13 +78,13 @@ enum Kind {
     Clothing(ClothingKind),
 }
 
-/// Часть тела вещи: слот `INDX`, часть `MP_*` и половина меша.
+/// An item's body part: the `INDX` slot, the `MP_*` part and the mesh half.
 #[derive(Debug, Clone, Copy)]
 struct PartPlan {
     slot: u8,
     part: u8,
     side: Option<Side>,
-    /// Узел слота в `base_anim.nif`.
+    /// The slot node in `base_anim.nif`.
     node: &'static str,
 }
 
@@ -90,9 +92,9 @@ struct PartPlan {
 struct ItemPlan {
     kind: Kind,
     parts: Vec<PartPlan>,
-    /// Метка ID второй вещи пары (левая перчатка); у первой — `None`.
+    /// The ID tag of the second item of a pair (the left gauntlet); `None` for the first.
     tag: Option<&'static str>,
-    /// Доля веса и цены (пара перчаток — по половине).
+    /// The share of weight and value (a pair of gauntlets — half each).
     share: f32,
 }
 
@@ -105,8 +107,8 @@ const fn part(slot: u8, part: u8, side: Option<Side>) -> PartPlan {
     }
 }
 
-/// Узел слота `INDX` в `base_anim.nif` (так их называет и OpenMW, `NpcAnimation::getBonename`).
-/// Узла `Hair` в скелете нет — волосы садятся на `Head`.
+/// The node of an `INDX` slot in `base_anim.nif` (OpenMW names them the same way,
+/// `NpcAnimation::getBonename`). The skeleton has no `Hair` node — hair sits on `Head`.
 const fn slot_node(slot: u8) -> &'static str {
     match slot {
         SLOT_HEAD | SLOT_HAIR => "Head",
@@ -116,12 +118,12 @@ const fn slot_node(slot: u8) -> &'static str {
         SLOT_SHIELD => "Shield Bone",
         SLOT_RIGHT_FOOT => "Right Foot",
         SLOT_LEFT_FOOT => "Left Foot",
-        // SLOT_CHEST и всё, чего план не выдаёт.
+        // SLOT_CHEST and everything the plan does not produce.
         _ => "Chest",
     }
 }
 
-/// Слоты `INDX` Morrowind.
+/// Morrowind `INDX` slots.
 const SLOT_HEAD: u8 = 0;
 const SLOT_HAIR: u8 = 1;
 const SLOT_NECK: u8 = 2;
@@ -144,7 +146,7 @@ const SLOT_RIGHT_KNEE: u8 = 19;
 const SLOT_LEFT_KNEE: u8 = 20;
 const SLOT_RIGHT_UPPER_LEG: u8 = 21;
 const SLOT_LEFT_UPPER_LEG: u8 = 22;
-/// Слоты правой и левой стороны (для половин пары перчаток).
+/// Right and left side slots (for the halves of a pair of gauntlets).
 const RIGHT_SLOTS: [u8; 8] = [
     SLOT_RIGHT_HAND,
     SLOT_RIGHT_WRIST,
@@ -166,13 +168,14 @@ const LEFT_SLOTS: [u8; 8] = [
     SLOT_LEFT_UPPER_LEG,
 ];
 
-/// Слоты Morrowind, которые закрывает набор слотов Oblivion. Oblivion не рисует тело под занятым
-/// слотом вообще: верх тела — торс и руки до запястий, низ — пах и ноги до щиколоток, и меш
-/// брони несёт всё, что там видно (в том числе кожу). Morrowind прячет часть тела только под
-/// слотом, который вещь перечисляет, — иначе рука и нога тела торчат сквозь броню (игра,
-/// 2026-09-25, кираса Black Knife). Лишние слоты пишутся пустыми `INDX` без `BNAM`/`CNAM`: так
-/// делает и ваниль (`Morrowind.esm`, 153 пустых `INDX`: перчатки прячут запястья 8/9, сапоги и
-/// мантии — лодыжки 17/18). Запястья — у кисти, а не у рук: у ванильных перчаток так же.
+/// The Morrowind slots covered by a set of Oblivion slots. Oblivion does not draw the body under an
+/// occupied slot at all: the upper body is the torso and the arms down to the wrists, the lower
+/// body the groin and the legs down to the ankles, and the armor mesh carries everything visible
+/// there (skin included). Morrowind hides a body part only under a slot the item lists — otherwise
+/// the body's arm and leg poke through the armor (game, 2026-09-25, the Black Knife cuirass). The
+/// extra slots are written as empty `INDX` without `BNAM`/`CNAM`: vanilla does the same
+/// (`Morrowind.esm`, 153 empty `INDX`: gauntlets hide wrists 8/9, boots and robes ankles 17/18).
+/// Wrists go with the hand, not with the arms: vanilla gauntlets do the same.
 fn covered_slots(slots: u16) -> Vec<u8> {
     let has = |bit: u16| slots & bit != 0;
     let mut out = Vec::new();
@@ -223,18 +226,19 @@ fn covered_slots(slots: u16) -> Vec<u8> {
     out
 }
 
-/// Предел частей (`INDX`) у одной вещи. Во всех трёх ванильных мастерах ни у одной `ARMO`/`CLOT`
-/// их не больше 7, а плагин с вещами на 9…19 частей роняет движок уже при загрузке — то в
-/// `Morrowind.exe+0xEE8B0`, то в `msvcrt.dll`, то не роняет вовсе (игра, 2026-09-30, `SEWorld`:
-/// деление плагина по типам записей — падают только `ARMO`/`CLOT` вместе с `BODY`). Похоже на
-/// запись за конец массива из 7 частей; размер массива в самом движке не проверен.
+/// The limit of parts (`INDX`) per item. In all three vanilla masters no `ARMO`/`CLOT` has more
+/// than 7, and a plugin with items of 9…19 parts crashes the engine already on load — sometimes in
+/// `Morrowind.exe+0xEE8B0`, sometimes in `msvcrt.dll`, sometimes not at all (game, 2026-09-30,
+/// `SEWorld`: splitting the plugin by record type — only `ARMO`/`CLOT` together with `BODY` crash).
+/// It looks like writing past the end of a 7-part array; the array size in the engine itself is not
+/// verified.
 const MAX_PARTS: usize = 7;
 
-/// Какие пустые слоты оставить, когда все закрытые в [`MAX_PARTS`] не влезают: сначала то, что
-/// заметнее всего торчит сквозь меш Oblivion (решение владельца 2026-09-30) — торс, пах, бёдра,
-/// колени, плечи, предплечья; последними — лодыжки, ступни, кисти и запястья, их обычно прячет
-/// и соседняя вещь. Пара правый/левый берётся целиком или не берётся: одна спрятанная рука из
-/// двух заметнее, чем обе видимые.
+/// Which empty slots to keep when all covered ones do not fit into [`MAX_PARTS`]: first what pokes
+/// through the Oblivion mesh most noticeably (owner's decision 2026-09-30) — torso, groin, upper
+/// legs, knees, upper arms, forearms; last — ankles, feet, hands and wrists, which a neighboring
+/// item usually hides anyway. A right/left pair is taken whole or not at all: one hidden arm of two
+/// is more noticeable than both visible.
 const HIDE_PRIORITY: [&[u8]; 12] = [
     &[SLOT_HEAD],
     &[SLOT_HAIR],
@@ -250,9 +254,10 @@ const HIDE_PRIORITY: [&[u8]; 12] = [
     &[SLOT_RIGHT_WRIST, SLOT_LEFT_WRIST],
 ];
 
-/// Пустые части вещи: закрытые слоты, кроме тех, что уже заняты её частями тела; у половины пары
-/// — только слоты своей стороны. Вместе с частями тела — не больше [`MAX_PARTS`]: если все не
-/// влезают, берутся группы по [`HIDE_PRIORITY`], пока есть место; итог — по номеру слота.
+/// An item's empty parts: the covered slots except those already taken by its body parts; for half
+/// of a pair — only the slots of its own side. Together with the body parts — no more than
+/// [`MAX_PARTS`]: if not all fit, groups are taken by [`HIDE_PRIORITY`] while there is room; the
+/// result is ordered by slot number.
 fn hidden_slots(slots: u16, parts: &[PartPlan]) -> Vec<u8> {
     let side = match parts {
         [first, rest @ ..] if rest.iter().all(|p| p.side == first.side) => first.side,
@@ -286,10 +291,11 @@ fn hidden_slots(slots: u16, parts: &[PartPlan]) -> Vec<u8> {
     kept
 }
 
-/// Слоты `INDX`, чьи части тела Morrowind лежат на кости скелета `base_anim.nif`: по ним видно,
-/// какие места тела открылись, когда из меша вещи убрали кожу Oblivion
-/// (`mesh_convert::skin::drop_skin`). Голень несёт и колено, и лодыжку, кисть — и запястье:
-/// части тела этих слотов у ванили садятся на одну кость. Кость вне таблицы — пусто.
+/// `INDX` slots whose Morrowind body parts sit on bone `base_anim.nif` of the skeleton: they show
+/// which body areas became exposed when Oblivion skin was removed from the item's mesh
+/// (`mesh_convert::skin::drop_skin`). The shin carries both the knee and the ankle, the hand also
+/// the wrist: in vanilla the body parts of these slots sit on one bone. A bone outside the table
+/// gives empty.
 pub fn bone_slots(bone: &str) -> &'static [u8] {
     let b = bone.to_ascii_lowercase();
     let side = |right: &'static [u8], left: &'static [u8]| {
@@ -326,8 +332,9 @@ pub fn bone_slots(bone: &str) -> &'static [u8] {
     }
 }
 
-/// Кожа Oblivion в меше вещи: текстура тела `textures\characters\…\{upperbody,lowerbody,leg,hand,
-/// foot}….dds`. Oblivion подменяет её кожей расы носящего, Morrowind — нет.
+/// Oblivion skin in an item's mesh: the body texture
+/// `textures\characters\…\{upperbody,lowerbody,leg,hand, foot}….dds`. Oblivion swaps it for the
+/// wearer's race skin, Morrowind does not.
 pub fn is_body_skin_texture(source_path: &str) -> bool {
     let p = source_path.to_ascii_lowercase().replace('/', "\\");
     let Some(rest) = p.strip_prefix("textures\\characters\\") else {
@@ -339,7 +346,7 @@ pub fn is_body_skin_texture(source_path: &str) -> bool {
         .any(|k| file.starts_with(k))
 }
 
-/// Части `MP_*` Morrowind.
+/// Morrowind `MP_*` parts.
 const MP_HEAD: u8 = 0;
 const MP_HAIR: u8 = 1;
 const MP_CHEST: u8 = 3;
@@ -374,8 +381,8 @@ fn single(kind: Kind, parts: Vec<PartPlan>) -> Vec<ItemPlan> {
     }]
 }
 
-/// Какие вещи и части тела даёт набор слотов. Главный слот выбирается по порядку: верх тела,
-/// низ, кисть, ступня, голова, волосы, щит, кольца, амулет.
+/// Which items and body parts a set of slots gives. The main slot is chosen in order: upper body,
+/// lower body, hand, foot, head, hair, shield, rings, amulet.
 fn plan(slots: u16, armor: bool) -> Result<Vec<ItemPlan>, String> {
     let has = |bit: u16| slots & bit != 0;
     let feet = vec![
@@ -415,7 +422,7 @@ fn plan(slots: u16, armor: bool) -> Result<Vec<ItemPlan>, String> {
         }
     } else {
         let c = Kind::Clothing;
-        // Кольцо и амулет — раньше слотов тела.
+        // Ring and amulet — before the body slots.
         if has(WORN_RIGHT_RING) || has(WORN_LEFT_RING) {
             single(c(ClothingKind::Ring), Vec::new())
         } else if has(WORN_AMULET) {
@@ -440,8 +447,8 @@ fn plan(slots: u16, armor: bool) -> Result<Vec<ItemPlan>, String> {
         } else if has(WORN_FOOT) {
             single(c(ClothingKind::Shoes), feet)
         } else if has(WORN_HEAD) {
-            // У одежды Morrowind нет слота головы: капюшон — шлем (решение владельца
-            // 2026-09-27; ваниль так же делает шляпу гондольера, `gondolier_helm`).
+            // Morrowind clothing has no head slot: a hood becomes a helmet (owner's decision
+            // 2026-09-27; vanilla does the same with the gondolier's hat, `gondolier_helm`).
             single(
                 Kind::Armor(ArmorKind::Helmet),
                 vec![part(SLOT_HEAD, MP_HEAD, None)],
@@ -460,7 +467,7 @@ fn plan(slots: u16, armor: bool) -> Result<Vec<ItemPlan>, String> {
     })
 }
 
-/// Опорные точки рейтинга: приведённый к кирасе рейтинг Oblivion → рейтинг Morrowind.
+/// Rating control points: the Oblivion rating normalized to the cuirass → the Morrowind rating.
 const RATING_CURVE: [(f32, f32); 6] = [
     (0.0, 0.0),
     (10.0, 10.0),
@@ -470,10 +477,10 @@ const RATING_CURVE: [(f32, f32); 6] = [
     (18.75, 80.0),
 ];
 
-/// Поправка лёгкой брони: стекло 12.5 → 50, т. е. на кривой тяжёлой брони это 14.58.
+/// The light armor correction: glass 12.5 → 50, i.e. on the heavy armor curve this is 14.58.
 const LIGHT_FACTOR: f32 = 7.0 / 6.0;
 
-/// Доля слота в рейтинге Oblivion (у всех материалов одна).
+/// The slot's share of the Oblivion rating (the same for all materials).
 fn slot_factor(kind: ArmorKind) -> f32 {
     match kind {
         ArmorKind::Cuirass => 1.0,
@@ -495,7 +502,7 @@ fn curve(t: f32) -> f32 {
     y1 + (t - x1) * (y1 - y0) / (x1 - x0)
 }
 
-/// Рейтинг Morrowind из рейтинга Oblivion (×100).
+/// Morrowind rating from the Oblivion rating (×100).
 pub fn armor_rating(armor_x100: u16, kind: ArmorKind, heavy: bool) -> u32 {
     let mut t = f32::from(armor_x100) / 100.0 / slot_factor(kind);
     if !heavy {
@@ -504,8 +511,8 @@ pub fn armor_rating(armor_x100: u16, kind: ArmorKind, heavy: bool) -> u32 {
     to_u32(curve(t))
 }
 
-/// Прочность: медиана отношения Morrowind/Oblivion по парам этого типа; у перчаток пар нет —
-/// общая медиана 0.867.
+/// Health: the median Morrowind/Oblivion ratio over the pairs of this type; gauntlets have no pairs
+/// — the overall median 0.867.
 fn health_factor(kind: ArmorKind) -> f32 {
     match kind {
         ArmorKind::Cuirass => 0.947,
@@ -516,12 +523,12 @@ fn health_factor(kind: ArmorKind) -> f32 {
     }
 }
 
-/// Прочность головной одежды, ставшей шлемом: у одежды Oblivion прочности нет. Берётся у
-/// `gondolier_helm` — ванильной шляпы-шлема (`Morrowind.esm`, esmtool 2026-09-27: вес 4,
-/// прочность 100, рейтинг 1); у лёгких ванильных шлемов весом 1…2 — 50…110.
+/// The health of head clothing that became a helmet: Oblivion clothing has no health. Taken from
+/// `gondolier_helm` — the vanilla hat-helmet (`Morrowind.esm`, esmtool 2026-09-27: weight 4, health
+/// 100, rating 1); light vanilla helmets weighing 1…2 have 50…110.
 const HEADWEAR_HEALTH: u32 = 100;
 
-/// Ёмкость зачарования — медиана ванили Morrowind по типу.
+/// Enchantment capacity — the vanilla Morrowind median by type.
 fn armor_enchant(kind: ArmorKind) -> u32 {
     match kind {
         ArmorKind::Helmet => 225,
@@ -550,14 +557,14 @@ fn to_u32(v: f32) -> u32 {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "значение округлено и зажато в пределы u32"
+        reason = "the value is rounded and clamped to the u32 range"
     )]
     let out = r as u32;
     out
 }
 
-/// Вещи и части тела из `ARMO`/`CLOT`. `id` — выданный ID записи, `world_mesh` — путь мировой
-/// модели в плагине, `icon` — путь иконки или пусто.
+/// Items and body parts from an `ARMO`/`CLOT`. `id` is the issued record ID, `world_mesh` the world
+/// model path in the plugin, `icon` the icon path or empty.
 pub fn convert_worn(
     worn: &Worn,
     id: &str,

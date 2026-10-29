@@ -1,8 +1,8 @@
-//! Синтетика `.spt`: байты собраны руками по таблице тегов (`docs/ru/formats/spt.md`).
+//! Synthetic `.spt`: the bytes are assembled by hand from the tag table (`docs/en/formats/spt.md`).
 
 use super::*;
 
-/// Писатель потока тегов.
+/// A tag stream writer.
 #[derive(Default)]
 struct W(Vec<u8>);
 
@@ -44,7 +44,7 @@ impl W {
 
 const FLAT: &str = "BezierSpline 0 1 0\n{\n\n\t2\n\t0 1 0.7 -0.7 0.08\n\t1 1 0.7 0.7 0.1\n\n}\n";
 
-/// Уровень с узнаваемыми значениями: число сегментов по кругу — `cross`.
+/// A level with recognizable values: the number of segments around is `cross`.
 fn level(w: &mut W, cross: i32) {
     w.tag(1016);
     for tag in 6000..=6007 {
@@ -136,13 +136,14 @@ fn unknown_tag_truncation_and_missing_magic_are_errors() {
         })
     );
 
-    // Обрезка посреди значения — ошибка; поток без ошибки бывает только при обрезке ровно по
-    // началу тега (размеров в формате нет, отличить такую обрезку нельзя).
+    // Truncation in the middle of a value is an error; a stream without an error is possible only
+    // when truncated exactly at the start of a tag (the format has no sizes, such truncation cannot
+    // be told apart).
     let bytes = tree_bytes();
     let starts: Vec<usize> = tokens(&bytes).unwrap().iter().map(|t| t.at).collect();
     for cut in 1..bytes.len() {
         if tokens(&bytes[..cut]).is_ok() {
-            assert!(starts.contains(&cut), "обрезка до {cut} байт прошла");
+            assert!(starts.contains(&cut), "truncation to {cut} bytes passed");
         }
     }
 
@@ -160,7 +161,7 @@ fn spline_text_is_parsed_with_all_points() {
         s.points,
         [[0.0, 1.0, 0.7, -0.7, 0.08], [1.0, 1.0, 0.7, 0.7, 0.1]]
     );
-    // Экспонента с тремя цифрами — так пишет редактор (`-6.24607e-008`).
+    // An exponent with three digits — the editor writes it that way (`-6.24607e-008`).
     let s = BezierSpline::parse("BezierSpline 0 1 0 { 1 1 -6.24607e-008 0 1 0.3 }").unwrap();
     assert!(s.points[0][1] < 0.0);
     assert!(BezierSpline::parse("BezierSpline 0 1 0 { 2 0 1 0 1 0.1 }").is_none());
@@ -213,7 +214,7 @@ fn model_collects_levels_leaf_maps_collision_and_per_level_sets() {
 #[test]
 fn level_count_must_match_the_declaration_and_per_level_sets() {
     let mut bytes = tree_bytes();
-    // 1014 = 2 → 3: уровней меньше заявленного.
+    // 1014 = 2 → 3: fewer levels than declared.
     let pos = bytes
         .windows(8)
         .position(|w| w == [0xf6, 0x03, 0, 0, 2, 0, 0, 0])
@@ -222,7 +223,7 @@ fn level_count_must_match_the_declaration_and_per_level_sets() {
     assert!(matches!(parse(&bytes), Err(SptError::Structure { .. })));
 
     let mut w = W::default();
-    w.str(1000, MAGIC).tag(1016).str(6000, "не сплайн");
+    w.str(1000, MAGIC).tag(1016).str(6000, "not a spline");
     assert!(matches!(parse(&w.0), Err(SptError::BadSpline { .. })));
 
     let mut w = W::default();
@@ -230,14 +231,14 @@ fn level_count_must_match_the_declaration_and_per_level_sets() {
     assert!(matches!(parse(&w.0), Err(SptError::Structure { .. })));
 }
 
-// --- ГСЧ и сплайн (T2.4b) -----------------------------------------------------------
+// --- RNG and spline (T2.4b) -----------------------------------------------------------
 
 use super::rng::Rng;
 use super::spline::Spline;
 
 #[test]
 fn rng_core_is_park_miller_and_draws_come_through_the_shuffle_table() {
-    // Park–Miller с семенем 1: 16807, 282475249, 1622650073, … — первые 128 уходят в таблицу.
+    // Park–Miller with seed 1: 16807, 282475249, 1622650073, … — the first 128 go into the table.
     let mut a = 1i32;
     let mut raw = Vec::new();
     for _ in 0..131 {
@@ -251,11 +252,11 @@ fn rng_core_is_park_miller_and_draws_come_through_the_shuffle_table() {
         out
     };
     let mut rng = Rng::new(1);
-    // Первая выдача: индекс по 129-му значению ядра, отдаётся ячейка таблицы.
+    // The first output: the index from the 129th core value, the table cell is returned.
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let index = (f64::from(unit(raw[128])) * 128.0) as usize;
     assert_eq!(rng.random01(), unit(raw[index]));
-    // Вторая: индекс по 131-му, в ячейке `index` теперь 130-е значение.
+    // The second: the index from the 131st, cell `index` now holds the 130th value.
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let second = (f64::from(unit(raw[130])) * 128.0) as usize;
     let expected = if second == index {
@@ -265,7 +266,7 @@ fn rng_core_is_park_miller_and_draws_come_through_the_shuffle_table() {
     };
     assert_eq!(rng.random01(), expected);
 
-    // Семя меньше 1 — как 1; перезасев воспроизводит поток.
+    // A seed below 1 acts as 1; reseeding reproduces the stream.
     let mut zero = Rng::new(0);
     let mut one = Rng::new(1);
     let first: Vec<f32> = (0..50).map(|_| one.random01()).collect();
@@ -280,7 +281,7 @@ fn rng_core_is_park_miller_and_draws_come_through_the_shuffle_table() {
     }
 }
 
-/// Прямая `y = x`: касательные вдоль диагонали, длина — треть отрезка.
+/// The line `y = x`: tangents along the diagonal, the length is a third of the segment.
 const LINE: &str = "BezierSpline 10 20 0.5 { 2 0 0 1 1 0.4714 1 1 1 1 0.4714 }";
 
 #[test]
@@ -289,10 +290,10 @@ fn spline_table_follows_the_curve_and_scales_to_min_max() {
     for x in [0.0f32, 0.1, 0.25, 0.5, 0.9] {
         assert!((s.curve(x) - x).abs() < 0.005, "{x}: {}", s.curve(x));
     }
-    // Последняя запись — точка кривой при t = 499/500, а не конец.
+    // The last entry is the curve point at t = 499/500, not the end.
     assert!((s.curve(1.0) - 0.998).abs() < 1e-3);
     assert!((s.value(0.5) - 15.0).abs() < 0.05);
-    // Вне 0…1 — зажим, а не выход за таблицу.
+    // Outside 0…1 — a clamp, not reading past the table.
     assert_eq!(s.curve(-3.0), s.curve(0.0));
     assert_eq!(s.curve(7.0), s.curve(1.0));
 }
@@ -302,7 +303,7 @@ fn evaluation_always_draws_from_the_generator() {
     let flat = Spline::new(&BezierSpline::parse(FLAT).unwrap());
     let mut a = Rng::new(5);
     let mut b = Rng::new(5);
-    // Нулевой разброс — число всё равно берётся, поток сдвигается.
+    // Zero variation — a number is still drawn, the stream shifts.
     assert_eq!(flat.evaluate(0.3, &mut a), flat.value(0.3));
     b.random01();
     assert_eq!(a.random01(), b.random01());
@@ -316,8 +317,8 @@ fn evaluation_always_draws_from_the_generator() {
 
 #[test]
 fn a_single_point_spline_is_nan_like_the_engine_and_zero_tangents_stay_zero() {
-    // У движка все точки кривой — ноль, и интерполяция таблицы делит 0 на 0. В `.spt` игры
-    // таких сплайнов нет (`real_speedtree.rs`).
+    // In the engine all curve points are zero, and table interpolation divides 0 by 0. The game's
+    // `.spt` files have no such splines (`real_speedtree.rs`).
     let one = Spline::new(&BezierSpline::parse("BezierSpline 2 4 0 { 1 0 0.5 1 0 0.1 }").unwrap());
     assert!(one.value(0.5).is_nan());
     let s =

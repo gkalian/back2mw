@@ -21,7 +21,7 @@ fn source(flags: u8, chance_none: u8, entries: &[(i16, u32, i16)]) -> LeveledCre
     }
 }
 
-/// `FormID` → ID: 0x10…0x1F — перенесённые существа, 0x20…0x2F — NPC, прочее не найдено.
+/// `FormID` → ID: 0x10…0x1F are carried-over creatures, 0x20…0x2F NPCs, anything else is not found.
 fn actor(form_id: u32) -> Option<String> {
     match form_id {
         0x10..=0x1F => Some(format!("ob_crea_{form_id:x}")),
@@ -42,7 +42,7 @@ fn rows_keep_level_and_order_and_npc_rows_stay() {
     assert_eq!(
         c.list.creatures,
         [("ob_crea_10".to_owned(), 1), ("ob_npc_20".to_owned(), 7)],
-        "строка с NPC остаётся: ваниль держит NPC в LEVC"
+        "the row with an NPC stays: vanilla keeps NPCs in LEVC"
     );
     assert_eq!(c.unresolved, 1);
     assert!(c.notes.is_empty(), "{:?}", c.notes);
@@ -52,7 +52,7 @@ fn rows_keep_level_and_order_and_npc_rows_stay() {
 fn only_the_all_levels_flag_survives() {
     let all = convert_creature_list(&source(LEVELED_ALL_LEVELS, 0, &[]), "a".into(), actor);
     assert!(all.list.all_levels);
-    // «На каждый» у LEVC нет: флаг пропадает и «все уровни» не включает.
+    // LEVC has no "each item": the flag disappears and does not turn on "all levels".
     let each = convert_creature_list(&source(LEVELED_EACH_ITEM, 0, &[]), "a".into(), actor);
     assert!(!each.list.all_levels);
 }
@@ -111,7 +111,7 @@ fn pruning_drops_emptied_lists_and_the_rows_pointing_at_them() {
     assert_eq!(
         lists,
         [(1, list("ob_outer", &["ob_rat"]))],
-        "пустой список не пишется, и ссылки на него уходят — без учёта регистра и по цепочке"
+        "an empty list is not written, and references to it go away — case-insensitively and along the chain"
     );
     assert_eq!(
         pruned,
@@ -121,7 +121,7 @@ fn pruning_drops_emptied_lists_and_the_rows_pointing_at_them() {
         }
     );
 
-    // Контроль: когда всё на месте, ничего не трогается.
+    // Control: when everything is in place, nothing is touched.
     let mut whole = vec![
         (1, list("ob_outer", &["ob_inner"])),
         (2, list("ob_inner", &["ob_rat"])),
@@ -160,12 +160,12 @@ fn lvlc(form_id: u32, edid: &str, rows: &[(i16, u32)], extra: &[Vec<u8>]) -> Vec
 fn plugin_with(records: &[Vec<u8>]) -> Plugin {
     let group = synth::group(GameFormat::Tes4, b"LVLC", 0, &records.concat());
     let bytes = synth::plugin(GameFormat::Tes4, &synth::header_fields(3), &[group]);
-    Plugin::parse(&bytes).expect("синтетический плагин разбирается")
+    Plugin::parse(&bytes).expect("the synthetic plugin parses")
 }
 
-/// Четыре списка: внешний ведёт на вложенный (стоит в файле ниже), на NPC и на существо без
-/// донора; у вложенного — существо; третий целиком из непереносимых; четвёртый ведёт только на
-/// третий.
+/// Four lists: the outer one points to a nested one (further down in the file), to an NPC and to a
+/// creature without a donor; the nested one has a creature; the third consists entirely of
+/// non-convertible rows; the fourth points only to the third.
 fn four_lists() -> Plugin {
     plugin_with(&[
         lvlc(
@@ -204,7 +204,8 @@ fn lists_of_a_plugin_resolve_nested_lists_and_drop_the_empty_ones() {
         out.report,
         CreatureListsReport {
             seen: 4,
-            // 0x90 у внешнего, обе строки третьего и строка четвёртого на опустевший третий.
+            // 0x90 in the outer one, both rows of the third and the row of the fourth pointing to
+            // the emptied third.
             entries_unresolved: 4,
             empty: 2,
             counted: 0,
@@ -224,13 +225,14 @@ fn only_wanted_lists_are_converted_and_a_row_to_an_unwanted_list_is_lost() {
     assert_eq!(out.report.seen, 1);
     assert_eq!(out.lists.len(), 1);
     assert_eq!(out.lists[0].1.creatures, [("ob_npc_20".to_owned(), 3)]);
-    assert_eq!(ids.id_for(0x101), None, "ненужному списку ID не выдаётся");
+    assert_eq!(ids.id_for(0x101), None, "an unneeded list gets no ID");
 }
 
 #[test]
 fn reachable_walks_nested_lists_and_collects_their_actors() {
     let plugin = four_lists();
-    // 0x100 — список, 0x777 — не список (статик в мире): он не актёр и в набор не попадает.
+    // 0x100 is a list, 0x777 is not a list (a static in the world): it is not an actor and does not
+    // get into the set.
     let r = reachable(&plugin, Some, &BTreeSet::from([0x100, 0x777])).unwrap();
     assert_eq!(r.lists, BTreeSet::from([0x100, 0x101]));
     assert_eq!(r.actors, BTreeSet::from([0x10, 0x20, 0x90]));
@@ -252,7 +254,7 @@ fn a_list_that_contains_itself_does_not_hang() {
     assert_eq!(
         out.lists[0].1.creatures,
         [("ob_crea_10".to_owned(), 1)],
-        "строка списка на самого себя выброшена"
+        "a list row pointing at the list itself is dropped"
     );
     assert_eq!(out.report.entries_unresolved, 1);
 }

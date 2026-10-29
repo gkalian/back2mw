@@ -1,52 +1,51 @@
-//! Вывод строковых ID для TES3 из FormID источника.
+//! Deriving TES3 string IDs from the source FormID.
 //!
-//! Требования, из которых собрана схема:
+//! The requirements the scheme is built from:
 //!
-//! * **Детерминированность.** Тот же FormID обязан дать тот же ID при любом
-//!   порядке обхода и в любом прогоне. Иначе обновление конвертера ломает
-//!   сохранения игрока — ровно то, на что референс жалуется в своём README.
-//!   Поэтому ID *вычисляется*, а не выдаётся счётчиком.
-//! * **Невозможность столкнуться с собой.** Суффикс — base36 от FormID,
-//!   а это инъекция: `36^7 > u32::MAX`, значит семи знаков хватает всегда и
-//!   двух разных FormID с одним суффиксом не бывает.
-//! * **Невозможность столкнуться с ванилью.** Все наши ID несут префикс, с
-//!   которого не начинается ни один ID Morrowind. Это делает решение «только
-//!   добавлять, ванильное не переопределять» свойством схемы, а не дисциплиной.
-//! * **Бюджет длины.** Предел длины ID в движке и CS пока **не измерен**
-//!   (задача T1.12b), но нижняя граница есть: самый длинный ID объекта в
-//!   ванили — 31 знак (T1.12a, `docs/ru/formats/tes3.md`, «Что НЕ проверено»).
-//!   Поэтому [`DEFAULT_MAX_LEN`] заведомо безопасен, хотя предел движка,
-//!   возможно, выше.
+//! * **Determinism.** The same FormID must give the same ID in any traversal order and in any run.
+//!   Otherwise a converter update breaks the player's saves — exactly what the reference complains
+//!   about in its README. So the ID is *computed*, not issued by a counter.
+//! * **No collisions with itself.** The suffix is base36 of the FormID, and that is an injection:
+//!   `36^7 > u32::MAX`, so seven characters are always enough and two different FormIDs never share
+//!   a suffix.
+//! * **No collisions with vanilla.** All our IDs carry a prefix that no Morrowind ID starts with.
+//!   This makes the "only add, never override vanilla" decision a property of the scheme, not a
+//!   matter of discipline.
+//! * **Length budget.** The ID length limit in the engine and the CS is **not measured** yet (task
+//!   T1.12b), but there is a lower bound: the longest object ID in vanilla is 31 characters
+//!   (T1.12a, `docs/en/formats/tes3.md`, "What is NOT verified"). So [`DEFAULT_MAX_LEN`] is
+//!   certainly safe, although the engine limit may be higher.
 //!
-//! ID в TES3 регистронезависимы, поэтому учёт занятых ведётся по нижнему
-//! регистру.
+//! IDs in TES3 are case-insensitive, so the record of taken ones is kept in lower case.
 
 use std::collections::HashMap;
 use std::fmt;
 
-/// Префикс пространства имён.
+/// The namespace prefix.
 pub const DEFAULT_PREFIX: &str = "ob_";
 
-/// Максимум длины ID объекта в ванили (T1.12a, 2026-09-24); предел движка — T1.12b.
+/// The maximum object ID length in vanilla (T1.12a, 2026-09-24); the engine limit is T1.12b.
 pub const DEFAULT_MAX_LEN: usize = 31;
 
-/// Предел длины ID актёра (`NPC_`, `CREA`). Измерен 2026-10-02: Construction Set на каждую запись с
-/// ID длиннее пишет «The name for NPC '…' exceeds 23 characters» (так же для Creature), и самый
-/// длинный ID актёра в ванили — ровно 23 знака у обоих типов (`tes3_out/tests/real_vanilla_ids.rs`).
-/// К ID актёра движок дописывает восемь цифр номера экземпляра, и вместе они обязаны влезть в 31.
+/// The actor ID length limit (`NPC_`, `CREA`). Measured on 2026-10-02: for every record with a
+/// longer ID the Construction Set writes "The name for NPC '…' exceeds 23 characters" (the same for
+/// Creature), and the longest actor ID in vanilla is exactly 23 characters for both types
+/// (`tes3_out/tests/real_vanilla_ids.rs`). The engine appends eight digits of the instance number
+/// to an actor ID, and together they must fit into 31.
 pub const ACTOR_MAX_LEN: usize = 23;
 
-/// Слова, которые выбрасываются из читаемой части ID актёра: в `EDID` Oblivion они лишь называют
-/// тип записи (`SECreatureGnarlMania`, `CreatureDog`), а в 12 знаков читаемой части важнее имя
-/// (решение владельца 2026-10-02). `Creature` — в любом регистре, `NPC` — только заглавными.
+/// Words dropped from the readable part of an actor ID: in Oblivion `EDID`s they only name the
+/// record type (`SECreatureGnarlMania`, `CreatureDog`), and in the 12 characters of the readable
+/// part the name matters more (owner's decision 2026-10-02). `Creature` in any case, `NPC` only in
+/// capitals.
 const ACTOR_NOISE: [(&str, bool); 2] = [("creature", false), ("NPC", true)];
 
-/// base36 от `u32` всегда влезает в семь знаков.
+/// base36 of a `u32` always fits into seven characters.
 pub const SUFFIX_LEN: usize = 7;
 
 const ALPHABET: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 
-/// base36 с ведущими нулями до [`SUFFIX_LEN`]. Инъективно по `value`.
+/// base36 with leading zeros up to [`SUFFIX_LEN`]. Injective in `value`.
 pub fn base36_u32(mut value: u32) -> String {
     let mut buf = [b'0'; SUFFIX_LEN];
     let mut i = SUFFIX_LEN;
@@ -56,27 +55,27 @@ pub fn base36_u32(mut value: u32) -> String {
         value /= 36;
     }
     std::str::from_utf8(&buf)
-        .expect("алфавит base36 состоит из ASCII")
+        .expect("the base36 alphabet consists of ASCII")
         .to_owned()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdError {
-    /// Один и тот же FormID запрошен с разными исходными именами. Это ошибка
-    /// вызывающего: ID перестал бы быть функцией от FormID.
+    /// The same FormID was requested with different source names. This is the caller's error: the
+    /// ID would stop being a function of the FormID.
     Conflict {
         form_id: u32,
         existing: String,
         requested: String,
     },
-    /// Два разных FormID дали один ID. При инъективном суффиксе невозможно;
-    /// проверка стоит дёшево, а молчаливая перезапись записи — дорого.
+    /// Two different FormIDs gave the same ID. Impossible with an injective suffix; the check is
+    /// cheap, while silently overwriting a record is costly.
     Collision {
         id: String,
         form_id: u32,
         other: u32,
     },
-    /// Бюджета не хватает даже на служебную часть.
+    /// The budget is not enough even for the technical part.
     BudgetTooSmall { max_len: usize, overhead: usize },
 }
 
@@ -110,7 +109,7 @@ impl fmt::Display for IdError {
 
 impl std::error::Error for IdError {}
 
-/// Выдаёт ID и ведёт реестр занятых.
+/// Issues IDs and keeps the registry of taken ones.
 #[derive(Debug, Clone)]
 pub struct IdAllocator {
     prefix: String,
@@ -135,15 +134,15 @@ impl IdAllocator {
         }
     }
 
-    /// Выдаёт ID для записи. Повторный вызов с тем же FormID и тем же исходным
-    /// именем возвращает тот же ID и не считается ошибкой.
+    /// Issues an ID for a record. A repeated call with the same FormID and the same source name
+    /// returns the same ID and is not an error.
     pub fn allocate(&mut self, form_id: u32, editor_id: Option<&str>) -> Result<String, IdError> {
         let candidate = self.compose(form_id, editor_id, self.max_len)?;
         self.claim(form_id, candidate)
     }
 
-    /// Выдаёт ID актёра (`NPC_`, `CREA`): не длиннее [`ACTOR_MAX_LEN`], без слов `Creature` и
-    /// `NPC` в читаемой части. Уникальность по-прежнему держит суффикс FormID.
+    /// Issues an actor ID (`NPC_`, `CREA`): no longer than [`ACTOR_MAX_LEN`], without the words
+    /// `Creature` and `NPC` in the readable part. Uniqueness is still kept by the FormID suffix.
     pub fn allocate_actor(
         &mut self,
         form_id: u32,
@@ -154,7 +153,7 @@ impl IdAllocator {
         self.claim(form_id, candidate)
     }
 
-    /// Записывает ID в реестр; повтор того же ID для того же FormID — не ошибка.
+    /// Records an ID in the registry; repeating the same ID for the same FormID is not an error.
     fn claim(&mut self, form_id: u32, candidate: String) -> Result<String, IdError> {
         match self.by_form_id.get(&form_id) {
             Some(existing) if *existing == candidate => return Ok(candidate),
@@ -182,7 +181,7 @@ impl IdAllocator {
         Ok(candidate)
     }
 
-    /// Уже выданный ID, если был.
+    /// An already issued ID, if there was one.
     pub fn id_for(&self, form_id: u32) -> Option<&str> {
         self.by_form_id.get(&form_id).map(String::as_str)
     }
@@ -195,8 +194,8 @@ impl IdAllocator {
         self.by_form_id.is_empty()
     }
 
-    /// Чистая функция от (префикс, бюджет, FormID, исходное имя) — отсюда
-    /// независимость от порядка вызовов.
+    /// A pure function of (prefix, budget, FormID, source name) — hence the independence from the
+    /// call order.
     fn compose(
         &self,
         form_id: u32,
@@ -207,7 +206,7 @@ impl IdAllocator {
         if max_len < overhead {
             return Err(IdError::BudgetTooSmall { max_len, overhead });
         }
-        // Ещё один знак уходит на разделитель, если читаемая часть непустая.
+        // One more character goes to the separator if the readable part is not empty.
         let base_budget = max_len.saturating_sub(overhead + 1);
         let base = editor_id
             .map(|raw| sanitize(raw, base_budget))
@@ -222,7 +221,7 @@ impl IdAllocator {
     }
 }
 
-/// Имя актёра без слов из [`ACTOR_NOISE`]: `SECreatureGnarlMania` → `SEGnarlMania`.
+/// The actor name without the words from [`ACTOR_NOISE`]: `SECreatureGnarlMania` → `SEGnarlMania`.
 fn actor_name(editor_id: &str) -> String {
     let mut name = editor_id.to_owned();
     for (word, exact_case) in ACTOR_NOISE {
@@ -241,11 +240,11 @@ fn actor_name(editor_id: &str) -> String {
     name
 }
 
-/// Производный ID для записи, которая порождена той же записью источника, что и `id`: левая
-/// перчатка при правой, части тела `BODY` предмета. `ob_Iron_Cuirass_0001abc` с меткой `fl` →
-/// `obfl_Iron_Cuirass_0001abc`. Метка стоит на месте `_` префикса, поэтому производный ID не
-/// совпадёт ни с одним основным (у тех после `ob` всегда `_`), а суффикс FormID делает его
-/// уникальным среди производных. Не влезает в `max_len` — укорачивается читаемая часть.
+/// A derived ID for a record spawned by the same source record as `id`: the left gauntlet next to
+/// the right one, an item's `BODY` parts. `ob_Iron_Cuirass_0001abc` with the tag `fl` →
+/// `obfl_Iron_Cuirass_0001abc`. The tag stands in place of the prefix's `_`, so a derived ID never
+/// matches a primary one (those always have `_` after `ob`), and the FormID suffix makes it unique
+/// among derived ones. If it does not fit into `max_len`, the readable part is shortened.
 pub fn variant_id(id: &str, tag: &str, max_len: usize) -> String {
     let rest = id.strip_prefix(DEFAULT_PREFIX).unwrap_or(id);
     let head = format!("ob{tag}_");
@@ -263,9 +262,9 @@ pub fn variant_id(id: &str, tag: &str, max_len: usize) -> String {
     }
 }
 
-/// Приводит исходное имя к безопасному виду: ASCII-буквы, цифры и дефис, всё
-/// прочее — подчёркивание, подряд идущие подчёркивания сворачиваются.
-/// Пробелы тоже уходят в подчёркивание: в ID они допустимы, но ломают консоль.
+/// Brings a source name to a safe form: ASCII letters, digits and hyphens, everything else becomes
+/// an underscore, consecutive underscores are collapsed. Spaces also become underscores: they are
+/// allowed in IDs but break the console.
 fn sanitize(raw: &str, budget: usize) -> String {
     let mut out = String::new();
     let mut prev_underscore = false;
@@ -301,8 +300,8 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    /// ID актёра: CS отказывает `NPC_` и `CREA` с ID длиннее 23 знаков; слова `Creature` и `NPC` из
-    /// читаемой части уходят.
+    /// Actor ID: the CS refuses `NPC_` and `CREA` with IDs longer than 23 characters; the words
+    /// `Creature` and `NPC` leave the readable part.
     #[test]
     fn actor_ids_fit_23_characters_and_drop_the_type_words() {
         let mut alloc = IdAllocator::default();
@@ -312,21 +311,21 @@ mod tests {
             (0x11, "creatureRat", "ob_Rat_000000h"),
             (0x12, "SENPCGuardCaptain01", "ob_SEGuardCapta_000000i"),
             (0x13, "SE32DesideratusAnnius", "ob_SE32Desidera_000000j"),
-            // «npc» строчными внутри слова — не название типа записи.
+            // A lower-case "npc" inside a word is not a record type name.
             (0x14, "Unpcked", "ob_Unpcked_000000k"),
-            // От имени ничего не осталось — ID из одного суффикса.
+            // Nothing is left of the name — an ID of just the suffix.
             (0x15, "Creature", "ob_000000l"),
         ] {
             let id = alloc.allocate_actor(form_id, Some(edid)).unwrap();
             assert_eq!(id, expected);
             assert!(id.len() <= ACTOR_MAX_LEN, "{id}");
         }
-        // Самый длинный случай — ровно 23 знака при любом FormID.
+        // The longest case is exactly 23 characters for any FormID.
         let id = alloc
             .allocate_actor(u32::MAX, Some("AnExtremelyLongEditorIdFromSomeMod"))
             .unwrap();
         assert_eq!(id.len(), ACTOR_MAX_LEN);
-        // Повтор — тот же ID; он же отдаётся по FormID.
+        // A repeat gives the same ID; it is also returned by FormID.
         assert_eq!(
             alloc
                 .allocate_actor(0x10, Some("CreatureSkeleton1"))
@@ -334,12 +333,13 @@ mod tests {
             "ob_Skeleton1_000000g"
         );
         assert_eq!(alloc.id_for(0x10), Some("ob_Skeleton1_000000g"));
-        // Контроль: обычная запись с тем же именем берёт весь бюджет 31 и слова не теряет.
+        // Control: an ordinary record with the same name takes the whole budget of 31 and does not
+        // lose the words.
         assert_eq!(
             alloc.allocate(0x20, Some("SECreatureGnarlMania")).unwrap(),
             "ob_SECreatureGnarlMania_000000w"
         );
-        // Бюджет аллокатора меньше 23 — действует он.
+        // An allocator budget smaller than 23 — it takes effect.
         let mut tight = IdAllocator::new("ob_", 14);
         assert_eq!(
             tight.allocate_actor(1, Some("CreatureGoblin")).unwrap(),
@@ -353,7 +353,7 @@ mod tests {
         assert_eq!(base36_u32(1), "0000001");
         assert_eq!(base36_u32(35), "000000z");
         assert_eq!(base36_u32(36), "0000010");
-        // Предельное значение: если бы семи знаков не хватало, здесь была бы паника.
+        // The extreme value: if seven characters were not enough, there would be a panic here.
         assert_eq!(base36_u32(u32::MAX), "1z141z3");
     }
 
@@ -361,7 +361,7 @@ mod tests {
     fn suffix_is_injective_over_a_large_sample() {
         let mut seen = HashSet::new();
         for form_id in (0..u32::MAX).step_by(40_000) {
-            assert!(seen.insert(base36_u32(form_id)), "повтор на {form_id:08X}");
+            assert!(seen.insert(base36_u32(form_id)), "repeat at {form_id:08X}");
         }
         assert!(seen.len() > 100_000);
     }
@@ -372,7 +372,7 @@ mod tests {
         let first = alloc.allocate(0x0001_5F3A, Some("Bowl01")).unwrap();
         let second = alloc.allocate(0x0001_5F3A, Some("Bowl01")).unwrap();
         assert_eq!(first, second);
-        assert_eq!(alloc.len(), 1, "повтор не создаёт вторую запись");
+        assert_eq!(alloc.len(), 1, "a repeat does not create a second record");
         assert_eq!(alloc.id_for(0x0001_5F3A), Some(first.as_str()));
     }
 
@@ -381,7 +381,7 @@ mod tests {
         let input = [
             (0x0000_0001u32, "Rock"),
             (0x0010_0002, "Bowl"),
-            (0x0000_00FF, "Rock"), // то же имя, другой FormID
+            (0x0000_00FF, "Rock"), // the same name, another FormID
         ];
 
         let mut forward = IdAllocator::default();
@@ -415,7 +415,7 @@ mod tests {
             .unwrap();
         assert!(
             id.len() <= DEFAULT_MAX_LEN,
-            "{id} длиной {} не влезает в бюджет {DEFAULT_MAX_LEN}",
+            "{id} of length {} does not fit into the budget {DEFAULT_MAX_LEN}",
             id.len()
         );
         assert!(id.starts_with(DEFAULT_PREFIX));
@@ -438,7 +438,7 @@ mod tests {
             alloc.allocate(0, Some("Clutter\\Bowl 01.nif")).unwrap(),
             "ob_Clutter_Bowl_01_nif_0000000"
         );
-        // Ведущие и хвостовые разделители не остаются.
+        // No leading and trailing separators remain.
         assert_eq!(alloc.allocate(1, Some("  !!  ")).unwrap(), "ob_0000001");
         assert_eq!(alloc.allocate(2, None).unwrap(), "ob_0000002");
     }
@@ -478,22 +478,24 @@ mod tests {
             variant_id("ob_0000001", "l", DEFAULT_MAX_LEN),
             "obl_0000001"
         );
-        // метка разводит производные одного предмета между собой
+        // the tag keeps the derived IDs of one item apart
         assert_ne!(
             variant_id(long, "ml", DEFAULT_MAX_LEN),
             variant_id(long, "mr", DEFAULT_MAX_LEN)
         );
     }
 
-    /// Инъективность суффикса делает столкновение невозможным, но реестр всё
-    /// равно его ловит — проверяем на выдуманном узком бюджете, где читаемая
-    /// часть вырезается полностью.
+    /// The injective suffix makes a collision impossible, but the registry still catches it —
+    /// checked with an invented narrow budget where the readable part is cut out completely.
     #[test]
     fn registry_would_catch_a_collision_if_one_were_possible() {
         let mut alloc = IdAllocator::new("ob_", 10);
         let a = alloc.allocate(1, Some("Rock")).unwrap();
         let b = alloc.allocate(2, Some("Bowl")).unwrap();
-        assert_eq!(a, "ob_0000001", "читаемая часть не влезает и отбрасывается");
-        assert_ne!(a, b, "но суффикс всё равно различает записи");
+        assert_eq!(
+            a, "ob_0000001",
+            "the readable part does not fit and is dropped"
+        );
+        assert_ne!(a, b, "but the suffix still tells the records apart");
     }
 }

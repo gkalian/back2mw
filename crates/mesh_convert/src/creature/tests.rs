@@ -65,7 +65,7 @@ fn triangle(vertices: [[f32; 3]; 3]) -> Block {
     }))
 }
 
-/// Обратная поза кости, стоящей в мире на высоте `world_z` без поворота.
+/// Inverse pose of a bone standing in the world at height `world_z` without rotation.
 fn bone_skin(world_z: f32, weights: Vec<(u16, f32)>) -> BoneSkin {
     BoneSkin {
         transform: SkinTransform {
@@ -97,8 +97,8 @@ fn file(blocks: Vec<Block>) -> SourceNif {
     }
 }
 
-/// Скелет: `Bip01` (z 40) → `Bip01 NonAccum` → `Bip01 Spine` (z 50) → `Bip01 Head` (z 70), и
-/// габариты на корне.
+/// Skeleton: `Bip01` (z 40) → `Bip01 NonAccum` → `Bip01 Spine` (z 50) → `Bip01 Head` (z 70), and
+/// the bounds on the root.
 fn skeleton(root_at: [f32; 3], with_bound: bool) -> SourceNif {
     let mut blocks = vec![
         node("Scene Root", root_at, &[1]),
@@ -117,8 +117,9 @@ fn skeleton(root_at: [f32; 3], with_bound: bool) -> SourceNif {
     file(blocks)
 }
 
-/// Часть с кожей. Её копия скелета стоит **ниже** (`Bip01` на z 30), и у позвонка есть кость
-/// `Bip01 Spine Twist`, которой в скелете нет. Вершины: на позвонке, на скрутке и пополам.
+/// A skinned part. Its copy of the skeleton stands **lower** (`Bip01` at z 30), and the spine has a
+/// `Bip01 Spine Twist` bone the skeleton lacks. Vertices: on the spine, on the twist, and
+/// half-and-half.
 fn skinned_part() -> SourceNif {
     file(vec![
         node("Scene Root", [0.0; 3], &[1, 5]),
@@ -148,8 +149,8 @@ fn skinned_part() -> SourceNif {
     ])
 }
 
-/// Жёсткая часть: рог под узлом с именем кости (сам узел в файле части стоит где попало) и
-/// промежуточным узлом, которого в скелете нет.
+/// A rigid part: a horn under a node with a bone's name (the node itself stands anywhere in the
+/// part file) and an intermediate node the skeleton lacks.
 fn rigid_part() -> SourceNif {
     file(vec![
         node("Scene Root", [0.0; 3], &[1]),
@@ -160,7 +161,7 @@ fn rigid_part() -> SourceNif {
     ])
 }
 
-/// Жёсткая часть без единого узла-кости над ней.
+/// A rigid part without a single bone node above it.
 fn loose_part() -> SourceNif {
     file(vec![
         node("Scene Root", [0.0; 3], &[1]),
@@ -169,8 +170,8 @@ fn loose_part() -> SourceNif {
     ])
 }
 
-/// Жёсткая часть, как их пишет Oblivion: корень со строкой `Prn` — именем кости, форма в
-/// пространстве этой кости, со своим масштабом.
+/// A rigid part as Oblivion writes them: a root with the `Prn` string — the bone name, the shape in
+/// that bone's space, with its own scale.
 fn attached_part(bone: &str) -> SourceNif {
     let mut blocks = vec![
         node("BearHead", [0.0; 3], &[2]),
@@ -206,7 +207,7 @@ fn a_part_with_prn_hangs_under_the_named_bone_in_its_space() {
         Vec3::new(3.0, 0.0, 0.0)
     );
     assert!((head_shape.base.base.base.scale - 2.0).abs() < 1e-6);
-    // Голова скелета на z 70: форма — на 3 в сторону от неё.
+    // The skeleton's head is at z 70: the shape is 3 to the side of it.
     let world = stream.world_transforms();
     assert!(
         world[&link.key]
@@ -215,7 +216,7 @@ fn a_part_with_prn_hangs_under_the_named_bone_in_its_space() {
             < 1e-5
     );
 
-    // Контроль: `Prn` называет кость, которой в скелете нет, — форма без кости.
+    // Control: `Prn` names a bone the skeleton lacks — the shape has no bone.
     let body = build(&skeleton([0.0; 3], true), &[&attached_part("Bip01 Tail9")]);
     assert_eq!(
         (body.rigid, body.rigid_attached, body.rigid_unbound),
@@ -241,14 +242,14 @@ fn node_named<'a>(stream: &'a NiStream, name: &str) -> (NiLink<NiNode>, &'a NiNo
     stream
         .objects_of_type_with_link::<NiNode>()
         .find(|(_, n)| n.base.base.name == name)
-        .unwrap_or_else(|| panic!("узел {name}"))
+        .unwrap_or_else(|| panic!("node {name}"))
 }
 
 fn shape_named<'a>(stream: &'a NiStream, name: &str) -> (NiLink<NiTriShape>, &'a NiTriShape) {
     stream
         .objects_of_type_with_link::<NiTriShape>()
         .find(|(_, s)| s.base.base.base.base.name == name)
-        .unwrap_or_else(|| panic!("форма {name}"))
+        .unwrap_or_else(|| panic!("shape {name}"))
 }
 
 #[test]
@@ -261,7 +262,7 @@ fn the_skeleton_is_copied_with_names_hierarchy_and_pose() {
     let root = stream.get(stream.roots[0].cast::<NiNode>()).unwrap();
     assert_eq!(root.base.base.name, "dog");
     assert_eq!(root.base.flags, 0x000A);
-    assert_eq!(root.children.len(), 2, "скелет и габариты");
+    assert_eq!(root.children.len(), 2, "skeleton and bounds");
 
     let world = stream.world_transforms();
     for (name, z, flags) in [
@@ -280,13 +281,13 @@ fn the_skeleton_is_copied_with_names_hierarchy_and_pose() {
             "{name}"
         );
     }
-    // Иерархия та же: позвонок — ребёнок `NonAccum`, голова — позвонка.
+    // The hierarchy is the same: the spine is a child of `NonAccum`, the head a child of the spine.
     let (spine, _) = node_named(stream, "Bip01 Spine");
     let (_, non_accum) = node_named(stream, "Bip01 NonAccum");
     assert_eq!(non_accum.children, [spine.cast()]);
 }
 
-/// Преобразование корня файла скелета уходит в его детей: корень выхода — единичный.
+/// The skeleton file root's transform goes into its children: the output root is identity.
 #[test]
 fn the_root_transform_of_the_skeleton_goes_into_its_children() {
     let body = build(&skeleton([0.0, 0.0, 3.0], false), &[]);
@@ -302,22 +303,23 @@ fn skinned_vertices_are_posed_by_the_skeleton_and_extra_bones_merge_into_the_par
     let body = build(&skeleton([0.0; 3], true), &[&skinned_part()]);
     let stream = &body.converted.stream;
     assert_eq!((body.skinned, body.rigid, body.rigid_unbound), (1, 0, 0));
-    assert_eq!(body.converted.stats.merged_bones, 1, "скрутка");
+    assert_eq!(body.converted.stats.merged_bones, 1, "twist");
 
     let (link, shape) = shape_named(stream, "Body");
     let data = stream.get(shape.base.base.geometry_data).unwrap();
-    // В модели: позвонок скелета на z 50 (у части — на 40), поэтому вершины выше на 10:
-    // 55, 51 (скрутка — на 1 выше позвонка), 65. В пространстве `Bip01` (z 40) — 15, 11, 25.
+    // In the model: the skeleton's spine is at z 50 (the part's at 40), so the vertices are 10
+    // higher: 55, 51 (the twist is 1 above the spine), 65. In `Bip01` space (z 40) — 15, 11, 25.
     let expected = [
         Vec3::new(0.0, 0.0, 15.0),
         Vec3::new(1.0, 0.0, 11.0),
         Vec3::new(0.0, 0.0, 25.0),
     ];
     for (got, want) in data.vertices.iter().zip(expected) {
-        assert!(got.distance(want) < 1e-4, "{got:?} против {want:?}");
+        assert!(got.distance(want) < 1e-4, "{got:?} versus {want:?}");
     }
 
-    // Форма — ребёнок корня накопления, он же корень кожи; кость одна — позвонок.
+    // The shape is a child of the accumulation root, which is also the skin root; there is one bone
+    // — the spine.
     let (bip_link, bip) = node_named(stream, "Bip01");
     assert!(bip.children.contains(&link.cast()));
     let skin = stream.get(shape.base.base.skin_instance).unwrap();
@@ -329,15 +331,15 @@ fn skinned_vertices_are_posed_by_the_skeleton_and_extra_bones_merge_into_the_par
     weights.sort_by_key(|w| w.0);
     assert_eq!(weights, [(0, 1.0), (1, 1.0), (2, 1.0)]);
 
-    // Независимая проверка: деформация `tes3::nif` в позе файла возвращает те же вершины.
-    let (deformed, _) = skin.deform(stream, data).expect("деформация");
+    // An independent check: `tes3::nif` deformation in the file's pose returns the same vertices.
+    let (deformed, _) = skin.deform(stream, data).expect("deformation");
     for (a, b) in deformed.iter().zip(&data.vertices) {
-        assert!(a.distance(*b) < 1e-4, "{a:?} против {b:?}");
+        assert!(a.distance(*b) < 1e-4, "{a:?} versus {b:?}");
     }
 }
 
-/// Контроль к предыдущему: скелет в другой позе — другие вершины. Иначе тест прошёл бы и на
-/// коде, который берёт позу из файла части.
+/// Control for the previous one: the skeleton in another pose gives other vertices. Otherwise the
+/// test would pass on code that takes the pose from the part file too.
 #[test]
 fn the_pose_comes_from_the_skeleton_not_from_the_part() {
     let mut lower = skeleton([0.0; 3], false);
@@ -351,7 +353,7 @@ fn the_pose_comes_from_the_skeleton_not_from_the_part() {
         .stream
         .get(shape.base.base.geometry_data)
         .unwrap();
-    // Позвонок на z 44: вершины в `Bip01` — 9, 5, 19.
+    // The spine at z 44: vertices in `Bip01` — 9, 5, 19.
     assert!(data.vertices[0].distance(Vec3::new(0.0, 0.0, 9.0)) < 1e-4);
     assert!(data.vertices[2].distance(Vec3::new(0.0, 0.0, 19.0)) < 1e-4);
 }
@@ -362,8 +364,8 @@ fn rigid_shapes_hang_under_the_bone_named_by_an_ancestor() {
     let stream = &body.converted.stream;
     assert_eq!((body.skinned, body.rigid, body.rigid_unbound), (0, 1, 1));
 
-    // Рог: ребёнок головы, смещение — от узла-кости части до формы; где этот узел стоит в
-    // файле части, не важно.
+    // The horn: a child of the head, the offset is from the part's bone node to the shape; where
+    // that node stands in the part file does not matter.
     let (horn_link, horn) = shape_named(stream, "Horn");
     let (_, head) = node_named(stream, "Bip01 Head");
     assert!(head.children.contains(&horn_link.cast()));
@@ -378,7 +380,8 @@ fn rigid_shapes_hang_under_the_bone_named_by_an_ancestor() {
             < 1e-5
     );
 
-    // Форма без кости над ней: под корнем накопления, в мире — там же, где в файле части.
+    // A shape without a bone above it: under the accumulation root, in the world at the same place
+    // as in the part file.
     let (loose_link, _) = shape_named(stream, "Loose");
     let (_, bip) = node_named(stream, "Bip01");
     assert!(bip.children.contains(&loose_link.cast()));
@@ -401,13 +404,13 @@ fn bounds_become_a_bounding_box_node_with_a_box() {
         bound_data: BoundData::NiBoxBV(found),
     }) = &node.base.bounding_volume
     else {
-        panic!("коробка: {:?}", node.base.bounding_volume);
+        panic!("box: {:?}", node.base.bounding_volume);
     };
     assert_eq!(found.center, Vec3::new(0.0, 1.0, 35.0));
     assert_eq!(found.extents, Vec3::new(16.0, 60.0, 35.0));
     assert_eq!(found.axis, Mat3::IDENTITY);
 
-    // Контроль: без `BSBound` узла нет.
+    // Control: without `BSBound` there is no node.
     let bare = build(&skeleton([0.0; 3], false), &[]);
     assert!(!bare.has_bounds);
     assert!(
@@ -428,7 +431,8 @@ fn a_skeleton_without_bones_is_an_error() {
     ));
 }
 
-/// Масштаб кости не ломает поворот: в файл идут ортонормированный поворот и число масштаба.
+/// Bone scale does not break the rotation: an orthonormal rotation and a scale number go into the
+/// file.
 #[test]
 fn decompose_splits_uniform_scale_from_rotation() {
     let turn = tes3::nif::glam::Quat::from_rotation_z(0.7);
@@ -453,12 +457,12 @@ fn the_same_input_gives_the_same_bytes() {
         .save_bytes()
         .unwrap();
     assert_eq!(one, two);
-    // И это читаемый NIF 4.0.0.2.
+    // And it is a readable NIF 4.0.0.2.
     assert!(NiStream::from_bytes(&one).is_ok());
 }
 
-/// Тесты ленты (T11.5d): клипы собраны руками, правила — свои, а не из таблицы, чтобы тест не
-/// менялся вместе с `data/creature_groups.tsv`.
+/// Tape tests (T11.5d): the clips are built by hand and the rules are our own, not from the table,
+/// so the test does not change along with `data/creature_groups.tsv`.
 mod tape_tests {
     use super::super::groups::{GroupKind, GroupRule};
     use super::super::tape::{
@@ -473,7 +477,8 @@ mod tape_tests {
         NiTextKeyExtraData, NiType,
     };
 
-    /// Скелет с корнем накопления в начале координат: высоту тазу даёт клип, как у Oblivion.
+    /// A skeleton with the accumulation root at the origin: the clip gives the pelvis its height,
+    /// as in Oblivion.
     fn flat() -> SourceNif {
         let mut source = skeleton([0.0; 3], true);
         if let Block::Node(bip) = &mut source.blocks[1] {
@@ -526,8 +531,8 @@ mod tape_tests {
         }
     }
 
-    /// Простой: таз покачивается по высоте (в скелете `Bip01 NonAccum` стоит в нуле, высоту ему
-    /// даёт клип — как у существ Oblivion).
+    /// Idle: the pelvis sways in height (in the skeleton `Bip01 NonAccum` stands at zero, the clip
+    /// gives it its height — as in Oblivion creatures).
     fn idle() -> Clip {
         clip(
             "Idle",
@@ -546,7 +551,7 @@ mod tape_tests {
         )
     }
 
-    /// Ходьба: корень накопления уходит на 120 по +Y за 2 с; дорожка морфа головы — не кость.
+    /// Walk: the accumulation root moves 120 along +Y in 2 s; the head morph track is not a bone.
     fn forward() -> Clip {
         clip(
             "Forward",
@@ -596,7 +601,7 @@ mod tape_tests {
         tape.marks
             .iter()
             .find(|(_, text)| text.split("\r\n").any(|l| l == line))
-            .unwrap_or_else(|| panic!("метка {line}: {:?}", tape.marks))
+            .unwrap_or_else(|| panic!("text key {line}: {:?}", tape.marks))
             .0
     }
 
@@ -604,7 +609,7 @@ mod tape_tests {
         tape.tracks
             .iter()
             .find(|t| t.bone == bone)
-            .unwrap_or_else(|| panic!("дорожка {bone}"))
+            .unwrap_or_else(|| panic!("track {bone}"))
     }
 
     fn translation_at(tape: &Tape, bone: &str, time: f32) -> Vec3 {
@@ -629,7 +634,7 @@ mod tape_tests {
             &rules(),
             None,
         );
-        // Порядок — как в таблице, а не как в папке; клипы — через шаг ключей.
+        // The order is as in the table, not as in the folder; clips are one key step apart.
         assert_eq!(tape.clips, ["idle", "forward", "handtohandattackleft_bite"]);
         assert_eq!(
             tape.groups,
@@ -648,7 +653,7 @@ mod tape_tests {
         assert_eq!(tape.missing, ["SpellCast"]);
         assert_eq!(tape.accum_root, "Bip01");
 
-        // Группы с одним клипом делят отрезок; метки одного времени — один ключ.
+        // Groups with one clip share a segment; text keys with the same time are one key.
         assert_eq!(
             tape.marks[0],
             (
@@ -661,23 +666,23 @@ mod tape_tests {
         assert!((mark_at(&tape, "WalkForward: Start") - walk).abs() < 1e-5);
         assert!((mark_at(&tape, "WalkForward: Loop Start") - walk).abs() < 1e-5);
         assert!((mark_at(&tape, "WalkForward: Loop Stop") - (walk + 2.0)).abs() < 1e-5);
-        // Бега нет — бег берёт ходьбу и делит её отрезок.
+        // There is no run — the run takes the walk and shares its segment.
         assert!((mark_at(&tape, "RunForward: Stop") - (walk + 2.0)).abs() < 1e-5);
-        // Звуки по слотам — метками `SoundGen`; пробелы и регистр метки не важны, задняя нога —
-        // обычная. Звук простоя и `Sound: …` не переносятся.
+        // Sounds by slot become `SoundGen` keys; spaces and case of the key do not matter, the hind
+        // foot is an ordinary one. The idle sound and `Sound: …` are not carried over.
         assert!((mark_at(&tape, "SoundGen: Left") - (walk + 0.5)).abs() < 1e-5);
         assert!((mark_at(&tape, "SoundGen: Right") - (walk + 1.5)).abs() < 1e-5);
         assert!(!tape.marks.iter().any(|(_, t)| t.contains("Moan")));
         assert_eq!(tape.dropped_sounds, 1);
-        assert_eq!(tape.dropped_tracks, 1, "Head:0 — не кость");
+        assert_eq!(tape.dropped_tracks, 1, "Head:0 is not a bone");
 
-        // Удар: вариант имени подходит действию, `Hit` клипа — `Attack1: Hit`.
+        // Attack: a name variant matches the action, the clip's `Hit` becomes `Attack1: Hit`.
         let attack_start = walk + 2.0 + KEY_STEP;
         assert!((mark_at(&tape, "Attack1: Start") - attack_start).abs() < 1e-5);
         assert!((mark_at(&tape, "Attack1: Hit") - (attack_start + 0.4)).abs() < 1e-5);
         assert!((mark_at(&tape, "Attack1: Stop") - (attack_start + 1.0)).abs() < 1e-5);
 
-        // Падение: секунда вниз, секунда вверх, группы — как у ванильного гуара.
+        // Fall: a second down, a second up, the groups are as in the vanilla guar.
         let fall = attack_start + 1.0 + KEY_STEP;
         assert!((mark_at(&tape, "Death1: Start") - fall).abs() < 1e-5);
         assert!((mark_at(&tape, "Knockout: Start") - fall).abs() < 1e-5);
@@ -687,12 +692,13 @@ mod tape_tests {
         assert!((mark_at(&tape, "Knockout: Stop") - (fall + 2.0)).abs() < 1e-5);
         assert!((tape.length - (fall + 2.0)).abs() < 1e-5);
 
-        // Путь: корень накопления за петлю ходьбы уходит на 120 по +Y.
+        // Path: during the walk loop the accumulation root moves 120 along +Y.
         let a = translation_at(&tape, "Bip01", walk);
         let b = translation_at(&tape, "Bip01", walk + 2.0);
         assert!((b - a).distance(Vec3::new(0.0, 120.0, 0.0)) < 1e-3);
-        // Таз в простое поднимается с 40 (за 0.8 с — до 41.6), а к концу петли возвращается в позу
-        // начала: петля замкнута. В чужом клипе стоит в позе скелета.
+        // The pelvis at idle rises from 40 (to 41.6 in 0.8 s), and by the end of the loop returns
+        // to the start pose: the loop is closed. In someone else's clip it stands in the skeleton's
+        // pose.
         assert!(
             translation_at(&tape, "Bip01 NonAccum", 0.0).distance(Vec3::new(0.0, 0.0, 40.0)) < 1e-4
         );
@@ -703,7 +709,7 @@ mod tape_tests {
             translation_at(&tape, "Bip01 NonAccum", 1.0).distance(Vec3::new(0.0, 0.0, 40.0)) < 1e-4
         );
         assert!(translation_at(&tape, "Bip01 NonAccum", walk + 1.0).distance(Vec3::ZERO) < 1e-4);
-        // Времена меток и ключей — в пределах ленты, по возрастанию.
+        // Times of text keys and keys are within the tape, ascending.
         assert!(tape.marks.windows(2).all(|w| w[0].0 < w[1].0));
         for track in &tape.tracks {
             assert!(
@@ -718,7 +724,7 @@ mod tape_tests {
     #[test]
     fn at_most_five_groups_share_a_stretch_of_the_tape() {
         let (idle, forward) = (idle(), forward());
-        // Семь петель на клипе простоя и три вида заклинания на нём же; ходьба — на своём.
+        // Seven loops on the idle clip and three spell kinds on the same clip; the walk on its own.
         let mut many: Vec<GroupRule> =
             ["Idle", "Idle2", "Idle3", "Idle4", "Idle5", "Idle6", "Idle7"]
                 .iter()
@@ -729,7 +735,8 @@ mod tape_tests {
         many.push(rule("WalkForward", GroupKind::Loop, &["forward"]));
         many.push(rule("Death1", GroupKind::Fall, &[]));
         let tape = tape_of(&[("idle", &idle), ("forward", &forward)], &many, None);
-        // Шестая и седьмая петли не пишутся; заклинание ячейку не занимает и пишется.
+        // The sixth and seventh loops are not written; the spell does not take a slot and is
+        // written.
         assert_eq!(tape.crowded, ["Idle6", "Idle7"]);
         assert_eq!(
             tape.groups,
@@ -754,10 +761,10 @@ mod tape_tests {
                 .iter()
                 .any(|(_, t)| t.contains("SpellCast: Touch Start"))
         );
-        // Падение (четыре группы) идёт после простоя: закрытые группы места не держат.
+        // The fall (four groups) comes after idle: closed groups do not hold a slot.
         assert_eq!(peak_open_groups(&tape), MAX_OPEN_GROUPS);
 
-        // Контроль: счётчик открытых групп видит шестую, если её вписать мимо предела.
+        // Control: the open group counter sees a sixth one if it is written past the limit.
         let mut over = tape.clone();
         over.marks[0].1.push_str("\r\nIdle6: Start");
         assert_eq!(peak_open_groups(&over), MAX_OPEN_GROUPS + 1);
@@ -765,7 +772,7 @@ mod tape_tests {
 
     #[test]
     fn the_table_never_opens_more_groups_than_the_engine_holds() {
-        // По действию: группы с одним первым действием берут один клип и делят его отрезок.
+        // By action: groups with the same first action take the same clip and share its segment.
         let rules = groups::rules();
         let mut per_action: BTreeMap<&str, usize> = BTreeMap::new();
         for r in rules.iter().filter(|r| {
@@ -784,7 +791,7 @@ mod tape_tests {
         let worst = per_action.iter().max_by_key(|(_, n)| **n).unwrap();
         assert!(
             *worst.1 <= MAX_OPEN_GROUPS,
-            "клип «{}» делят {} групп, движок держит {MAX_OPEN_GROUPS}",
+            "clip \"{}\" is shared by {} groups, the engine holds {MAX_OPEN_GROUPS}",
             worst.0,
             worst.1
         );
@@ -799,7 +806,7 @@ mod tape_tests {
             clip("Idle_Bow", 4.0, &[], Vec::new()),
         );
         let only = [rule("Idle", GroupKind::Loop, &["idle"])];
-        // Стойка handtohand идёт первой, хотя имя её последовательности — вариант.
+        // The handtohand stance goes first, even though its sequence name is a variant.
         let tape = tape_of(
             &[
                 ("idle", &plain),
@@ -812,7 +819,7 @@ mod tape_tests {
         );
         assert_eq!(tape.clips, ["handtohandidle"]);
         assert_eq!(tape.length, 2.0);
-        // Нет её — файл без приставки; плавание и лук под «без приставки» не подходят.
+        // Without it — the file without a prefix; swimming and bow do not count as "no prefix".
         let tape = tape_of(
             &[("swimidle", &swim), ("bowidle", &variant), ("idle", &plain)],
             &only,
@@ -822,7 +829,8 @@ mod tape_tests {
         let tape = tape_of(&[("swimidle", &swim), ("bowidle", &variant)], &only, None);
         assert!(tape.clips.is_empty());
         assert_eq!(tape.missing, ["Idle"]);
-        // `AttackLeftPower` — не вариант `AttackLeft`: вариант отделён подчёркиванием.
+        // `AttackLeftPower` is not a variant of `AttackLeft`: a variant is separated by an
+        // underscore.
         let power = clip("AttackLeftPower", 1.0, &[], Vec::new());
         let tape = tape_of(
             &[("attackleftpower", &power)],
@@ -830,7 +838,8 @@ mod tape_tests {
             None,
         );
         assert_eq!(tape.missing, ["Attack1"]);
-        // Из точного имени и варианта берётся точное, какой бы файл ни шёл раньше по алфавиту.
+        // Between the exact name and a variant the exact one is taken, whichever file comes first
+        // alphabetically.
         let (exact, tailed) = (
             clip("Forward", 1.0, &[], Vec::new()),
             clip("Forward_Limp", 2.0, &[], Vec::new()),
@@ -845,8 +854,8 @@ mod tape_tests {
 
     #[test]
     fn splines_and_euler_angles_are_sampled_with_the_step() {
-        // Поворот позвонка: сплайн из четырёх одинаковых кватернионов «90° вокруг Z»; сдвиг —
-        // углы Эйлера на корне не нужны, хватит таза с ключами Эйлера вокруг X.
+        // Spine rotation: a spline of four identical "90° around Z" quaternions; translation —
+        // Euler angles on the root are not needed, a pelvis with Euler keys around X is enough.
         let quarter = std::f32::consts::FRAC_1_SQRT_2;
         let spine = BoneMotion {
             rotation: Rotation::Spline(Spline {
@@ -866,13 +875,13 @@ mod tape_tests {
             &[],
             vec![track("Bip01 Spine", spine), track("Bip01 NonAccum", pelvis)],
         );
-        // Не петлёй: петля свела бы конец клипа к его началу.
+        // Not as a loop: a loop would bring the end of the clip to its start.
         let tape = tape_of(
             &[("idle", &moving)],
             &[rule("Idle", GroupKind::Once, &["idle"])],
             None,
         );
-        // Постоянный поворот — два ключа на отрезок, оба «90° вокруг Z».
+        // A constant rotation — two keys per segment, both "90° around Z".
         let spine = track_of(&tape, "Bip01 Spine");
         assert_eq!(spine.rotations.len(), 2);
         assert!(
@@ -880,7 +889,8 @@ mod tape_tests {
                 .1
                 .abs_diff_eq(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2), 1e-4)
         );
-        // Меняющийся — ключ на каждый шаг и в самом конце клипа: 0, 1/15 … 7/15, 0.5.
+        // A changing one — a key at every step and at the very end of the clip: 0, 1/15 … 7/15,
+        // 0.5.
         let pelvis = track_of(&tape, "Bip01 NonAccum");
         assert_eq!(pelvis.rotations.len(), 9);
         assert!((pelvis.rotations[1].0 - KEY_STEP).abs() < 1e-6);
@@ -894,12 +904,13 @@ mod tape_tests {
             pelvis.rotations[3]
                 .1
                 .abs_diff_eq(Quat::from_rotation_x(0.4), 1e-4),
-            "линейно между ключами: 3/15 с из 0.5 — угол 0.4"
+            "linear between keys: 3/15 s out of 0.5 — angle 0.4"
         );
-        // Сдвиг таза не анимирован — поза скелета двумя ключами; масштаба нет вовсе.
+        // The pelvis translation is not animated — the skeleton pose with two keys; there is no
+        // scale at all.
         assert_eq!(pelvis.translations.len(), 2);
         assert!(pelvis.scales.is_empty());
-        // Соседние кватернионы — по одну сторону сферы.
+        // Neighboring quaternions are on one side of the sphere.
         for track in &tape.tracks {
             assert!(
                 track
@@ -910,8 +921,8 @@ mod tape_tests {
         }
     }
 
-    /// Группа поворота: актёра у Morrowind поворачивает движок, поэтому поворот корня накопления
-    /// замирает на первом кадре. Контроль — тот же клип разовой группой поворачивает корень.
+    /// Turn group: in Morrowind the engine turns the actor, so the accumulation root's rotation
+    /// freezes at the first frame. Control: the same clip as a one-shot group rotates the root.
     #[test]
     fn a_turn_group_holds_the_rotation_of_the_accumulation_root() {
         let half = std::f32::consts::FRAC_1_SQRT_2;
@@ -946,8 +957,8 @@ mod tape_tests {
         assert!((turn(GroupKind::Once) - 90.0).abs() < 0.1);
     }
 
-    /// Петля замыкается: последние `CLOSE_SECONDS` доводят позу до позы начала. Контроль — тот же
-    /// клип разовой группой кончается там, где кончается клип.
+    /// The loop closes: the last `CLOSE_SECONDS` bring the pose to the start pose. Control: the
+    /// same clip as a one-shot group ends where the clip ends.
     #[test]
     fn a_loop_ends_in_the_pose_it_starts_in() {
         let open = clip(
@@ -997,7 +1008,8 @@ mod tape_tests {
             translation_at(&looped, "Bip01 NonAccum", 1.0).distance(Vec3::new(0.0, 0.0, 40.0))
                 < 1e-4
         );
-        // До окна замыкания клип не тронут: за 0.2 с до конца поворот — 0.08 рад.
+        // Before the closing window the clip is untouched: 0.2 s before the end the rotation is
+        // 0.08 rad.
         let before = pelvis
             .rotations
             .iter()
@@ -1005,7 +1017,8 @@ mod tape_tests {
             .unwrap()
             .1;
         assert!(before.abs_diff_eq(Quat::from_rotation_x(0.08), 1e-4));
-        // Путь корня по земле петля не замыкает — это движение существа; высота замкнута.
+        // The loop does not close the root's path along the ground — that is the creature's
+        // movement; the height is closed.
         assert!(translation_at(&looped, "Bip01", 1.0).distance(Vec3::new(0.0, 60.0, 0.0)) < 1e-4);
 
         let once = tape_as(GroupKind::Once);
@@ -1015,12 +1028,12 @@ mod tape_tests {
         assert!(translation_at(&once, "Bip01", 1.0).distance(Vec3::new(0.0, 60.0, 3.0)) < 1e-4);
     }
 
-    /// Каждая группа начинается из точки, где корень стоит в простое, а в ударе, заклинании и
-    /// реакции на удар корень из неё не уходит — как у ванильных существ.
+    /// Every group starts from the point where the root stands at idle, and in an attack, a spell
+    /// and a hit reaction the root does not leave it — as in vanilla creatures.
     #[test]
     fn groups_start_at_the_idle_spot_and_strikes_keep_the_root_there() {
         let idle = idle();
-        // Бег начинается в 30 единицах впереди и уходит ещё на 90.
+        // The run starts 30 units ahead and moves another 90.
         let run = clip(
             "Forward",
             1.0,
@@ -1036,7 +1049,7 @@ mod tape_tests {
                 },
             )],
         );
-        // Выпад: корень уходит вперёд на 55 и в сторону на 10.
+        // Lunge: the root moves 55 forward and 10 to the side.
         let lunge = clip(
             "AttackLeft",
             1.0,
@@ -1063,7 +1076,7 @@ mod tape_tests {
                 None,
             );
             let walk = mark_at(&tape, "WalkForward: Start");
-            // Первая метка группы: у заклинания она зовётся иначе, чем `Start`.
+            // The group's first text key: for a spell it is called something other than `Start`.
             let attack = tape
                 .marks
                 .iter()
@@ -1075,25 +1088,26 @@ mod tape_tests {
         let [walk_start, walk_stop, attack_start, attack_stop] = root_path(GroupKind::Attack);
         assert!(
             walk_start.distance(Vec3::ZERO) < 1e-4,
-            "бег начинается с места"
+            "the run starts in place"
         );
         assert!(walk_stop.distance(Vec3::new(0.0, 90.0, 0.0)) < 1e-4);
         assert!(attack_start.distance(Vec3::ZERO) < 1e-4);
         assert!(
             attack_stop.distance(Vec3::ZERO) < 1e-4,
-            "корень в ударе стоит"
+            "the root stays still in an attack"
         );
         for kind in [GroupKind::Still, GroupKind::CastSelf, GroupKind::Turn] {
             let [.., stop] = root_path(kind);
             assert!(stop.distance(Vec3::ZERO) < 1e-4, "{kind:?}");
         }
-        // Контроль: разовая группа с тем же клипом уводит корень, как клип.
+        // Control: a one-shot group with the same clip moves the root as the clip does.
         let [.., stop] = root_path(GroupKind::Once);
         assert!(stop.distance(Vec3::new(10.0, 55.0, 0.0)) < 1e-4);
     }
 
-    /// Падение: тело опрокидывается через край габаритов. Таз стоит на высоте 40 над осью, край —
-    /// в 16 сбоку: после поворота на 90° вокруг оси (16, y, 0) таз оказывается в (56, 0, 16).
+    /// Fall: the body tips over the edge of the bounds. The pelvis stands 40 above the axis, the
+    /// edge is 16 to the side: after a 90° rotation around the axis (16, y, 0) the pelvis ends up
+    /// at (56, 0, 16).
     #[test]
     fn the_fall_rolls_the_body_over_its_side_and_back() {
         let idle = idle();
@@ -1126,16 +1140,16 @@ mod tape_tests {
             .unwrap()
             .1;
         assert!(lying.abs_diff_eq(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2), 1e-4));
-        // Корень накопления и кости глубже таза в падении не участвуют.
+        // The accumulation root and the bones deeper than the pelvis do not take part in the fall.
         assert!(translation_at(&tape, "Bip01", down).distance(Vec3::ZERO) < 1e-5);
-        // Край можно задать: тело шире габаритов.
+        // The edge can be given: the body is wider than the bounds.
         let wide = tape_of(&[("idle", &idle)], &only, Some(30.0));
         assert!(
             translation_at(&wide, "Bip01 NonAccum", mark_at(&wide, "Death1: Stop"))
                 .distance(Vec3::new(70.0, 0.0, 30.0))
                 < 1e-3
         );
-        // Без клипа простоя существо падает из позы скелета, и это не ошибка.
+        // Without an idle clip the creature falls from the skeleton pose, and this is not an error.
         let bare = tape_of(&[], &[rule("Death1", GroupKind::Fall, &[])], None);
         assert_eq!(bare.groups[0], "Death1");
         assert!(
@@ -1168,7 +1182,8 @@ mod tape_tests {
         let tape = animate(&mut body, &source, &clips, &rules(), KEY_STEP).unwrap();
         let stream = &body.converted.stream;
 
-        // Полный меш: контроллер на каждой кости с дорожкой, метки — на корне накопления.
+        // Full mesh: a controller on each bone with a track, the text keys on the accumulation
+        // root.
         assert_eq!(
             stream.objects_of_type::<NiKeyframeController>().count(),
             tape.tracks.len()
@@ -1176,12 +1191,12 @@ mod tape_tests {
         let (bip_link, bip) = node_named(stream, "Bip01");
         let marks = stream
             .get(bip.base.base.extra_data.cast::<NiTextKeyExtraData>())
-            .expect("метки на Bip01");
+            .expect("text keys on Bip01");
         assert_eq!(marks.keys.len(), tape.marks.len());
-        assert_eq!(marks.base.bytes_remaining, 0, "как у ванили");
+        assert_eq!(marks.base.bytes_remaining, 0, "as in vanilla");
         let controller = stream
             .get(bip.base.base.controller.cast::<NiKeyframeController>())
-            .expect("контроллер на Bip01");
+            .expect("controller on Bip01");
         assert_eq!(controller.base.flags, 0x000C);
         assert_eq!(controller.base.target, bip_link.cast());
         assert_eq!(
@@ -1190,7 +1205,7 @@ mod tape_tests {
         );
 
         let mut pair = split_pair(stream, &tape);
-        // `x<имя>.nif`: тот же меш без ленты.
+        // `x<name>.nif`: the same mesh without the tape.
         assert_eq!(
             pair.skeleton
                 .objects_of_type::<NiKeyframeController>()
@@ -1208,14 +1223,15 @@ mod tape_tests {
             stream.objects_of_type::<NiNode>().count()
         );
         assert_eq!(pair.skeleton.objects_of_type::<NiTriShape>().count(), 1);
-        // `x<имя>.kf`: метки, за ними имена костей; контроллеры с пустой целью в том же порядке.
+        // `x<name>.kf`: the text keys, followed by the bone names; controllers with an empty target
+        // in the same order.
         let keys = &pair.keys;
         let root = keys
             .get(keys.roots[0].cast::<NiSequenceStreamHelper>())
-            .expect("корень — NiSequenceStreamHelper");
+            .expect("the root is a NiSequenceStreamHelper");
         let first = keys
             .get(root.base.extra_data.cast::<NiTextKeyExtraData>())
-            .expect("первая в цепочке — метки");
+            .expect("the first in the chain is the text keys");
         let mut names = Vec::new();
         let mut next = first.base.next;
         while let Some(name) = keys.get(next.cast::<NiStringExtraData>()) {
@@ -1231,14 +1247,14 @@ mod tape_tests {
             assert!(c.base.target.is_null());
             let data = keys.get(c.data).unwrap();
             let NiRotKey::LinKey(rotations) = &data.rotations.keys else {
-                panic!("ключи поворота — линейные");
+                panic!("rotation keys are linear");
             };
             assert_eq!(rotations.len(), tape.tracks[chain].rotations.len());
             chain += 1;
             next = c.base.next;
         }
         assert_eq!(chain, tape.tracks.len());
-        // Все три файла — читаемый NIF 4.0.0.2, и сборка повторяется байт в байт.
+        // All three files are readable NIF 4.0.0.2, and the build repeats byte for byte.
         for bytes in [
             body.converted.save_bytes().unwrap(),
             pair.skeleton.save_bytes().unwrap(),
@@ -1255,8 +1271,9 @@ mod tape_tests {
         );
     }
 
-    /// Край тела для падения берётся по мешу в кадре простоя, а не по габаритам: кожа части
-    /// стоит в `x = 1`, жёсткой формы шириной 30 габариты (16) не знают.
+    /// The body's edge for the fall is taken from the mesh in the idle frame, not from the bounds:
+    /// the part's skin stands at `x = 1`, and the bounds (16) know nothing about a rigid shape 30
+    /// wide.
     #[test]
     fn the_side_of_the_standing_body_is_measured_on_the_mesh() {
         let idle = idle();
@@ -1279,7 +1296,7 @@ mod tape_tests {
         ];
         let mut body = build_body("dog", &source, &parts, &mut TextureRegistry::new()).unwrap();
         let draft = build_tape(&source, &clips, &rules, KEY_STEP, None).unwrap();
-        // Форма стоит в x = 3 с масштабом 2: вершина 13.5 → 3 + 27 = 30.
+        // The shape stands at x = 3 with scale 2: vertex 13.5 → 3 + 27 = 30.
         let side = standing_side(&body.converted.stream, &draft).unwrap();
         assert!((side - 30.0).abs() < 1e-3, "{side}");
         let tape = animate(&mut body, &source, &clips, &rules, KEY_STEP).unwrap();
@@ -1288,7 +1305,7 @@ mod tape_tests {
                 .distance(Vec3::new(70.0, 0.0, 30.0))
                 < 1e-3
         );
-        // Тела без форм мерить нечем — остаются габариты.
+        // A body without shapes has nothing to measure — the bounds remain.
         let empty = build_body("dog", &source, &[], &mut TextureRegistry::new()).unwrap();
         assert_eq!(standing_side(&empty.converted.stream, &draft), None);
     }

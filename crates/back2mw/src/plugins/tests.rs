@@ -97,12 +97,12 @@ fn absolute_form_ids_follow_the_master_list() {
     let by = |n: &str| list.iter().find(|p| p.name == n).unwrap().clone();
     let (base, amod) = (by("Oblivion.esm"), by("AMod.esp"));
 
-    // Oblivion.esm: индекс 0, FormID не меняется — ID не зависят ни от чего.
+    // Oblivion.esm: index 0, FormID does not change — the IDs depend on nothing.
     assert_eq!(
         absolute_form_id(&list, &base, 0x0001_5F3A),
         Some(0x0001_5F3A)
     );
-    // AMod: слот 0 — Oblivion.esm, слот 1 — ZMod.esp (индекс 5), слот 2 — сам AMod (индекс 4).
+    // AMod: slot 0 is Oblivion.esm, slot 1 is ZMod.esp (index 5), slot 2 is AMod itself (index 4).
     assert_eq!(
         absolute_form_id(&list, &amod, 0x0000_0123),
         Some(0x0000_0123)

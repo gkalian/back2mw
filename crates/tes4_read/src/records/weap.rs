@@ -2,37 +2,39 @@ use crate::container::Tag;
 use crate::error::Result;
 use crate::schema::{Fields, FromFields};
 
-/// Оружие Oblivion.
+/// An Oblivion weapon.
 ///
-/// `DATA` — 30 байт: у всех 1 319 `WEAP` в `Oblivion.esm` ровно столько (2026-09-24,
-/// `docs/ru/formats/tes4.md`). Референс в своей таблице пишет «32», но сам читает 30 — верить
-/// надо данным.
+/// `DATA` is 30 bytes: all 1,319 `WEAP` in `Oblivion.esm` have exactly that (2026-09-24,
+/// `docs/en/formats/tes4.md`). The reference says "32" in its table but reads 30 itself — trust the
+/// data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Weap {
     pub editor_id: String,
-    /// `FULL` — имя в игре.
+    /// `FULL` — the in-game name.
     pub name: Option<String>,
-    /// `MODL` — модель, относительно `Meshes\`. У оружия Oblivion она одна: и в руке, и на земле.
+    /// `MODL` — the model, relative to `Meshes\`. An Oblivion weapon has one: both in the hand and
+    /// on the ground.
     pub model: Option<String>,
-    /// `ICON` — иконка, относительно `Textures\Menus\Icons\`.
+    /// `ICON` — the icon, relative to `Textures\Menus\Icons\`.
     pub icon: Option<String>,
-    /// `SCRI` — скрипт.
+    /// `SCRI` — the script.
     pub script: Option<u32>,
-    /// `ENAM` — зачарование.
+    /// `ENAM` — the enchantment.
     pub enchantment: Option<u32>,
-    /// `ANAM` — заряд зачарования (u16), у посохов и оружия (у всех 990 зачарованных, 2026-09-27).
+    /// `ANAM` — the enchantment charge (u16), on staves and weapons (in all 990 enchanted ones,
+    /// 2026-09-27).
     pub charge: Option<u16>,
     pub data: WeapData,
 }
 
-/// `DATA`, поля в порядке файла.
+/// `DATA`, fields in file order.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WeapData {
-    /// 0 клинок 1H, 1 клинок 2H, 2 дробящее 1H, 3 дробящее 2H, 4 посох, 5 лук.
+    /// 0 blade 1H, 1 blade 2H, 2 blunt 1H, 3 blunt 2H, 4 staff, 5 bow.
     pub kind: u32,
     pub speed: f32,
     pub reach: f32,
-    /// Бит 0x1 — «игнорирует обычную сопротивляемость оружию».
+    /// Bit 0x1 — "ignores normal weapon resistance".
     pub flags: u32,
     pub value: u32,
     pub health: u32,
@@ -40,7 +42,7 @@ pub struct WeapData {
     pub damage: u16,
 }
 
-/// Бит `WeapData::flags`.
+/// A `WeapData::flags` bit.
 pub const WEAP_IGNORES_RESISTANCE: u32 = 0x1;
 
 impl FromFields for Weap {
@@ -63,8 +65,13 @@ impl FromFields for Weap {
 }
 
 fn decode_data(raw: &[u8; 30]) -> WeapData {
-    let u32_at =
-        |at: usize| u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"));
+    let u32_at = |at: usize| {
+        u32::from_le_bytes(
+            raw[at..at + 4]
+                .try_into()
+                .expect("the slice is exactly 4 bytes"),
+        )
+    };
     let f32_at = |at: usize| f32::from_bits(u32_at(at));
     WeapData {
         kind: u32_at(0),

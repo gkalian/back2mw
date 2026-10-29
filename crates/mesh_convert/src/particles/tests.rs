@@ -7,7 +7,7 @@ use crate::read::psys::{Emission, Emitter, Modifier};
 use crate::read::{Ignored, NiNode as SrcNode, NiTriStrips, NiTriStripsData};
 
 const IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-/// Поворот на +90° вокруг Z, девять чисел в порядке файла (по строкам).
+/// A +90° rotation around Z, nine numbers in file order (by rows).
 const TURN_Z: [f32; 9] = [0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
 
 fn av(name: &str, translation: [f32; 3], rotation: [f32; 9]) -> AvObject {
@@ -58,7 +58,7 @@ fn nif(blocks: Vec<Block>) -> SourceNif {
     }
 }
 
-/// Сцена факела: корень → «Torch» (сдвинут) → узел-эмиттер и система частиц.
+/// A torch scene: root → "Torch" (translated) → the emitter node and the particle system.
 fn torch() -> SourceNif {
     nif(vec![
         node("Scene Root", [0.0; 3], IDENTITY, &[1]),
@@ -136,7 +136,8 @@ fn close(a: Vec3, b: [f32; 3]) -> bool {
     (a - Vec3::from_array(b)).length() < 1e-3
 }
 
-/// Числа эмиттера переносятся как есть; кадр эмиттера — его узел относительно родителя системы.
+/// Emitter numbers are carried over as is; the emitter frame is its node relative to the system's
+/// parent.
 #[test]
 fn emitter_numbers_are_carried_over_and_the_frame_is_relative_to_the_parent() {
     let plan = plan(&torch(), &system(POINT, Vec::new())).unwrap();
@@ -153,7 +154,8 @@ fn emitter_numbers_are_carried_over_and_the_frame_is_relative_to_the_parent() {
     assert!(plan.world_space && !plan.once);
     assert_eq!(plan.volume, Vec3::ZERO);
     assert!(plan.losses.is_empty(), "{:?}", plan.losses);
-    // Узел-эмиттер — сосед системы под «Torch»: его кадр относительно «Torch» — его же сдвиг.
+    // The emitter node is the system's sibling under "Torch": its frame relative to "Torch" is its
+    // own translation.
     assert!(close(
         plan.emitter_frame.translation.into(),
         [0.0, 4.0, 20.0]
@@ -161,7 +163,7 @@ fn emitter_numbers_are_carried_over_and_the_frame_is_relative_to_the_parent() {
     assert!(close(plan.system_frame.translation.into(), [1.0, 2.0, 3.0]));
 }
 
-/// Эмиттер без своего узла рождает частицы в кадре самой системы.
+/// An emitter without its own node spawns particles in the system's own frame.
 #[test]
 fn an_emitter_without_an_object_sits_in_the_frame_of_the_system() {
     let mut s = system(POINT, Vec::new());
@@ -194,7 +196,7 @@ fn cylinder_and_sphere_become_the_circumscribed_box_with_a_loss() {
     )
     .unwrap();
     assert_eq!(sphere.volume, Vec3::splat(8.0));
-    // Коробка — коробка; сфера нулевого радиуса — точка, потери нет.
+    // A box is a box; a sphere of zero radius is a point, no loss.
     let boxed = plan(
         &torch(),
         &system(
@@ -217,8 +219,9 @@ fn cylinder_and_sphere_become_the_circumscribed_box_with_a_loss() {
     assert!(dot.losses.is_empty());
 }
 
-/// Воздействия: рост и затухание, цвет, вращение — как есть; тяготение — в кадр системы и с
-/// поправкой силы; порождение — только если включено у `AgeDeath`; без пары — в потери.
+/// Modifiers: grow and fade, color, rotation — as is; gravity — into the system's frame and with
+/// the strength correction; spawning — only if enabled on `AgeDeath`; those without a counterpart —
+/// into the losses.
 #[test]
 fn modifiers_are_mapped_and_the_ones_without_a_counterpart_are_losses() {
     let modifiers = vec![
@@ -245,7 +248,8 @@ fn modifiers_are_mapped_and_the_ones_without_a_counterpart_are_losses() {
             random_axis: true,
             axis: [1.0, 0.0, 0.0],
         }),
-        // Ось тяготения — в кадре узла «FireEmitter» (он под «Torch», как и система).
+        // The gravity axis is in the frame of the "FireEmitter" node (it is under "Torch", like the
+        // system).
         modifier(ModifierKind::Gravity {
             object: BlockRef(Some(2)),
             axis: [0.0, 0.0, -2.0],
@@ -256,7 +260,7 @@ fn modifiers_are_mapped_and_the_ones_without_a_counterpart_are_losses() {
         }),
         modifier(ModifierKind::Housekeeping),
         modifier(ModifierKind::Other("BSWindModifier")),
-        // Выключенное воздействие не действует и потерей не считается.
+        // A disabled modifier does nothing and does not count as a loss.
         Modifier {
             name: "off".to_owned(),
             active: false,
@@ -273,14 +277,14 @@ fn modifiers_are_mapped_and_the_ones_without_a_counterpart_are_losses() {
     assert!((g.strength - 10.0).abs() < 1e-6, "16 / 1.6: {}", g.strength);
     assert!(!g.point && g.decay == 0.5);
     assert!(close(g.direction, [0.0, 0.0, -1.0]), "{:?}", g.direction);
-    // Узел тяготения (0, 4, 20), система (1, 2, 3) — оба под «Torch»: разность.
+    // Gravity node (0, 4, 20), system (1, 2, 3) — both under "Torch": the difference.
     assert!(close(g.position, [-1.0, 2.0, 17.0]), "{:?}", g.position);
     assert_eq!(
         plan.losses,
         [Loss::Turbulence, Loss::Modifier("BSWindModifier")]
     );
 
-    // Контроль: без флага у `AgeDeath` порождения нет.
+    // Control: without the flag on `AgeDeath` there is no spawning.
     let no_spawn = super::plan(
         &torch(),
         &system(
@@ -320,7 +324,7 @@ fn what_morrowind_cannot_start_or_draw_is_refused() {
     silent.emission = Some(emission(-30.0));
     assert_eq!(plan(&torch(), &silent), Err(Refusal::NoBirthRate));
 
-    // Ловушка: темп задаёт последовательность действия — в покое частиц нет.
+    // Trap: the rate is set by an action sequence — at rest there are no particles.
     let mut trap = system(POINT, Vec::new());
     trap.emission = Some(Emission {
         sequence: Some("Forward".to_owned()),
@@ -333,14 +337,14 @@ fn what_morrowind_cannot_start_or_draw_is_refused() {
     empty.pool = 0;
     assert_eq!(plan(&torch(), &empty), Err(Refusal::EmptyPool));
 
-    // Эмиттер-меш без геометрии.
+    // A mesh emitter without geometry.
     assert_eq!(
         plan(&torch(), &system(EmitterShape::Mesh, Vec::new())),
         Err(Refusal::MeshEmitter)
     );
 }
 
-/// Темп: кривая даёт средний с потерей; темп, который пул не успевает освобождать, срезается.
+/// Rate: a curve gives the average with a loss; a rate the pool cannot keep up with is capped.
 #[test]
 fn birth_rate_is_the_mean_of_the_curve_and_never_outruns_the_pool() {
     let mut curved = system(POINT, Vec::new());
@@ -351,18 +355,18 @@ fn birth_rate_is_the_mean_of_the_curve_and_never_outruns_the_pool() {
         ..emission(0.0)
     });
     let p = plan(&torch(), &curved).unwrap();
-    // Площадь под кривой: 6 + 24, за 3 секунды.
+    // Area under the curve: 6 + 24, over 3 seconds.
     assert!((p.birth_rate - 10.0).abs() < 1e-4, "{}", p.birth_rate);
     assert_eq!(p.losses, [Loss::RateCurve]);
     assert_eq!(p.stop, 3.0);
 
-    // Пул 20, самая короткая жизнь 1.5 − 0.25: больше 16 частиц в секунду не разместить.
+    // Pool 20, the shortest life 1.5 − 0.25: no more than 16 particles per second fit.
     let mut flood = system(POINT, Vec::new());
     flood.emission = Some(emission(9_986_438.0));
     let p = plan(&torch(), &flood).unwrap();
     assert!((p.birth_rate - 16.0).abs() < 1e-4, "{}", p.birth_rate);
 
-    // Окно нулевой длины растягивается до минимального.
+    // A zero-length window is stretched to the minimum.
     let mut instant = system(POINT, Vec::new());
     instant.emission = Some(Emission {
         start: 2.0,
@@ -373,7 +377,8 @@ fn birth_rate_is_the_mean_of_the_curve_and_never_outruns_the_pool() {
     assert!((p.stop - (2.0 + MIN_WINDOW)).abs() < 1e-6);
 }
 
-/// Эмиттер-меш: коробка вокруг меша-источника в его кадре; ось эмиссии — в склонение и угол.
+/// A mesh emitter: a box around the source mesh in its frame; the emission axis becomes declination
+/// and angle.
 #[test]
 fn a_mesh_emitter_becomes_a_box_around_its_mesh() {
     let data = NiTriStripsData {
@@ -417,17 +422,17 @@ fn a_mesh_emitter_becomes_a_box_around_its_mesh() {
     s.emitter = Some(e);
     let p = plan(&source, &s).unwrap();
     assert_eq!(p.volume, Vec3::new(10.0, 4.0, 8.0));
-    // Центр коробки (1, 0, 4) в кадре меша, меш — на (0, 0, 30) под «Torch».
+    // The box center (1, 0, 4) in the mesh frame, the mesh is at (0, 0, 30) under "Torch".
     assert!(
         close(p.emitter_frame.translation.into(), [1.0, 0.0, 34.0]),
         "{:?}",
         p.emitter_frame.translation
     );
     assert_eq!(p.losses, [Loss::MeshSurface]);
-    // Ось +Y: склонение 90° от +Z, угол вокруг Z — 90°.
+    // Axis +Y: declination 90° from +Z, angle around Z 90°.
     assert!((p.declination - PI / 2.0).abs() < 1e-5 && (p.planar_angle - PI / 2.0).abs() < 1e-5);
 
-    // Случайная скорость — во все стороны.
+    // Random velocity — in all directions.
     let mut random = s.clone();
     random.emitter.as_mut().unwrap().velocity_type = 1;
     let p = plan(&source, &random).unwrap();
@@ -472,8 +477,8 @@ fn full_plan() -> Plan {
     plan(&torch(), &s).unwrap()
 }
 
-/// Эмиттер Morrowind устроен как ванильный: узел-эмиттер и `NiBSParticleNode` с геометрией
-/// частиц, контроллером и цепочкой воздействий; файл читается обратно.
+/// The Morrowind emitter is built like the vanilla one: an emitter node and a `NiBSParticleNode`
+/// with the particle geometry, the controller and the modifier chain; the file reads back.
 #[test]
 fn the_built_emitter_is_laid_out_like_a_vanilla_one_and_reads_back() {
     use tes3::nif::{NiAlphaProperty, NiMaterialProperty, NiTexturingProperty};
@@ -497,7 +502,7 @@ fn the_built_emitter_is_laid_out_like_a_vanilla_one_and_reads_back() {
     let emitter = back
         .objects_of_type::<NiNode>()
         .find(|n| n.base.base.name == "Fire Emitter")
-        .expect("узел-эмиттер");
+        .expect("emitter node");
     assert_eq!(emitter.base.flags, EMITTER_NODE_FLAGS);
     assert!(emitter.children.is_empty());
     assert!(close(emitter.base.translation, [0.0, 4.0, 20.0]));
@@ -506,21 +511,28 @@ fn the_built_emitter_is_laid_out_like_a_vanilla_one_and_reads_back() {
     assert_eq!(nodes.len(), 1);
     let node = &nodes[0].base;
     assert_eq!(node.base.base.name, "Fire");
-    assert_eq!(node.base.flags, PARTICLE_NODE_FLAGS, "частицы в кадре узла");
+    assert_eq!(
+        node.base.flags, PARTICLE_NODE_FLAGS,
+        "particles in the node's frame"
+    );
     assert!(close(node.base.translation, [1.0, 2.0, 3.0]));
     let z = back
         .get_as::<_, NiZBufferProperty>(node.base.properties[0])
-        .expect("NiZBufferProperty на узле");
+        .expect("NiZBufferProperty on the node");
     assert_eq!(z.base.flags, Z_TEST_ONLY);
     let marks: Vec<&NiStringExtraData> = back.objects_of_type().collect();
-    assert_eq!(marks.len(), 2, "sgoKeep на узле частиц и на узле-эмиттере");
+    assert_eq!(
+        marks.len(),
+        2,
+        "sgoKeep on the particle node and on the emitter node"
+    );
     assert!(
         marks
             .iter()
             .all(|m| m.value == KEEP_NODE && m.base.bytes_remaining == 11)
     );
 
-    // Вращение есть — геометрия вращающихся частиц.
+    // There is rotation — the geometry of rotating particles.
     let particles: Vec<&NiRotatingParticles> = back.objects_of_type().collect();
     assert_eq!(particles.len(), 1);
     let geometry = &particles[0].base.base;
@@ -533,7 +545,7 @@ fn the_built_emitter_is_laid_out_like_a_vanilla_one_and_reads_back() {
     assert_eq!(d.base.sizes, vec![1.0; 20]);
     assert_eq!(d.rotations.len(), 20);
     assert_eq!(d.base.particle_radius, 8.0);
-    assert_eq!(d.base.base.vertex_colors.len(), 20, "есть цвет по возрасту");
+    assert_eq!(d.base.base.vertex_colors.len(), 20, "there is color by age");
     assert!(d.base.base.bound.radius > 20.0 * 1.5);
 
     let controllers: Vec<&NiParticleSystemController> = back.objects_of_type().collect();
@@ -564,10 +576,10 @@ fn the_built_emitter_is_laid_out_like_a_vanilla_one_and_reads_back() {
     assert!(
         back.get_as::<_, NiParticleSystemController>(geometry.base.base.controller)
             .is_some(),
-        "геометрия ссылается на свой контроллер"
+        "the geometry references its own controller"
     );
 
-    // Цепочка: тяготение → вращение → цвет → рост и затухание.
+    // Chain: gravity → rotation → color → grow and fade.
     let gravity = back
         .get_as::<_, NiGravity>(c.particle_modifier)
         .expect("NiGravity");
@@ -592,8 +604,8 @@ fn the_built_emitter_is_laid_out_like_a_vanilla_one_and_reads_back() {
     assert!(grow.base.next.is_null());
 }
 
-/// Без вращения и цвета — `NiAutoNormalParticles` без цветов вершин; частицы в мире — без
-/// флага «в кадре узла»; эффект «один раз» — зажатый контроллер.
+/// Without rotation and color — `NiAutoNormalParticles` without vertex colors; particles in the
+/// world — without the "in the node's frame" flag; a "once" effect — a clamped controller.
 #[test]
 fn a_plain_one_shot_world_space_system_takes_the_other_branches() {
     let mut s = system(POINT, Vec::new());

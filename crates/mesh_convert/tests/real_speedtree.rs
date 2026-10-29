@@ -1,5 +1,6 @@
-//! T2.4a: все `.spt` из архивов Oblivion и Shivering Isles разбираются в поток тегов до последнего
-//! байта (`docs/ru/formats/spt.md`). Печатает сводку: сколько файлов, какие теги сколько раз.
+//! T2.4a: all `.spt` files from the Oblivion and Shivering Isles archives parse into a tag stream
+//! to the last byte (`docs/en/formats/spt.md`). Prints a summary: how many files, which tags how
+//! many times.
 
 mod common;
 
@@ -12,7 +13,7 @@ use mesh_convert::speedtree::{parse, tokens};
 use tes4_read::BsaIndex;
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_spt_is_tokenized_to_the_last_byte() {
     let mut files = 0usize;
     let mut failures: Vec<String> = Vec::new();
@@ -64,7 +65,7 @@ fn every_spt_is_tokenized_to_the_last_byte() {
                     *collision_modes.entry(tree.leaf_collision).or_default() += 1;
                     tolerances.push(tree.leaf_tolerance);
                     splines += tree.levels.len() * 9;
-                    // T2.4b: таблица каждого сплайна — конечные числа на всей сетке.
+                    // T2.4b: the table of every spline has finite numbers over the whole grid.
                     for l in &tree.levels {
                         for s in [
                             &l.disturbance,
@@ -85,42 +86,42 @@ fn every_spt_is_tokenized_to_the_last_byte() {
                         }
                     }
                 }
-                Err(err) => failures.push(format!("{} (модель): {err}", e.path)),
+                Err(err) => failures.push(format!("{} (model): {err}", e.path)),
             }
         }
     }
-    println!("=== .spt: {files} файлов, ошибок {} ===", failures.len());
+    println!("=== .spt: {files} files, errors {} ===", failures.len());
     for f in failures.iter().take(20) {
         println!("  {f}");
     }
     sizes.sort_by(f32::total_cmp);
-    println!("  уровней (число → деревьев): {level_counts:?}");
-    println!("  карт листвы (число → деревьев): {leaf_maps:?}");
+    println!("  levels (count → trees): {level_counts:?}");
+    println!("  foliage maps (count → trees): {leaf_maps:?}");
     println!(
-        "  сплайнов {splines}, уровней со вздутиями {flares}, объектов коллизии {collision}, семя 0 у {seed_zero}"
+        "  splines {splines}, levels with bulges {flares}, collision objects {collision}, seed 0 in {seed_zero}"
     );
     if let (Some(lo), Some(hi)) = (sizes.first(), sizes.last()) {
         println!(
-            "  размер (2006): {lo} … {hi}, медиана {}",
+            "  size (2006): {lo} … {hi}, median {}",
             sizes[sizes.len() / 2]
         );
     }
     println!(
-        "  сплайнов меньше чем из 2 точек: {short_splines}, таблиц с NaN: {}",
+        "  splines with fewer than 2 points: {short_splines}, tables with NaN: {}",
         bad_tables.len()
     );
     tolerances.sort_by(f32::total_cmp);
     println!(
-        "  карт цветения {blossom}, непустых 10002 {composite}, режимы 3008 {collision_modes:?}, допуск 3007 {:?}…{:?}",
+        "  blossom maps {blossom}, non-empty 10002 {composite}, 3008 modes {collision_modes:?}, 3007 tolerance {:?}…{:?}",
         tolerances.first(),
         tolerances.last()
     );
-    println!("  тегов разных: {}", tags.len());
+    println!("  distinct tags: {}", tags.len());
     println!("  {tags:?}");
     assert!(bad_tables.is_empty(), "{bad_tables:?}");
     assert!(
         failures.is_empty(),
-        "{} файлов не разобраны",
+        "{} files did not parse",
         failures.len()
     );
 }

@@ -46,7 +46,7 @@ fn strings_are_escaped_and_a_missing_name_is_null() {
     let mut d = se_world();
     d.name = None;
     d.world = "A \"quoted\"\tworld\\".to_owned();
-    // Край листа Сиродиила приходится не на целый юнит.
+    // The edge of the Cyrodiil sheet falls on a fractional unit.
     d.sheet.top = 196_485.5;
     let json = d.to_json();
     assert!(
@@ -57,8 +57,9 @@ fn strings_are_escaped_and_a_missing_name_is_null() {
     assert!(json.contains(r#""top": 196485.5 }"#), "{json}");
 }
 
-/// Мод и описание должны говорить на одном языке: каждый ключ, который пишет конвертер, мод
-/// читает, а номер формата у них один. Проверка по тексту — Lua здесь исполнить нечем.
+/// The mod and the description must speak the same language: every key the converter writes, the
+/// mod reads, and their format number is the same. The check is textual — there is nothing to run
+/// Lua with here.
 #[test]
 fn the_script_reads_every_key_the_description_writes() {
     let json = se_world().to_json();
@@ -66,15 +67,18 @@ fn the_script_reads_every_key_the_description_writes() {
         "format", "world", "texture", "width", "height", "cells", "sheet", "minX", "minY", "maxX",
         "maxY", "left", "bottom", "right", "top",
     ] {
-        assert!(json.contains(&format!("\"{key}\":")), "описание без {key}");
+        assert!(
+            json.contains(&format!("\"{key}\":")),
+            "description without {key}"
+        );
         assert!(
             SCRIPT.contains(&format!(".{key}")) || SCRIPT.contains(&format!("\"{key}\"")),
-            "мод не читает {key}"
+            "the mod does not read {key}"
         );
     }
     assert!(SCRIPT.contains(&format!("world.format ~= {FORMAT}")));
-    // Папка описаний у мода — та же, куда их кладёт конвертер (у `json.loadfile` корень —
-    // `Data Files\MWSE`).
+    // The mod's description folder is the same one the converter puts them into (for
+    // `json.loadfile` the root is `Data Files\MWSE`).
     let dir = description_file("X")
         .trim_start_matches("MWSE/")
         .trim_end_matches("/X.json")
@@ -88,9 +92,9 @@ fn dds_size_comes_from_the_header() {
     let mut dds = b"DDS ".to_vec();
     dds.extend(124u32.to_le_bytes());
     dds.extend(0u32.to_le_bytes());
-    dds.extend(2048u32.to_le_bytes()); // высота
-    dds.extend(1024u32.to_le_bytes()); // ширина
+    dds.extend(2048u32.to_le_bytes()); // height
+    dds.extend(1024u32.to_le_bytes()); // width
     assert_eq!(dds_size(&dds), Some((1024, 2048)));
-    assert_eq!(dds_size(&dds[..18]), None, "обрезанный заголовок");
+    assert_eq!(dds_size(&dds[..18]), None, "truncated header");
     assert_eq!(dds_size(b"PNG \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"), None);
 }

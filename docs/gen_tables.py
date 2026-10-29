@@ -1,13 +1,13 @@
-"""Таблицы соответствия из data/*.tsv → markdown для сайта документации (ru и en).
+"""Mapping tables from data/*.tsv → markdown for the documentation site (ru and en).
 
-Страницы включают их через pymdownx.snippets (`--8<-- "effects.md"`), поэтому таблица на сайте
-всегда та же, что читает конвертер. Запуск — перед `zensical build`/`serve`:
+The pages include them through pymdownx.snippets (`--8<-- "effects.md"`), so the table on the site
+is always the same one the converter reads. Run it before `zensical build`/`serve`:
 
     python docs/gen_tables.py
 
-Пишет в docs/_generated/<язык>/ (каталог в .gitignore). Пояснения в data/*.tsv — русские;
-английские лежат в docs/notes_en.tsv. Нет перевода у русского пояснения — в английской таблице
-остаётся русское и печатается предупреждение.
+Writes to docs/_generated/<language>/ (the directory is in .gitignore). The notes in data/*.tsv are Russian;
+the English ones live in docs/notes_en.tsv. A Russian note without a translation stays Russian in the English
+table, and a warning is printed.
 """
 
 import re
@@ -19,7 +19,7 @@ DATA = ROOT / "data"
 OUT = ROOT / "docs" / "_generated"
 NOTES_EN = ROOT / "docs" / "notes_en.tsv"
 
-# файл → заголовки колонок; последняя колонка (пояснение) забирает всё, что осталось в строке.
+# file → column headers; the last column (the note) takes everything left in the line.
 TABLES = {
     "effects": {
         "ru": ["Код Oblivion", "Эффект Morrowind", "Параметр", "Пояснение"],
@@ -73,7 +73,7 @@ def cell(text: str) -> str:
 
 
 def rows(name: str, n: int) -> list[list[str]]:
-    """Строки таблицы: n − 1 колонок как есть и пояснение одной строкой."""
+    """Table rows: n − 1 columns as is and the note as one string."""
     out = []
     for raw in (DATA / f"{name}.tsv").read_text(encoding="utf-8").splitlines():
         if not raw.strip() or raw.startswith("#"):
@@ -103,7 +103,7 @@ def table(name: str, lang: str, notes: dict[tuple[str, str], str]) -> str:
         if lang == "en" and CYRILLIC.search(row[-1]):
             translated = notes.get((name, row[0].strip()))
             if translated is None:
-                print(f"нет перевода: {name}\t{row[0]}\t{row[-1]}", file=sys.stderr)
+                print(f"no translation: {name}\t{row[0]}\t{row[-1]}", file=sys.stderr)
             else:
                 row[-1] = translated
         lines.append("| " + " | ".join(cell(c) for c in row) + " |")

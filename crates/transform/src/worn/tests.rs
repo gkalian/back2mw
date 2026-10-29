@@ -36,8 +36,8 @@ fn clothing(slots: u16) -> Worn {
 
 const ID: &str = "ob_IronCuirass_0000abc";
 
-/// Опорные точки из пар материалов ложатся точно: железо, сталь, орочье, эбонит, даэдрика —
-/// для каждого слота, потому что доля слота у Oblivion одна на все материалы.
+/// Control points from material pairs land exactly: iron, steel, orcish, ebony, daedric — for every
+/// slot, because Oblivion's slot share is the same for all materials.
 #[test]
 fn rating_hits_the_measured_anchors_on_every_slot() {
     for (kind, factor) in [
@@ -58,13 +58,13 @@ fn rating_hits_the_measured_anchors_on_every_slot() {
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
-                reason = "тест"
+                reason = "a test"
             )]
             let x100 = x100 as u16;
             assert_eq!(armor_rating(x100, kind, true), mw, "{kind:?} {ob}");
         }
     }
-    // Стекло — лёгкое: 12.5 с поправкой даёт 50.
+    // Glass is light: 12.5 with the correction gives 50.
     assert_eq!(armor_rating(1250, ArmorKind::Cuirass, false), 50);
 }
 
@@ -73,13 +73,17 @@ fn a_cuirass_is_one_item_with_a_chest_part_per_gender() {
     let c = convert_worn(&armor(WORN_UPPER_BODY, true, 1000), ID, "ob\\g.nif", "").unwrap();
     assert_eq!(c.items.len(), 1);
     let Object::Armor(a) = &c.items[0] else {
-        panic!("броня");
+        panic!("armor");
     };
     assert_eq!(a.kind, ArmorKind::Cuirass);
     assert_eq!(a.rating, 10);
     assert_eq!(a.health, 284, "300 × 0.947");
     let slots: Vec<u8> = a.parts.iter().map(|p| p.slot).collect();
-    assert_eq!(slots, [3, 11, 12, 13, 14], "руки тела спрятаны под кирасой");
+    assert_eq!(
+        slots,
+        [3, 11, 12, 13, 14],
+        "the body's arms are hidden under the cuirass"
+    );
     assert!(
         a.parts[1..]
             .iter()
@@ -130,7 +134,7 @@ fn gauntlets_become_a_right_and_a_left_item_sharing_weight() {
             Some(Side::Left)
         ]
     );
-    // У половин разные пути, хотя модель источника одна.
+    // The halves have different paths, although the source model is one.
     assert_ne!(c.bodies[0].1.mesh, c.bodies[2].1.mesh);
     let nodes: Vec<&str> = c.bodies.iter().map(|(_, m)| m.node).collect();
     assert_eq!(
@@ -143,26 +147,27 @@ fn gauntlets_become_a_right_and_a_left_item_sharing_weight() {
 fn boots_are_one_item_with_two_foot_parts() {
     let c = convert_worn(&armor(WORN_FOOT, true, 400), ID, "ob\\g.nif", "").unwrap();
     let Object::Armor(a) = &c.items[0] else {
-        panic!("броня");
+        panic!("armor");
     };
     assert_eq!(a.kind, ArmorKind::Boots);
     let slots: Vec<u8> = a.parts.iter().map(|p| p.slot).collect();
     assert_eq!(
         slots,
         [15, 16, 17, 18],
-        "лодыжки пустые, как у ванильных сапог"
+        "the ankles are empty, as on vanilla boots"
     );
     assert!(c.bodies.iter().all(|(b, _)| b.part == 9));
 }
 
-/// Кираса Black Knife: верх, низ и ступни Oblivion — одна кираса. Закрытых слотов у неё 14, а
-/// движок держит 7 частей: остаются грудь, пах, бёдра и колени; плечи уже парой не влезают.
+/// The Black Knife cuirass: Oblivion's upper body, lower body and feet — one cuirass. It has 14
+/// covered slots, while the engine holds 7 parts: chest, groin, upper legs and knees remain; the
+/// upper arms no longer fit as a pair.
 #[test]
 fn a_full_suit_hides_the_most_visible_body_parts_within_seven() {
     let slots = WORN_UPPER_BODY | WORN_LOWER_BODY | WORN_FOOT;
     let c = convert_worn(&armor(slots, false, 1000), ID, "g", "").unwrap();
     let Object::Armor(a) = &c.items[0] else {
-        panic!("броня");
+        panic!("armor");
     };
     let slots: Vec<u8> = a.parts.iter().map(|p| p.slot).collect();
     assert_eq!(slots, [3, 4, 19, 20, 21, 22]);
@@ -173,8 +178,8 @@ fn a_full_suit_hides_the_most_visible_body_parts_within_seven() {
     );
 }
 
-/// Вещь с 9…19 частями роняет движок при загрузке плагина (`SEWorld`, 2026-09-30): ни один
-/// набор слотов Oblivion не даёт ни одной вещи больше 7 частей.
+/// An item with 9…19 parts crashes the engine on plugin load (`SEWorld`, 2026-09-30): no set of
+/// Oblivion slots gives any item more than 7 parts.
 #[test]
 fn no_slot_combination_gives_an_item_more_than_seven_parts() {
     for slots in 0..=u16::MAX {
@@ -191,26 +196,26 @@ fn no_slot_combination_gives_an_item_more_than_seven_parts() {
                     Object::Clothing(a) => a.parts.len(),
                     other => panic!("{other:?}"),
                 };
-                assert!(n <= MAX_PARTS, "слоты {slots:#06x}: {n} частей");
+                assert!(n <= MAX_PARTS, "slots {slots:#06x}: {n} parts");
             }
         }
     }
 }
 
-/// Контрольный опыт: без предела та же кираса закрыла бы 14 слотов, так что тест выше не
-/// проходит сам собой.
+/// Control: without the limit the same cuirass would cover 14 slots, so the test above does not
+/// pass by itself.
 #[test]
 fn a_full_suit_covers_more_slots_than_the_engine_holds() {
     let slots = WORN_UPPER_BODY | WORN_LOWER_BODY | WORN_FOOT;
     assert_eq!(covered_slots(slots).len(), 14);
 }
 
-/// Мантия (верх и низ): отбор по пределу не разрывает пары правый/левый.
+/// A robe (upper and lower body): selecting by the limit does not break right/left pairs.
 #[test]
 fn a_robe_keeps_whole_pairs() {
     let c = convert_worn(&clothing(WORN_UPPER_BODY | WORN_LOWER_BODY), ID, "g", "").unwrap();
     let Object::Clothing(a) = &c.items[0] else {
-        panic!("одежда");
+        panic!("clothing");
     };
     let slots: Vec<u8> = a.parts.iter().map(|p| p.slot).collect();
     assert!(slots.len() <= MAX_PARTS, "{slots:?}");
@@ -218,7 +223,7 @@ fn a_robe_keeps_whole_pairs() {
         assert_eq!(
             slots.contains(&r),
             slots.contains(&l),
-            "пара {r}/{l}: {slots:?}"
+            "pair {r}/{l}: {slots:?}"
         );
     }
 }
@@ -258,7 +263,7 @@ fn clothing_maps_by_slots_and_rings_have_no_parts() {
     assert_eq!(
         kind(WORN_UPPER_BODY | WORN_LOWER_BODY),
         (ClothingKind::Robe, 6),
-        "грудь, пах, бёдра, колени: плечи парой в предел 7 не влезают"
+        "chest, groin, upper legs, knees: the upper arms as a pair do not fit into the limit of 7"
     );
     assert_eq!(kind(WORN_UPPER_BODY), (ClothingKind::Shirt, 5));
     assert_eq!(kind(WORN_LOWER_BODY), (ClothingKind::Pants, 7));
@@ -267,8 +272,9 @@ fn clothing_maps_by_slots_and_rings_have_no_parts() {
     assert_eq!(kind(WORN_AMULET), (ClothingKind::Amulet, 0));
 }
 
-/// Капюшон (одежда в слоте волос или головы) — шлем с рейтингом 0: у одежды Morrowind нет слота
-/// головы. Вес и цена — как у одежды, часть тела — одёжная меш-часть, но на броне.
+/// A hood (clothing in the hair or head slot) becomes a helmet with rating 0: Morrowind clothing
+/// has no head slot. Weight and value — as for clothing, the body part is the clothing mesh part,
+/// but on armor.
 #[test]
 fn a_hood_becomes_a_zero_rating_helmet() {
     for (slots, slot) in [(WORN_HAIR, 1), (WORN_HEAD | WORN_HAIR, 0)] {
@@ -299,11 +305,14 @@ fn a_ring_that_also_covers_the_body_stays_a_ring_without_body_parts() {
     )
     .unwrap();
     let Object::Clothing(ring) = &c.items[0] else {
-        panic!("одежда");
+        panic!("clothing");
     };
     assert_eq!(ring.kind, ClothingKind::Ring);
     assert!(ring.parts.is_empty());
-    assert!(c.bodies.is_empty(), "меш кольца не становится частью тела");
+    assert!(
+        c.bodies.is_empty(),
+        "a ring mesh does not become a body part"
+    );
     let amulet = convert_worn(&clothing(WORN_UPPER_BODY | WORN_AMULET), ID, "g", "").unwrap();
     assert!(matches!(
         &amulet.items[0],
@@ -320,7 +329,7 @@ fn bones_map_to_the_slots_of_their_body_parts() {
     assert_eq!(bone_slots("Bip01 L Calf"), [20, 18]);
     assert_eq!(bone_slots("Bip01 R Thigh"), [21]);
     assert_eq!(bone_slots("Bip01 Pelvis"), [4]);
-    assert_eq!(bone_slots("bip01 r foot"), [15], "регистр неважен");
+    assert_eq!(bone_slots("bip01 r foot"), [15], "case does not matter");
     assert!(bone_slots("Bip01").is_empty());
     assert!(bone_slots("Bip01 Lumbar").is_empty());
 }
@@ -351,8 +360,11 @@ fn a_missing_female_body_leaves_the_female_part_empty() {
     w.female_body = None;
     let c = convert_worn(&w, ID, "g", "").unwrap();
     let Object::Armor(a) = &c.items[0] else {
-        panic!("броня");
+        panic!("armor");
     };
-    assert!(a.parts[0].female.is_empty(), "движок возьмёт мужскую");
+    assert!(
+        a.parts[0].female.is_empty(),
+        "the engine will take the male one"
+    );
     assert_eq!(c.bodies.len(), 1);
 }

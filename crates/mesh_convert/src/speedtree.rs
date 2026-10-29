@@ -1,9 +1,9 @@
-//! Деревья SpeedTree (`.spt`, SpeedTreeRT 4.x) → геометрия (T2.4).
+//! SpeedTree trees (`.spt`, SpeedTreeRT 4.x) → geometry (T2.4).
 //!
-//! Файл `.spt` — не меш, а параметры генератора: поток «тег `u32` + значение». Тип значения
-//! определяется тегом (`docs/ru/formats/spt.md`); размеров нет, поэтому неизвестный тег — ошибка:
-//! пропустить его нельзя, и единственная проверка таблицы типов — поток обязан кончиться ровно
-//! на последнем байте файла.
+//! An `.spt` file is not a mesh but generator parameters: a stream of "`u32` tag + value". The
+//! value type is determined by the tag (`docs/en/formats/spt.md`); there are no sizes, so an
+//! unknown tag is an error: it cannot be skipped, and the only check of the type table is that the
+//! stream must end exactly at the last byte of the file.
 
 pub mod branch;
 pub mod cards;
@@ -19,45 +19,45 @@ use std::fmt;
 
 pub use model::{BezierSpline, Collision, LeafMap, Level, Tree, parse};
 
-/// Сигнатура в начале файла (значение тега 1000).
+/// The signature at the start of the file (the value of tag 1000).
 pub const MAGIC: &str = "__IdvSpt_02_";
 
-/// Значение тега.
+/// A tag value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    /// Маркер начала или конца блока, без данных.
+    /// A block start or end marker, without data.
     Marker,
     Byte(u8),
     Int(i32),
     Float(f32),
-    /// Несколько `f32` подряд (векторы, цвета материалов, объекты коллизии).
+    /// Several `f32` in a row (vectors, material colors, collision objects).
     Floats(Vec<f32>),
-    /// Строка с длиной `u32`: имена текстур и сплайны Безье в текстовом виде.
+    /// A string with a `u32` length: texture names and Bézier splines in text form.
     Str(String),
-    /// `u32` N и N четвёрок пар UV (`10002`…`10004`: прямоугольники в сводной текстуре).
+    /// A `u32` N and N quadruples of UV pairs (`10002`…`10004`: rectangles in a texture atlas).
     Quads(Vec<[f32; 8]>),
 }
 
-/// Тег и его значение, в порядке файла.
+/// A tag and its value, in file order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub tag: u32,
     pub value: Value,
-    /// Смещение тега в файле — для сообщений об ошибках.
+    /// The tag's offset in the file — for error messages.
     pub at: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SptError {
-    /// Данные кончились посреди значения.
+    /// The data ended in the middle of a value.
     Truncated { at: usize, need: usize },
-    /// Тег, тип которого не известен.
+    /// A tag whose type is unknown.
     UnknownTag { at: usize, tag: u32 },
-    /// Файл не начинается с тега 1000 и сигнатуры [`MAGIC`].
+    /// The file does not start with tag 1000 and the [`MAGIC`] signature.
     NotSpt,
-    /// Тег с другим типом значения, чем ждёт модель, или не на своём месте.
+    /// A tag with a different value type than the model expects, or out of place.
     Structure { at: usize, what: String },
-    /// Текст сплайна Безье не разбирается.
+    /// The Bézier spline text does not parse.
     BadSpline { at: usize, text: String },
 }
 
@@ -97,7 +97,7 @@ impl fmt::Display for SptError {
 
 impl std::error::Error for SptError {}
 
-/// Как читать значение тега.
+/// How to read a tag's value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Marker,
@@ -109,7 +109,7 @@ enum Kind {
     Quads,
 }
 
-/// Тип значения по тегу. Таблица — по `spttools/FORMAT`, уточнена на всех `.spt` Oblivion.
+/// Value type by tag. The table follows `spttools/FORMAT`, refined on all Oblivion `.spt` files.
 fn kind(tag: u32) -> Option<Kind> {
     use Kind::{Byte, Float, Floats, Int, Marker, Quads, Str};
     Some(match tag {
@@ -257,7 +257,7 @@ impl<'a> Reader<'a> {
 
     fn u32(&mut self) -> Result<u32, SptError> {
         Ok(u32::from_le_bytes(
-            self.bytes(4)?.try_into().expect("ровно 4 байта"),
+            self.bytes(4)?.try_into().expect("exactly 4 bytes"),
         ))
     }
 
@@ -283,7 +283,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// Разбирает файл в поток тегов. Первый тег — 1000 с сигнатурой [`MAGIC`].
+/// Parses a file into a tag stream. The first tag is 1000 with the [`MAGIC`] signature.
 pub fn tokens(data: &[u8]) -> Result<Vec<Token>, SptError> {
     let mut r = Reader { data, pos: 0 };
     let mut out = Vec::new();
@@ -294,7 +294,7 @@ pub fn tokens(data: &[u8]) -> Result<Vec<Token>, SptError> {
             Kind::Marker => Value::Marker,
             Kind::Byte => Value::Byte(r.bytes(1)?[0]),
             Kind::Int => Value::Int(i32::from_le_bytes(
-                r.bytes(4)?.try_into().expect("ровно 4 байта"),
+                r.bytes(4)?.try_into().expect("exactly 4 bytes"),
             )),
             Kind::Float => Value::Float(r.f32()?),
             Kind::Floats(n) => Value::Floats(r.floats(n)?),
@@ -307,7 +307,7 @@ pub fn tokens(data: &[u8]) -> Result<Vec<Token>, SptError> {
                 let mut quads = Vec::with_capacity(n);
                 for _ in 0..n {
                     let f = r.floats(8)?;
-                    quads.push(f.try_into().expect("ровно 8 чисел"));
+                    quads.push(f.try_into().expect("exactly 8 numbers"));
                 }
                 Value::Quads(quads)
             }

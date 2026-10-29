@@ -1,17 +1,18 @@
-//! Проверочный плагин T10.8 (⛔ движок): играет ли ванильный Morrowind `SNAM` у реплик типов Topic
-//! и Greeting — у ванили они не озвучены, звук есть только у голоса (Voice). Собирает
-//! `back2mw_t108_check.esp` и три mp3 в `BACK2MW_CHECK_OUT` (как `Data Files`: плагин в корне, звуки в
-//! `Sound\Vo\ob\`). Ванильному торговцу Сейда Нина `arrille` (высокий эльф) даются три реплики с
-//! голосом Oblivion высокого эльфа:
+//! Check plugin for T10.8 (⛔ engine): whether vanilla Morrowind plays `SNAM` on responses of the
+//! Topic and Greeting types — in vanilla they are not voiced, only Voice has sound. Builds
+//! `back2mw_t108_check.esp` and three mp3 files in `BACK2MW_CHECK_OUT` (laid out like `Data Files`:
+//! the plugin in the root, the sounds in `Sound\Vo\ob\`). The vanilla Seyda Neen trader `arrille`
+//! (a High Elf) gets three responses with an Oblivion High Elf voice:
 //!
-//! * `Hello` (Voice) — контроль: голос движок играет всегда, значит mp3 Oblivion он читает;
-//! * `Greeting 0` (Greeting) — одиночный файл;
-//! * `background` (Topic) — склейка трёх ответов одной реплики Oblivion (`mesh_convert::audio::mp3`).
+//! * `Hello` (Voice) — the control: the engine always plays a voice, so it reads Oblivion mp3;
+//! * `Greeting 0` (Greeting) — a single file;
+//! * `background` (Topic) — a join of three responses of one Oblivion dialogue line
+//!   (`mesh_convert::audio::mp3`).
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
 //! BACK2MW_OBLIVION_DATA='C:\path\to\Oblivion\Data' \
-//! BACK2MW_CHECK_OUT='<каталог>' \
+//! BACK2MW_CHECK_OUT='<directory>' \
 //!   cargo test --release -p back2mw --test real_voice_check -- --ignored --nocapture
 //! ```
 
@@ -31,7 +32,7 @@ const SPEAKER: &str = "arrille";
 const VOICE_DIR: &str = r"sound\voice\oblivion.esm\high elf\m\";
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_OBLIVION_DATA, BACK2MW_CHECK_OUT"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_OBLIVION_DATA, BACK2MW_CHECK_OUT"]
 fn voice_check_plugin() {
     let oblivion = PathBuf::from(std::env::var_os("BACK2MW_OBLIVION_DATA").unwrap());
     let out = PathBuf::from(std::env::var_os("BACK2MW_CHECK_OUT").unwrap());
@@ -39,7 +40,7 @@ fn voice_check_plugin() {
     let mut reader = BufReader::new(File::open(&path).unwrap());
     let index = BsaIndex::read_from(&mut reader).unwrap();
 
-    // Реплики высокого эльфа: `<квест>_<тема>_<FormID>` → номера ответов и файлы.
+    // High Elf lines: `<quest>_<topic>_<FormID>` → response numbers and files.
     let mut lines: BTreeMap<String, BTreeMap<u32, String>> = BTreeMap::new();
     for e in index.entries() {
         let Some(name) = e.path.strip_prefix(VOICE_DIR) else {
@@ -73,7 +74,7 @@ fn voice_check_plugin() {
         .find(|(k, v)| k.contains("_hello_") || (k.contains("_idle_") && v.len() == 1))
         .map(|(_, v)| v.values().next().unwrap().clone())
         .unwrap_or_else(|| greeting.clone());
-    println!("голос: {hello}\nприветствие: {greeting}\nтема: {topic_line} ×3");
+    println!("voice: {hello}\ngreeting: {greeting}\ntopic: {topic_line} ×3");
 
     let sound_dir = out.join("Sound").join("Vo").join("ob");
     std::fs::create_dir_all(&sound_dir).unwrap();
@@ -109,7 +110,7 @@ fn voice_check_plugin() {
         vanilla
             .iter()
             .find(|t| t.name.eq_ignore_ascii_case(name))
-            .unwrap_or_else(|| panic!("{name}: нет у мастера"))
+            .unwrap_or_else(|| panic!("{name}: not in the master"))
     };
     let mut builder = PluginBuilder::new("back2mw", "T10.8: voice check (back2mw)")
         .with_master("Morrowind.esm", master.len() as u64);
@@ -157,5 +158,5 @@ fn voice_check_plugin() {
             back2mw::validate::check_plugin(PathBuf::from(esmtool).as_path(), &plugin).unwrap();
         assert!(check.ok, "esmtool: {check:?}");
     }
-    println!("готово: {}", out.display());
+    println!("done: {}", out.display());
 }

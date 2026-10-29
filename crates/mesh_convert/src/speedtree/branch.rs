@@ -1,45 +1,45 @@
-//! Ствол и ветки SpeedTree (T2.4c, T2.4d) — порт построителя `Oblivion.exe` по дизассемблеру
-//! (`tests/disasm_speedtree.rs`, 2026-09-27; смысл и адреса — `docs/ru/formats/spt.md`, «Ствол и
-//! ветки»).
+//! SpeedTree trunk and branches (T2.4c, T2.4d) — a port of the `Oblivion.exe` builder from
+//! disassembly (`tests/disasm_speedtree.rs`, 2026-09-27; meaning and addresses in
+//! `docs/en/formats/spt.md`, "Trunk and branches").
 //!
-//! Порядок чисел из генератора совпадает с движком: каждая ветка с детьми-ветками засевает
-//! генератор счётчиком (`+3` на ребёнка), поэтому ветки воспроизводимы по отдельности.
-//! Вздутия берут числа из CRT `rand()`, засеянного тегом `16013`.
+//! The order of numbers from the generator matches the engine: each branch with child branches
+//! seeds the generator with a counter (`+3` per child), so branches are reproducible individually.
+//! Bulges take numbers from the CRT `rand()` seeded with tag `16013`.
 //!
-//! Арифметика — в `f32` по одной операции в порядке движка (x87 с точностью 24 бита, см.
-//! `speedtree::rng`); `f64` — только у sin/cos/acos/pow из CRT.
+//! Arithmetic is in `f32`, one operation at a time in the engine's order (x87 with 24-bit
+//! precision, see `speedtree::rng`); `f64` only for sin/cos/acos/pow from the CRT.
 //!
-//! Не переносится: ветер (веса вершин), LOD, касательные и бинормали для нормалмапов.
+//! Not carried over: wind (vertex weights), LOD, tangents and binormals for normal maps.
 
 use super::model::{Level, Tree};
 use super::rng::Rng;
 use super::spline::Spline;
 
-/// Ось ветки в её собственной системе — `X` (`0xb2b718`).
+/// The branch axis in its own system is `X` (`0xb2b718`).
 const AXIS: [f32; 3] = [1.0, 0.0, 0.0];
-/// Направление гравитации (`0xb2b724`).
+/// Gravity direction (`0xb2b724`).
 const GRAVITY: [f32; 3] = [0.0, 0.0, -1.0];
-/// Радианы → градусы (`0xa8ba48`: `f32` 57.29578, расширенный до `f64`).
+/// Radians → degrees (`0xa8ba48`: `f32` 57.29578 widened to `f64`).
 const RAD_TO_DEG: f32 = 57.295_78;
-/// `2π` как `f32` (`0xb2b714`).
+/// `2π` as `f32` (`0xb2b714`).
 const TWO_PI: f32 = 6.283_185_5;
-/// `π` (`0xa3d5b8`: `f32`, расширенный до `f64`).
+/// `π` (`0xa3d5b8`: `f32` widened to `f64`).
 const PI: f32 = std::f32::consts::PI;
-/// Знак гравитационного изгиба `K` (`0xa3d360`).
+/// Sign of the gravity bend `K` (`0xa3d360`).
 const GRAVITY_SIGN: f32 = -1.0;
-/// `1/90` (`0xa8c698`: `f32`, расширенный до `f64`).
+/// `1/90` (`0xa8c698`: `f32` widened to `f64`).
 const INV_90: f32 = 1.0 / 90.0;
-/// Окно первого ребёнка: `0.85` и `0.95` (`0xa563d8`, `0xa77838`).
+/// The first child's window: `0.85` and `0.95` (`0xa563d8`, `0xa77838`).
 const FIRST_CHILD: (f32, f32) = (0.85, 0.95);
-/// Наклон листа от оси ветки, градусы (`0xa5793c`, поворот `0x78eec0` вокруг Y).
+/// Leaf tilt from the branch axis, degrees (`0xa5793c`, rotation `0x78eec0` around Y).
 const LEAF_TILT: f32 = 60.0;
-/// Множитель размера `fTreeSizeConversion` (настройка игры, по умолчанию 10).
+/// The `fTreeSizeConversion` size multiplier (a game setting, 10 by default).
 pub const SIZE_CONVERSION: f32 = 10.0;
 
-/// Результат функции CRT (вычислена в `f64`) — в `f32`.
+/// The result of a CRT function (computed in `f64`) — into `f32`.
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "движок хранит f32 после вызова"
+    reason = "the engine stores f32 after the call"
 )]
 fn crt(v: f64) -> f32 {
     v as f32
@@ -50,13 +50,13 @@ type Vec3 = [f32; 3];
 
 const IDENTITY: Mat = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
-/// `sin`, `cos` угла в градусах: сначала радианы в `f32`, как у движка.
+/// `sin`, `cos` of an angle in degrees: first radians in `f32`, as the engine does.
 fn sin_cos(degrees: f32) -> (f32, f32) {
     let rad = f64::from(degrees / RAD_TO_DEG);
     (crt(rad.sin()), crt(rad.cos()))
 }
 
-/// Поворот ось-угол (`0x78f160`, `0x78f050`), порядок операций — как у движка.
+/// Axis-angle rotation (`0x78f160`, `0x78f050`), the order of operations as in the engine.
 fn axis_angle(degrees: f32, [x, y, z]: Vec3) -> Mat {
     let (s, c) = sin_cos(degrees);
     let t = 1.0 - c;
@@ -81,19 +81,19 @@ fn axis_angle(degrees: f32, [x, y, z]: Vec3) -> Mat {
     ]
 }
 
-/// Поворот двумя углами (`0x78ef60`).
+/// Rotation by two angles (`0x78ef60`).
 fn two_angles(a: f32, b: f32) -> Mat {
     let (sa, ca) = sin_cos(a);
     let (sb, cb) = sin_cos(b);
     [ca * cb, ca * sb, -sa, -sb, cb, 0.0, sa * cb, sa * sb, ca]
 }
 
-/// Сумма трёх произведений в порядке движка: `(p1 + p0) + p2`.
+/// A sum of three products in the engine's order: `(p1 + p0) + p2`.
 fn sum3(p0: f32, p1: f32, p2: f32) -> f32 {
     (p1 + p0) + p2
 }
 
-/// `A · B` по строкам (`0x78edd0`).
+/// `A · B` by rows (`0x78edd0`).
 fn mul(a: &Mat, b: &Mat) -> Mat {
     let mut out = [0.0f32; 9];
     for row in 0..3 {
@@ -108,7 +108,7 @@ fn mul(a: &Mat, b: &Mat) -> Mat {
     out
 }
 
-/// Строки матрицы на вектор: `M · v`.
+/// Matrix rows times a vector: `M · v`.
 fn mat_vec(m: &Mat, v: Vec3) -> Vec3 {
     [0, 1, 2].map(|row| {
         sum3(
@@ -119,7 +119,7 @@ fn mat_vec(m: &Mat, v: Vec3) -> Vec3 {
     })
 }
 
-/// Вектор-строка на матрицу: `v · M`.
+/// A row vector times a matrix: `v · M`.
 fn vec_mat(v: Vec3, m: &Mat) -> Vec3 {
     [0, 1, 2].map(|col| sum3(v[0] * m[col], v[1] * m[3 + col], v[2] * m[6 + col]))
 }
@@ -140,7 +140,7 @@ fn sub(a: Vec3, b: Vec3) -> Vec3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-/// Нормировка: `(x² + y²) + z²`, корень, `1/длина` и умножение.
+/// Normalization: `(x² + y²) + z²`, the root, `1/length` and the multiplication.
 fn normalized(v: Vec3) -> Vec3 {
     let length = ((v[0] * v[0] + v[1] * v[1]) + v[2] * v[2]).sqrt();
     let inv = 1.0 / length;
@@ -158,18 +158,21 @@ impl CrtRand {
 
     pub fn rand(&mut self) -> i32 {
         self.0 = self.0.wrapping_mul(214_013).wrapping_add(2_531_011);
-        i32::try_from((self.0 >> 16) & 0x7FFF).expect("15 бит")
+        i32::try_from((self.0 >> 16) & 0x7FFF).expect("15 bits")
     }
 
     /// `rand() / 32767` (`0xa3d5a8`).
     fn unit(&mut self) -> f32 {
-        #[expect(clippy::cast_precision_loss, reason = "15 бит точно представимы")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "15 bits are exactly representable"
+        )]
         let v = self.rand() as f32;
         v / 32_767.0
     }
 }
 
-/// Сплайны уровня, готовые к вычислению.
+/// Level splines ready for evaluation.
 struct LevelSplines {
     disturbance: Spline,
     gravity: Spline,
@@ -198,7 +201,7 @@ impl LevelSplines {
     }
 }
 
-/// Вздутие: угол, ширина влияния (рад), показатели, дальности (`0x791e80`).
+/// A bulge: angle, influence width (rad), exponents, ranges (`0x791e80`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Flare {
     angle: f32,
@@ -210,7 +213,8 @@ struct Flare {
 }
 
 impl Flare {
-    /// Вклад в радиус вершины на угле `theta` и позиции `t` вдоль ветки (`0x78f2c0`).
+    /// Contribution to the vertex radius at angle `theta` and position `t` along the branch
+    /// (`0x78f2c0`).
     fn weight(&self, theta: f32, t: f32) -> f32 {
         let (mut theta, mut angle) = (theta, self.angle);
         if (theta - angle).abs() > PI {
@@ -241,20 +245,21 @@ fn lerp_rand(lo: f32, hi: f32, u: f32) -> f32 {
     lo + u * (hi - lo)
 }
 
-/// Вздутия ветки уровня `level` (`0x791e80`): одно число `rand()` на старте и четыре на каждое.
+/// Bulges of a level-`level` branch (`0x791e80`): one `rand()` number at the start and four for
+/// each.
 fn make_flares(level: &Level, crt_rand: &mut CrtRand) -> Vec<Flare> {
     let p = &level.flares;
     if p.count == 0 {
         return Vec::new();
     }
     let start = lerp_rand(0.0, TWO_PI, crt_rand.unit());
-    #[expect(clippy::cast_precision_loss, reason = "вздутий единицы")]
+    #[expect(clippy::cast_precision_loss, reason = "a handful of bulges")]
     let step = TWO_PI / p.count as f32;
     let mut out = Vec::new();
     for k in 0..p.count.max(0) {
         let low = step * p.balance;
         let offset = lerp_rand(low, step, crt_rand.unit());
-        #[expect(clippy::cast_precision_loss, reason = "вздутий единицы")]
+        #[expect(clippy::cast_precision_loss, reason = "a handful of bulges")]
         let mut angle = offset * k as f32 + start;
         if angle > TWO_PI {
             angle -= TWO_PI;
@@ -286,33 +291,34 @@ fn make_flares(level: &Level, crt_rand: &mut CrtRand) -> Vec<Flare> {
     out
 }
 
-/// Кольцо сечения ветки (запись `0x48` байт у движка).
+/// A branch cross-section ring (a `0x48`-byte record in the engine).
 #[derive(Debug, Clone, Copy)]
 struct Ring {
     dir: Vec3,
     pos: Vec3,
     radius: f32,
     m: Mat,
-    /// Накопленная длина от основания ветки.
+    /// Accumulated length from the base of the branch.
     arclen: f32,
 }
 
-/// Геометрия коры: вершины, нормали, UV (V уже перевёрнута, как у движка) и треугольные полосы.
+/// Bark geometry: vertices, normals, UV (V already flipped, as in the engine) and triangle strips.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BranchMesh {
     pub vertices: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub uvs: Vec<[f32; 2]>,
-    /// Одна полоса на ветку, с вырожденными треугольниками между сегментами.
+    /// One strip per branch, with degenerate triangles between segments.
     pub strips: Vec<Vec<u16>>,
-    /// Число веток (ствол тоже ветка).
+    /// Number of branches (the trunk is a branch too).
     pub branches: usize,
-    /// Листья в порядке создания движком.
+    /// Leaves in the order the engine creates them.
     pub leaves: Vec<Leaf>,
 }
 
-/// Лист (`0x7920a0`, `0x7919d0`): центр карточки, запись карты (`карта · 2 + зеркальность`),
-/// нормаль для освещения и число `RandomRange(0, 10000)`, которым движок выбирает угол качания.
+/// A leaf (`0x7920a0`, `0x7919d0`): the card center, the map entry (`map · 2 + mirroring`), the
+/// normal for lighting and the `RandomRange(0, 10000)` number the engine uses to choose the sway
+/// angle.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Leaf {
     pub pos: [f32; 3],
@@ -321,7 +327,7 @@ pub struct Leaf {
     pub spin: f32,
 }
 
-/// Состояние одного прогона генератора.
+/// State of one generator run.
 struct Builder<'a> {
     tree: &'a Tree,
     levels: &'a [LevelSplines],
@@ -329,32 +335,32 @@ struct Builder<'a> {
     crt: CrtRand,
     size: f32,
     mesh: BranchMesh,
-    /// Записи карт цветения и обычных (`0x791870`: карта `i` даёт `2i` и `2i + 1`).
+    /// Entries of the blossom and ordinary maps (`0x791870`: map `i` gives `2i` and `2i + 1`).
     blossom_entries: Vec<usize>,
     normal_entries: Vec<usize>,
-    /// Размеры карточек по картам: `4005 · size · 10` (x, y).
+    /// Card sizes by map: `4005 · size · 10` (x, y).
     card_sizes: Vec<[f32; 2]>,
-    /// Центры листьев для проверки столкновений: всего дерева и текущей ветки.
+    /// Leaf centers for the collision check: of the whole tree and of the current branch.
     tree_leaves: Vec<Vec3>,
     branch_leaves: Vec<Vec3>,
-    /// Позиции колец 0 ветки и её предков (опора нормали листа).
+    /// Positions of ring 0 of the branch and its ancestors (the support for the leaf normal).
     chain: Vec<Vec3>,
 }
 
-/// Параметры вызова построителя (аргументы `0x7925b0`).
+/// Builder call parameters (the arguments of `0x7925b0`).
 struct Call {
     counter: i32,
     level: usize,
     pos: Vec3,
-    /// Позиция на родителе, нормированная по окну рождения (`xnorm`).
+    /// Position on the parent, normalized by the birth window (`xnorm`).
     x_parent: f32,
     m: Mat,
     parent_axis: Vec3,
-    /// Радиус родителя в точке крепления (у ствола −1).
+    /// The parent's radius at the attachment point (−1 for the trunk).
     parent_radius: f32,
 }
 
-/// Параметры текстуры и вздутия ветки для сечений.
+/// The branch's texture and bulge parameters for the cross-sections.
 struct Surface<'a> {
     cross_segments: usize,
     u_repeat: f32,
@@ -367,7 +373,7 @@ struct Surface<'a> {
 impl Builder<'_> {
     #[expect(
         clippy::too_many_lines,
-        reason = "один к одному с 0x7925b0: разбиение исказило бы порядок чисел"
+        reason = "one-to-one with 0x7925b0: splitting it would distort the order of numbers"
     )]
     fn branch(&mut self, call: &Call) {
         let (tree, levels) = (self.tree, self.levels);
@@ -396,7 +402,7 @@ impl Builder<'_> {
         } else {
             (length / self.size) * level.v_tile
         };
-        // Повторы U — по радиусу ДО ограничения ниже (0x7927b6 раньше 0x7927ee).
+        // U repeats use the radius BEFORE the limit below (0x7927b6 before 0x7927ee).
         let u_repeat = if level.u_absolute {
             level.u_tile
         } else {
@@ -426,7 +432,7 @@ impl Builder<'_> {
             flares: &flares,
         };
 
-        // Кольцо 0.
+        // Ring 0.
         let d1 = sp.disturbance.noise(0.0, &mut self.rng);
         let d2 = sp.disturbance.noise(0.0, &mut self.rng);
         let mut m = call.m;
@@ -448,10 +454,10 @@ impl Builder<'_> {
         let mut rings = vec![first];
 
         let mut travelled = 0.0f32;
-        #[expect(clippy::cast_precision_loss, reason = "сегментов единицы")]
+        #[expect(clippy::cast_precision_loss, reason = "a handful of segments")]
         let last = (rings_count - 1) as f32;
         for i in 1..rings_count {
-            #[expect(clippy::cast_precision_loss, reason = "сегментов единицы")]
+            #[expect(clippy::cast_precision_loss, reason = "a handful of segments")]
             let t = i as f32 / last;
             let t = crt(f64::from(t).powf(f64::from(level.flares.segment_pack)));
             let step = t * length - travelled;
@@ -478,14 +484,17 @@ impl Builder<'_> {
         }
         self.recompute_normals(base, rings_count, cross_segments);
 
-        // Дети: ветки следующего уровня или, если он последний, листья.
+        // Children: branches of the next level or, if it is the last one, leaves.
         let next = call.level + 1;
         if next >= tree.levels.len() {
             return;
         }
         let terminal = next >= tree.levels.len() - 1;
         self.chain.push(call.pos);
-        #[expect(clippy::cast_possible_truncation, reason = "trunc, как _ftol у движка")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "trunc, like the engine's _ftol"
+        )]
         let count = ((level.child_frequency / self.size) * length) as i32;
         let mut counter = call.counter;
         for c in 0..count.max(0) {
@@ -495,7 +504,7 @@ impl Builder<'_> {
                 let (j, frac) = locate(&rings, child_x * length);
                 let (a, b) = (rings[j], rings[j + 1]);
                 let pos = [0, 1, 2].map(|k| (b.pos[k] - a.pos[k]) * frac + a.pos[k]);
-                #[expect(clippy::float_cmp, reason = "как у движка: fucompp на равенство")]
+                #[expect(clippy::float_cmp, reason = "as in the engine: fucompp for equality")]
                 let x_norm = if first == last {
                     1.0
                 } else {
@@ -520,7 +529,7 @@ impl Builder<'_> {
             let _ = self.rng.range(0.0, 100.0);
             let (a, b) = (rings[j], rings[j + 1]);
             let pos = [0, 1, 2].map(|k| (b.pos[k] - a.pos[k]) * frac + a.pos[k]);
-            #[expect(clippy::float_cmp, reason = "как у движка: fucompp на равенство")]
+            #[expect(clippy::float_cmp, reason = "as in the engine: fucompp for equality")]
             let x_norm = if first == last {
                 1.0
             } else {
@@ -538,18 +547,18 @@ impl Builder<'_> {
             });
         }
         self.chain.pop();
-        // Список листьев ветки (режим столкновений 1) очищается после её листьев (0x793976).
+        // The branch's leaf list (collision mode 1) is cleared after its leaves (0x793976).
         if terminal {
             self.branch_leaves.clear();
         }
     }
 
-    /// Лист на ветке (`0x7920a0`): точка на ветке `pos`, её матрица и направление.
+    /// A leaf on a branch (`0x7920a0`): point `pos` on the branch, its matrix and direction.
     fn leaf(&mut self, level: usize, branch_x: f32, pos: Vec3, x_norm: f32, m: &Mat, dir: Vec3) {
         let leaf_level = &self.tree.levels[level];
         let levels = self.levels;
         let distance = levels[level].length.evaluate(x_norm, &mut self.rng) * self.size;
-        #[expect(clippy::cast_precision_loss, reason = "сегментов единицы")]
+        #[expect(clippy::cast_precision_loss, reason = "a handful of segments")]
         let reach = distance / leaf_level.length_segments as f32;
         let reach = if f64::from(reach) > 0.01 { reach } else { 0.01 };
         let azimuth = self.rng.range(-180.0, 180.0);
@@ -562,7 +571,7 @@ impl Builder<'_> {
         let stem = normalized(sub(leaf_pos, pos));
         let depth = usize::try_from(self.tree.blossom_depth).unwrap_or(0);
         let anchor = self.chain.len().checked_sub(1 + depth).map_or_else(
-            || *self.chain.last().expect("ветка в цепочке"),
+            || *self.chain.last().expect("the branch is in the chain"),
             |i| self.chain[i],
         );
         let mut normal = normalized(sub(leaf_pos, anchor));
@@ -572,7 +581,7 @@ impl Builder<'_> {
         self.record(leaf_pos, x_norm, branch_x, normal);
     }
 
-    /// Запись листа (`0x7919d0`): выбор карты, столкновения, числа качания и цвета.
+    /// Leaf record (`0x7919d0`): choice of map, collisions, sway and color numbers.
     fn record(&mut self, pos: Vec3, x_norm: f32, branch_x: f32, normal: Vec3) {
         let tree = self.tree;
         if tree.leaf_maps.is_empty() {
@@ -620,7 +629,8 @@ impl Builder<'_> {
         });
     }
 
-    /// Правила цветения (`0x78f600`): позиция дальше порога `3000` и `RandomRange(0, 1) ≤ 3002`.
+    /// Blossom rules (`0x78f600`): position beyond the threshold `3000` and
+    /// `RandomRange(0, 1) ≤ 3002`.
     fn blossoms(&mut self, x_norm: f32, branch_x: f32) -> bool {
         let tree = self.tree;
         let v = if tree.blossom_depth != 0 {
@@ -635,7 +645,7 @@ impl Builder<'_> {
         tree.blossom_weight >= r
     }
 
-    /// Случайная запись списка: `trunc(RandomRange(0, c)) mod n`, при одной записи — она.
+    /// A random list entry: `trunc(RandomRange(0, c)) mod n`; with one entry, that entry.
     fn pick(&mut self, list: &[usize], c: f32) -> usize {
         if list.len() <= 1 {
             return list[0];
@@ -643,13 +653,13 @@ impl Builder<'_> {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "fistp с отсечением: число в 0…c"
+            reason = "fistp with truncation: a number in 0…c"
         )]
         let r = self.rng.range(0.0, c) as u64;
-        list[usize::try_from(r % list.len() as u64).expect("индекс меньше длины")]
+        list[usize::try_from(r % list.len() as u64).expect("the index is less than the length")]
     }
 
-    /// Изгиб гравитацией (0x792b3c…0x792cf3 и 0x793057…0x793235): `M := M · R(угол, dir × G)`.
+    /// Gravity bend (0x792b3c…0x792cf3 and 0x793057…0x793235): `M := M · R(angle, dir × G)`.
     fn bend(&mut self, m: &Mat, dir: Vec3, sp: &LevelSplines, t: f32, gravity: f32) -> Mat {
         let cosine = dot(dir, GRAVITY).clamp(-1.0, 1.0);
         let angle = crt(f64::from(cosine).acos()) * RAD_TO_DEG;
@@ -661,7 +671,7 @@ impl Builder<'_> {
         mul(m, &axis_angle(bend, axis))
     }
 
-    /// Индексы полосы ветки (пролог 0x7925b0).
+    /// Branch strip indices (prologue of 0x7925b0).
     fn push_strip(&mut self, base: usize, rings: usize, cross_segments: usize) {
         let stride = cross_segments + 1;
         let mut strip = Vec::with_capacity((rings - 1) * (cross_segments + 2) * 2);
@@ -678,9 +688,9 @@ impl Builder<'_> {
         self.mesh.strips.push(strip);
     }
 
-    /// Вершины кольца (`0x78feb0`).
+    /// Ring vertices (`0x78feb0`).
     fn emit_ring(&mut self, ring: &Ring, t: f32, s: &Surface<'_>) {
-        #[expect(clippy::cast_precision_loss, reason = "сегментов десятки")]
+        #[expect(clippy::cast_precision_loss, reason = "tens of segments")]
         let step = 1.0 / s.cross_segments as f32;
         let v = -(s.v_repeat * (t + s.v_offset));
         let mut around = 0.0f32;
@@ -698,7 +708,7 @@ impl Builder<'_> {
             }
             let factor = factor + 1.0;
             let pos = [0, 1, 2].map(|k| {
-                #[expect(clippy::float_cmp, reason = "как у движка: fucom с 1.0")]
+                #[expect(clippy::float_cmp, reason = "as in the engine: fucom with 1.0")]
                 let offset = if factor == 1.0 {
                     ring.radius * normal[k]
                 } else {
@@ -713,7 +723,7 @@ impl Builder<'_> {
         }
     }
 
-    /// Сглаженные нормали по соседям (`0x78f7a0`): `(вдоль кольца) × (вдоль ветки)`.
+    /// Smoothed normals from neighbors (`0x78f7a0`): `(along the ring) × (along the branch)`.
     fn recompute_normals(&mut self, base: usize, rings: usize, cross_segments: usize) {
         let stride = cross_segments + 1;
         let at = |ring: usize, k: usize| base + ring * stride + k;
@@ -730,8 +740,8 @@ impl Builder<'_> {
                 let next_i = (i + 1).min(rings - 1);
                 let along = normalized(sub(v[at(next_i, k)], v[at(prev_i, k)]));
                 let n = normalized(cross(around, along));
-                // На вырожденном кольце (радиус 0, совпавшие вершины) движок делит на ноль и
-                // получает NaN; здесь остаётся нормаль кольца из сечения.
+                // On a degenerate ring (radius 0, coinciding vertices) the engine divides by zero
+                // and gets NaN; here the ring normal from the cross-section remains.
                 if n.iter().all(|c| c.is_finite()) && dot(n, n) > 0.5 {
                     self.mesh.normals[at(i, k)] = n;
                 }
@@ -740,8 +750,9 @@ impl Builder<'_> {
     }
 }
 
-/// Точка на ветке по длине дуги (`0x78f720`): отрезок `j` и доля. Если расстояние не меньше
-/// длины последнего кольца, движок оставляет `j = 0` и экстраполирует — так же и здесь.
+/// A point on the branch by arc length (`0x78f720`): segment `j` and the fraction. If the distance
+/// is not less than the length of the last ring, the engine leaves `j = 0` and extrapolates — so do
+/// we.
 fn locate(rings: &[Ring], distance: f32) -> (usize, f32) {
     let j = (1..rings.len())
         .find(|&k| rings[k].arclen > distance)
@@ -750,7 +761,8 @@ fn locate(rings: &[Ring], distance: f32) -> (usize, f32) {
     (j, (distance - a) / (b - a))
 }
 
-/// Строит кору дерева. `seed` — семя экземпляра (`SNAM` записи `TREE`; `None` — семя `.spt`).
+/// Builds the tree's bark. `seed` is the instance seed (the `TREE` record's `SNAM`; `None` means
+/// the `.spt` seed).
 pub fn generate(tree: &Tree, seed: Option<i32>) -> BranchMesh {
     let seed = match seed {
         Some(s) if s != 0 && s != 1 => s,
@@ -772,7 +784,7 @@ pub fn generate(tree: &Tree, seed: Option<i32>) -> BranchMesh {
         };
         list.extend([2 * i, 2 * i + 1]);
     }
-    // Размер карточки — по размеру `.spt` без разброса (`0x7a47c9`), при размере > 0.
+    // Card size from the `.spt` size without variation (`0x7a47c9`), when the size is > 0.
     let base_size = tree.size * SIZE_CONVERSION;
     let card_sizes = tree
         .leaf_maps

@@ -1,29 +1,30 @@
-//! Блоки, которые ридер читает только ради длины и отбрасывает (T2.3): анимация
-//! (`NiControllerManager` и всё, что к нему прилагается, контроллеры, интерполяторы, ключи),
-//! havok-связи между телами, фантомы-триггеры, свойства без аналога в конвертере.
+//! Blocks the reader reads only for their length and drops (T2.3): animation (`NiControllerManager`
+//! and everything that comes with it, controllers, interpolators, keys), havok constraints between
+//! bodies, phantom triggers, properties without an equivalent in the converter.
 //!
-//! Размеров блоков в 20.0.0.x нет, поэтому пропустить блок можно, только разобрав его раскладку.
-//! Раскладки — по `nif.xml` (niftools) для версии 20.0.0.4/20.0.0.5 и `BSVER` 11 (Oblivion):
-//! строки — `SizedString`, у связей — ветка `#NI_BS_LTE_16#`. Проверка та же, что у всего
-//! ридера: курсор после последнего блока обязан стоять ровно в конце файла
-//! (`docs/ru/formats/nif-oblivion.md`, «Анимация и связи»).
+//! There are no block sizes in 20.0.0.x, so a block can be skipped only by parsing its layout. The
+//! layouts follow `nif.xml` (niftools) for version 20.0.0.4/20.0.0.5 and `BSVER` 11 (Oblivion):
+//! strings are `SizedString`, constraints take the `#NI_BS_LTE_16#` branch. The check is the same
+//! as for the whole reader: after the last block the cursor must stand exactly at the end of the
+//! file (`docs/en/formats/nif-oblivion.md`, "Animation and constraints").
 //!
-//! Что теряется: анимация (меш остаётся в позе файла — дверь Morrowind всё равно поворачивает
-//! код движка), шарниры и пружины havok (тела остаются как есть), триггеры-фантомы (они не
-//! твёрдые), `NiZBufferProperty`/`NiFogProperty`/`NiDitherProperty`, источники света в самом меше
-//! (`NiDirectionalLight` и др.: у Morrowind свет задаёт запись `LIGH`, а не NIF).
+//! What is lost: animation (the mesh stays in the file's pose — Morrowind's door is rotated by
+//! engine code anyway), havok hinges and springs (the bodies stay as they are), phantom triggers
+//! (they are not solid), `NiZBufferProperty`/`NiFogProperty`/`NiDitherProperty`, light sources in
+//! the mesh itself (`NiDirectionalLight` and others: in Morrowind light is set by a `LIGH` record,
+//! not by the NIF).
 
 use super::common::{read_av_object, read_object_net, read_ref, read_ref_list};
 use super::cursor::Cursor;
 use super::error::{Error, Result};
 
-/// Отброшенный блок: только его тип, для отчёта.
+/// A dropped block: only its type, for the report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ignored {
     pub type_name: &'static str,
 }
 
-/// Типы, которые читает [`read_ignored`].
+/// Types read by [`read_ignored`].
 pub const IGNORED_TYPES: &[&str] = &[
     "NiControllerManager",
     "NiControllerSequence",
@@ -84,7 +85,7 @@ pub const IGNORED_TYPES: &[&str] = &[
     "NiSpotLight",
 ];
 
-/// Читает блок из [`IGNORED_TYPES`]; `None` — тип не из этого списка.
+/// Reads a block from [`IGNORED_TYPES`]; `None` means the type is not on this list.
 pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Ignored>> {
     let Some(&known) = IGNORED_TYPES.iter().find(|t| **t == type_name) else {
         return Ok(None);
@@ -93,12 +94,12 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         "NiControllerManager" => {
             time_controller(cur)?;
             cur.u8()?; // cumulative
-            read_ref_list(cur)?; // последовательности
-            read_ref(cur)?; // палитра объектов
+            read_ref_list(cur)?; // sequences
+            read_ref(cur)?; // object palette
         }
         "NiControllerSequence" => controller_sequence(cur)?,
         "NiDefaultAVObjectPalette" => {
-            read_ref(cur)?; // сцена
+            read_ref(cur)?; // scene
             let count = cur.len_u32()?;
             cur.check_array(count, 8)?;
             for _ in 0..count {
@@ -108,10 +109,10 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         }
         "NiStringPalette" => {
             cur.sized_string()?;
-            cur.u32()?; // длина — дублирует длину строки
+            cur.u32()?; // length — duplicates the string length
         }
         "NiTextKeyExtraData" => {
-            cur.sized_string()?; // имя (NiExtraData, с 10.0.1.0)
+            cur.sized_string()?; // name (NiExtraData, since 10.0.1.0)
             let count = cur.len_u32()?;
             cur.check_array(count, 8)?;
             for _ in 0..count {
@@ -127,14 +128,14 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
                 read_ref(cur)?;
             }
         }
-        // Уровни детализации скелета (T11.5b): на каждом уровне — список костей, которые ещё
-        // считаются. Стоит на корне накопления почти каждого скелета существа; у Morrowind
-        // аналога нет. Группы форм из `nif.xml` в файлах Bethesda не пишутся.
+        // Skeleton levels of detail (T11.5b): each level has a list of bones that still count. It
+        // sits on the accumulation root of almost every creature skeleton; Morrowind has no
+        // equivalent. The shape groups from `nif.xml` are not written in Bethesda files.
         "NiBSBoneLODController" => {
             time_controller(cur)?;
-            cur.u32()?; // текущий уровень
+            cur.u32()?; // current level
             let levels = cur.len_u32()?;
-            cur.u32()?; // число групп узлов — дублирует число уровней
+            cur.u32()?; // number of node groups — duplicates the number of levels
             cur.check_array(levels, 4)?;
             for _ in 0..levels {
                 read_ref_list(cur)?;
@@ -150,37 +151,37 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         "NiMaterialColorController" => {
             single_interp_controller(cur)?;
             if cur.version() >= 0x0A01_0000 {
-                cur.u16()?; // какой цвет материала
+                cur.u16()?; // which material color
             }
             old_data(cur)?;
         }
         "NiTextureTransformController" => {
             single_interp_controller(cur)?;
             cur.u8()?; // shader map
-            cur.u32()?; // слот текстуры
-            cur.u32()?; // операция
+            cur.u32()?; // texture slot
+            cur.u32()?; // operation
             old_data(cur)?;
         }
         "NiFlipController" => {
             single_interp_controller(cur)?;
-            cur.u32()?; // слот текстуры
+            cur.u32()?; // texture slot
             if cur.version() <= 0x0A01_0067 {
-                cur.floats::<2>()?; // накопленное время, шаг (до 10.1.0.103)
+                cur.floats::<2>()?; // accumulated time, step (up to 10.1.0.103)
             }
-            read_ref_list(cur)?; // источники
+            read_ref_list(cur)?; // sources
         }
         "NiGeomMorpherController" => {
             interp_controller(cur)?;
             if cur.version() >= 0x0A00_0102 {
-                cur.u16()?; // флаги
+                cur.u16()?; // flags
             }
             read_ref(cur)?; // NiMorphData
             cur.u8()?; // always update
             if cur.version() >= 0x0A01_006A {
-                read_ref_list(cur)?; // интерполяторы (10.1.0.106 … 20.0.0.5)
+                read_ref_list(cur)?; // interpolators (10.1.0.106 … 20.0.0.5)
             }
             if cur.version() >= 0x0A02_0000 && cur.bsver() > 9 {
-                let unknown = cur.len_u32()?; // BSVER > 9, до 20.0.0.5
+                let unknown = cur.len_u32()?; // BSVER > 9, up to 20.0.0.5
                 cur.check_array(unknown, 4)?;
                 cur.bytes(unknown * 4)?;
             }
@@ -188,9 +189,9 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         "NiMorphData" => {
             let morphs = cur.len_u32()?;
             let vertices = cur.len_u32()?;
-            cur.u8()?; // относительные цели
+            cur.u8()?; // relative targets
             for _ in 0..morphs {
-                cur.sized_string()?; // имя кадра
+                cur.sized_string()?; // frame name
                 if cur.bsver() < 10 {
                     cur.f32()?; // Legacy Weight: 10.1.0.104 … 20.1.0.2, BSVER < 10
                 }
@@ -206,7 +207,7 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
             cur.f32()?;
             read_ref(cur)?;
         }
-        // Значение — байт: 0, 1 или 2 («не задано»), поэтому не `Cursor::bool`.
+        // The value is a byte: 0, 1 or 2 ("not set"), so not `Cursor::bool`.
         "NiBoolInterpolator" | "NiBoolTimelineInterpolator" => {
             cur.u8()?;
             read_ref(cur)?;
@@ -216,18 +217,18 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
             read_ref(cur)?;
         }
         "NiPathInterpolator" => {
-            cur.u16()?; // флаги
-            cur.i32()?; // направление крена
-            cur.f32()?; // предельный угол крена
-            cur.f32()?; // сглаживание
-            cur.u16()?; // ось
-            read_ref(cur)?; // путь
-            read_ref(cur)?; // проценты
+            cur.u16()?; // flags
+            cur.i32()?; // bank direction
+            cur.f32()?; // max bank angle
+            cur.f32()?; // smoothing
+            cur.u16()?; // axis
+            read_ref(cur)?; // path
+            read_ref(cur)?; // percents
         }
         "NiBlendTransformInterpolator" => {
             blend_interpolator(cur)?;
             if cur.version() <= 0x0A01_006D {
-                quat_transform(cur)?; // значение (до 10.1.0.109)
+                quat_transform(cur)?; // value (up to 10.1.0.109)
             }
         }
         "NiBlendFloatInterpolator" => {
@@ -242,25 +243,25 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
             blend_interpolator(cur)?;
             cur.floats::<3>()?;
         }
-        // B-сплайны (T11.5b): ими записано большинство клипов существ. Значения читает второй
-        // проход `clip`; здесь — только длина. Раскладка — `nif.xml`, проверена концом файла на
-        // всех 1 213 `.kf` папок существ.
+        // B-splines (T11.5b): most creature clips are written with them. The values are read by the
+        // second `clip` pass; here only the length. The layout is from `nif.xml`, checked by the
+        // end of file on all 1,213 `.kf` files of creature folders.
         "NiBSplineTransformInterpolator" => {
             spline_interpolator(cur)?;
-            cur.floats::<8>()?; // поза: сдвиг, кватернион, масштаб
-            cur.bytes(12)?; // смещения опорных точек сдвига, поворота, масштаба
+            cur.floats::<8>()?; // pose: translation, quaternion, scale
+            cur.bytes(12)?; // control point offsets of translation, rotation, scale
         }
         "NiBSplineCompTransformInterpolator" => {
             spline_interpolator(cur)?;
             cur.floats::<8>()?;
             cur.bytes(12)?;
-            cur.floats::<6>()?; // смещение и множитель сжатия: сдвиг, поворот, масштаб
+            cur.floats::<6>()?; // compression offset and multiplier: translation, rotation, scale
         }
         "NiBSplineCompFloatInterpolator" => {
             spline_interpolator(cur)?;
-            cur.f32()?; // значение
-            cur.u32()?; // смещение опорных точек
-            cur.floats::<2>()?; // смещение и множитель сжатия
+            cur.f32()?; // value
+            cur.u32()?; // control point offset
+            cur.floats::<2>()?; // compression offset and multiplier
         }
         "NiBSplineData" => {
             let floats = cur.len_u32()?;
@@ -271,21 +272,21 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
             cur.bytes(shorts * 2)?;
         }
         "NiBSplineBasisData" => {
-            cur.u32()?; // число опорных точек
+            cur.u32()?; // number of control points
         }
         "NiTransformData" | "NiKeyframeData" => keyframe_data(cur)?,
         "NiFloatData" => key_group(cur, 4)?,
         "NiBoolData" => key_group(cur, 1)?,
         "NiPosData" => key_group(cur, 12)?,
         "NiColorData" => key_group(cur, 16)?,
-        // bhkConstraint: bhkConstraintCInfo (16) + параметры своего типа, ветка BSVER ≤ 16.
+        // bhkConstraint: bhkConstraintCInfo (16) + the parameters of its type, branch BSVER ≤ 16.
         "bhkLimitedHingeConstraint" => constraint(cur, 7 * 16 + 3 * 4)?,
         "bhkRagdollConstraint" => constraint(cur, 6 * 16 + 6 * 4)?,
         "bhkPrismaticConstraint" => constraint(cur, 8 * 16 + 3 * 4)?,
         "bhkHingeConstraint" => constraint(cur, 5 * 16)?,
         "bhkStiffSpringConstraint" => constraint(cur, 2 * 16 + 4)?,
         "bhkSimpleShapePhantom" => {
-            // bhkWorldObject: форма, (`u32` до 10.0.1.2), фильтр, bhkWorldObjectCInfo (20).
+            // bhkWorldObject: shape, (`u32` up to 10.0.1.2), filter, bhkWorldObjectCInfo (20).
             read_ref(cur)?;
             if cur.version() <= 0x0A00_0102 {
                 cur.u32()?;
@@ -296,17 +297,17 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         }
         "bhkSPCollisionObject" => {
             read_ref(cur)?; // target
-            cur.u16()?; // флаги
-            read_ref(cur)?; // тело — фантом
+            cur.u16()?; // flags
+            read_ref(cur)?; // the body is a phantom
         }
-        // Обёртка над другой связью: общая часть, тип, общая часть ещё раз, параметры
-        // обёрнутой связи, `Tau` и `Damping` (до 20.0.0.5).
+        // A wrapper over another constraint: the common part, the type, the common part again, the
+        // wrapped constraint's parameters, `Tau` and `Damping` (up to 20.0.0.5).
         "bhkMalleableConstraint" => {
             cur.bytes(16)?;
             let at = cur.pos();
             let kind = cur.u32()?;
             let own = match kind {
-                0 => 2 * 16, // шар в гнезде
+                0 => 2 * 16, // ball and socket
                 1 => 5 * 16,
                 2 => 7 * 16 + 3 * 4,
                 6 => 8 * 16 + 3 * 4,
@@ -326,8 +327,8 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
             constraint(cur, own)?;
             cur.floats::<2>()?;
         }
-        // Как `bhkCollisionObject` (цель, флаги, тело) и два коэффициента; ещё два `f32` —
-        // только при `BSVER` < 9. Встречается в скелетах, в мешах мира — один раз.
+        // Like `bhkCollisionObject` (target, flags, body) and two coefficients; two more `f32` only
+        // with `BSVER` < 9. Occurs in skeletons, once in world meshes.
         "bhkBlendCollisionObject" => {
             read_ref(cur)?;
             cur.u16()?;
@@ -339,9 +340,9 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         }
         "bhkBlendController" => {
             time_controller(cur)?;
-            cur.u32()?; // ключей — всегда 0
+            cur.u32()?; // keys — always 0
         }
-        // Дополнительные данные с именем и значением: движку Morrowind не нужны.
+        // Extra data with a name and a value: the Morrowind engine does not need it.
         "NiBooleanExtraData" => {
             cur.sized_string()?;
             cur.u8()?;
@@ -356,8 +357,8 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         }
         "NiZBufferProperty" => {
             read_object_net(cur)?;
-            cur.u16()?; // флаги
-            cur.u32()?; // функция сравнения (4.1.0.12 … 20.0.0.5)
+            cur.u16()?; // flags
+            cur.u32()?; // comparison function (4.1.0.12 … 20.0.0.5)
         }
         "NiFogProperty" => {
             read_object_net(cur)?;
@@ -372,20 +373,20 @@ pub fn read_ignored(cur: &mut Cursor<'_>, type_name: &str) -> Result<Option<Igno
         "NiDirectionalLight" | "NiAmbientLight" => light(cur)?,
         "NiPointLight" => {
             light(cur)?;
-            cur.floats::<3>()?; // затухание
+            cur.floats::<3>()?; // attenuation
         }
         "NiSpotLight" => {
             light(cur)?;
             cur.floats::<3>()?;
-            cur.floats::<2>()?; // внешний угол, экспонента (внутреннего до 20.2.0.5 нет)
+            cur.floats::<2>()?; // outer angle, exponent (no inner one before 20.2.0.5)
         }
-        other => unreachable!("{other} есть в IGNORED_TYPES, но не разобран"),
+        other => unreachable!("{other} is in IGNORED_TYPES but not parsed"),
     }
     Ok(Some(Ignored { type_name: known }))
 }
 
-/// `NiLight`: `NiAVObject`, `NiDynamicEffect` (флаг включения с 10.1.0.106, узлы с 10.1.0.0),
-/// яркость и три цвета.
+/// `NiLight`: `NiAVObject`, `NiDynamicEffect` (the switch flag since 10.1.0.106, nodes since
+/// 10.1.0.0), dimmer and three colors.
 fn light(cur: &mut Cursor<'_>) -> Result<()> {
     read_av_object(cur)?;
     if cur.version() >= 0x0A01_006A {
@@ -399,7 +400,7 @@ fn light(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiTimeController`: следующий контроллер, флаги, частота, фаза, начало, конец, цель.
+/// `NiTimeController`: next controller, flags, frequency, phase, start, stop, target.
 pub(super) fn time_controller(cur: &mut Cursor<'_>) -> Result<()> {
     read_ref(cur)?;
     cur.u16()?;
@@ -408,8 +409,8 @@ pub(super) fn time_controller(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiInterpController`: `NiTimeController` и `Manager Controlled` (только 10.1.0.104 …
-/// 10.1.0.108 — у Oblivion это 10.1.0.106).
+/// `NiInterpController`: `NiTimeController` and `Manager Controlled` (only 10.1.0.104 … 10.1.0.108
+/// — Oblivion has 10.1.0.106).
 fn interp_controller(cur: &mut Cursor<'_>) -> Result<()> {
     time_controller(cur)?;
     if (0x0A01_0068..=0x0A01_006C).contains(&cur.version()) {
@@ -418,7 +419,7 @@ fn interp_controller(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiSingleInterpController`: `NiInterpController` + интерполятор (с 10.1.0.104).
+/// `NiSingleInterpController`: `NiInterpController` + interpolator (since 10.1.0.104).
 pub(super) fn single_interp_controller(cur: &mut Cursor<'_>) -> Result<()> {
     interp_controller(cur)?;
     if cur.version() >= 0x0A01_0068 {
@@ -427,7 +428,7 @@ pub(super) fn single_interp_controller(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// Ссылка на данные у контроллеров до интерполяторов (до 10.1.0.103).
+/// Data reference in controllers before interpolators (up to 10.1.0.103).
 fn old_data(cur: &mut Cursor<'_>) -> Result<()> {
     if cur.version() <= 0x0A01_0067 {
         read_ref(cur)?;
@@ -435,7 +436,8 @@ fn old_data(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiQuatTransform`: сдвиг, кватернион, масштаб и до 10.1.0.109 три флага `TRS Valid`.
+/// `NiQuatTransform`: translation, quaternion, scale and, up to 10.1.0.109, three `TRS Valid`
+/// flags.
 fn quat_transform(cur: &mut Cursor<'_>) -> Result<()> {
     cur.floats::<8>()?;
     if cur.version() <= 0x0A01_006D {
@@ -444,7 +446,7 @@ fn quat_transform(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiBSplineInterpolator`: начало, конец, данные сплайна и его базис.
+/// `NiBSplineInterpolator`: start, stop, spline data and its basis.
 fn spline_interpolator(cur: &mut Cursor<'_>) -> Result<()> {
     cur.floats::<2>()?;
     read_ref(cur)?;
@@ -452,22 +454,22 @@ fn spline_interpolator(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiControllerSequence`: `NiSequence` и поля с 10.1.0.106. У 10.2.0.0 и 20.0.0.x блок
-/// управления ссылается на палитру строк, у 10.1.0.106 несёт пять строк сам.
+/// `NiControllerSequence`: `NiSequence` and the fields since 10.1.0.106. In 10.2.0.0 and 20.0.0.x a
+/// controlled block references a string palette, in 10.1.0.106 it carries five strings itself.
 fn controller_sequence(cur: &mut Cursor<'_>) -> Result<()> {
     let version = cur.version();
-    cur.sized_string()?; // имя
+    cur.sized_string()?; // name
     if version <= 0x0A01_0067 {
-        cur.sized_string()?; // корень накопления (до 10.1.0.103)
-        read_ref(cur)?; // текстовые ключи
+        cur.sized_string()?; // accumulation root (up to 10.1.0.103)
+        read_ref(cur)?; // text keys
     }
     let blocks = cur.len_u32()?;
     if version >= 0x0A01_006A {
         cur.u32()?; // array grow by
     }
     if version >= 0x0A02_0000 {
-        // ControlledBlock: интерполятор, контроллер, приоритет (BSSTREAM), палитра строк и
-        // пять смещений в ней — 33 байта.
+        // ControlledBlock: interpolator, controller, priority (BSSTREAM), the string palette and
+        // five offsets into it — 33 bytes.
         cur.check_array(blocks, 33)?;
         cur.bytes(blocks * 33)?;
     } else {
@@ -479,29 +481,29 @@ fn controller_sequence(cur: &mut Cursor<'_>) -> Result<()> {
     if version < 0x0A01_006A {
         return Ok(());
     }
-    cur.f32()?; // вес
-    read_ref(cur)?; // текстовые ключи
-    cur.u32()?; // тип цикла
-    cur.f32()?; // частота
+    cur.f32()?; // weight
+    read_ref(cur)?; // text keys
+    cur.u32()?; // cycle type
+    cur.f32()?; // frequency
     if version <= 0x0A04_0001 {
-        cur.f32()?; // фаза (до 10.4.0.1): есть у 10.2.0.0
+        cur.f32()?; // phase (up to 10.4.0.1): present in 10.2.0.0
     }
-    cur.f32()?; // начало
-    cur.f32()?; // конец
+    cur.f32()?; // start
+    cur.f32()?; // stop
     if version == 0x0A01_006A {
-        cur.bool()?; // проигрывать назад (только 10.1.0.106)
+        cur.bool()?; // play backwards (only 10.1.0.106)
     }
-    read_ref(cur)?; // менеджер
-    cur.sized_string()?; // корень накопления
+    read_ref(cur)?; // manager
+    cur.sized_string()?; // accumulation root
     if version >= 0x0A01_0071 {
-        read_ref(cur)?; // палитра строк (10.1.0.113 … 20.1.0.0)
+        read_ref(cur)?; // string palette (10.1.0.113 … 20.1.0.0)
     }
     Ok(())
 }
 
-/// `ControlledBlock` до 10.2.0.0: имя цели (до 10.1.0.103) или интерполятор (с 10.1.0.106),
-/// контроллер, смешивающий интерполятор и его индекс (10.1.0.104 … 10.1.0.110), приоритет
-/// (с 10.1.0.106, BSSTREAM) и пять строк (10.1.0.104 … 10.1.0.113).
+/// `ControlledBlock` before 10.2.0.0: the target name (up to 10.1.0.103) or an interpolator (since
+/// 10.1.0.106), the controller, the blend interpolator and its index (10.1.0.104 … 10.1.0.110), the
+/// priority (since 10.1.0.106, BSSTREAM) and five strings (10.1.0.104 … 10.1.0.113).
 fn controlled_block_10_1(cur: &mut Cursor<'_>) -> Result<()> {
     let version = cur.version();
     if version <= 0x0A01_0067 {
@@ -526,67 +528,68 @@ fn controlled_block_10_1(cur: &mut Cursor<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `NiBlendInterpolator`: с 10.1.0.112 — флаги и байтовые поля; до 10.1.0.109 — другое
-/// устройство, с `u16`/`i32` вместо байтов.
+/// `NiBlendInterpolator`: since 10.1.0.112 — flags and byte fields; up to 10.1.0.109 — a different
+/// structure, with `u16`/`i32` instead of bytes.
 fn blend_interpolator(cur: &mut Cursor<'_>) -> Result<()> {
     if cur.version() <= 0x0A01_006D {
         let size = usize::from(cur.u16()?);
         cur.u16()?; // array grow by
-        // InterpBlendItem: ссылка, вес, нормированный вес, приоритет (`i32`), ease — 20 байт.
+        // InterpBlendItem: reference, weight, normalized weight, priority (`i32`), ease — 20 bytes.
         cur.check_array(size, 20)?;
         cur.bytes(size * 20)?;
         cur.bool()?; // manager controlled
-        cur.f32()?; // порог веса
-        cur.bool()?; // только наибольший вес
-        cur.u16()?; // число
-        cur.u16()?; // одиночный индекс
+        cur.f32()?; // weight threshold
+        cur.bool()?; // only the highest weight
+        cur.u16()?; // count
+        cur.u16()?; // single index
         if cur.version() >= 0x0A01_006C {
-            read_ref(cur)?; // одиночный интерполятор (с 10.1.0.108)
-            cur.f32()?; // одиночное время
+            read_ref(cur)?; // single interpolator (since 10.1.0.108)
+            cur.f32()?; // single time
         }
-        cur.i32()?; // приоритет
-        cur.i32()?; // следующий приоритет
+        cur.i32()?; // priority
+        cur.i32()?; // next priority
         return Ok(());
     }
     let flags = cur.u8()?;
     let size = usize::from(cur.u8()?);
-    cur.f32()?; // порог веса
+    cur.f32()?; // weight threshold
     if flags & 1 == 0 {
-        cur.bytes(4)?; // число, одиночный индекс, два приоритета
-        cur.floats::<4>()?; // время и суммы весов
-        // InterpBlendItem: ссылка, вес, нормированный вес, приоритет (байт), ease — 17 байт.
+        cur.bytes(4)?; // count, single index, two priorities
+        cur.floats::<4>()?; // time and weight sums
+        // InterpBlendItem: reference, weight, normalized weight, priority (a byte), ease — 17
+        // bytes.
         cur.check_array(size, 17)?;
         cur.bytes(size * 17)?;
     }
     Ok(())
 }
 
-/// `NiKeyframeData`/`NiTransformData`: вращения, сдвиги, масштабы.
+/// `NiKeyframeData`/`NiTransformData`: rotations, translations, scales.
 fn keyframe_data(cur: &mut Cursor<'_>) -> Result<()> {
     let rotations = cur.len_u32()?;
     if rotations != 0 {
         let kind = cur.u32()?;
         if kind == 4 {
             if cur.version() <= 0x0A01_0000 {
-                cur.f32()?; // порядок осей (до 10.1.0.0)
+                cur.f32()?; // axis order (up to 10.1.0.0)
             }
-            // XYZ-вращение: три группы ключей по осям.
+            // XYZ rotation: three key groups, one per axis.
             for _ in 0..3 {
                 key_group(cur, 4)?;
             }
         } else {
-            // QuatKey: время, кватернион, у TBC ещё 12 байт.
+            // QuatKey: time, quaternion, and 12 more bytes for TBC.
             let size = 4 + 16 + if kind == 3 { 12 } else { 0 };
             cur.check_array(rotations, size)?;
             cur.bytes(rotations * size)?;
         }
     }
-    key_group(cur, 12)?; // сдвиги
-    key_group(cur, 4)?; // масштабы
+    key_group(cur, 12)?; // translations
+    key_group(cur, 4)?; // scales
     Ok(())
 }
 
-/// `KeyGroup<T>`: число ключей, тип интерполяции, ключи. `value` — размер `T` в байтах.
+/// `KeyGroup<T>`: number of keys, interpolation type, keys. `value` is the size of `T` in bytes.
 fn key_group(cur: &mut Cursor<'_>, value: usize) -> Result<()> {
     let count = cur.len_u32()?;
     if count == 0 {
@@ -605,7 +608,7 @@ fn key_group(cur: &mut Cursor<'_>, value: usize) -> Result<()> {
     Ok(())
 }
 
-/// `bhkConstraint`: общая часть (16 байт) и параметры своего типа.
+/// `bhkConstraint`: the common part (16 bytes) and the parameters of its type.
 fn constraint(cur: &mut Cursor<'_>, own: usize) -> Result<()> {
     cur.bytes(16 + own)?;
     Ok(())

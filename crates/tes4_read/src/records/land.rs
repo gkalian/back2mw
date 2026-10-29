@@ -2,57 +2,59 @@ use crate::container::Tag;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Вершин на сторону ячейки Oblivion (`ESM4::Land::sVertsPerSide`).
+/// Vertices per side of an Oblivion cell (`ESM4::Land::sVertsPerSide`).
 pub const LAND_SIDE: usize = 33;
 
-/// Вершин в ячейке: 33×33.
+/// Vertices in a cell: 33×33.
 pub const LAND_VERTS: usize = LAND_SIDE * LAND_SIDE;
 
-/// Отсчётов прозрачности на сторону квадранта (`VTXT`, позиции 0…288).
+/// Opacity samples per quadrant side (`VTXT`, positions 0…288).
 pub const OPACITY_SIDE: usize = 17;
 
-/// Ландшафт одной ячейки Oblivion.
+/// The landscape of one Oblivion cell.
 ///
-/// Раскладка — `components/esm4/loadland.{hpp,cpp}` OpenMW и замер по `SEWorld`
-/// (`docs/ru/formats/tes4.md`, «LAND»): `VHGT` 1096 байт, `VNML`/`VCLR` по 3267, `BTXT`/`ATXT` по 8,
-/// `VTXT` кратно 8. Сетки 33×33 — строками, как в TES3.
+/// The layout follows OpenMW's `components/esm4/loadland.{hpp,cpp}` and a measurement on `SEWorld`
+/// (`docs/en/formats/tes4.md`, "LAND"): `VHGT` 1096 bytes, `VNML`/`VCLR` 3267 each, `BTXT`/`ATXT` 8
+/// each, `VTXT` a multiple of 8. The 33×33 grids are by rows, as in TES3.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Land {
-    /// `DATA`: какие части есть (0x1 высоты и нормали, 0x2 цвета, 0x4/0x8/0x10 текстуры).
+    /// `DATA`: which parts are present (0x1 heights and normals, 0x2 colors, 0x4/0x8/0x10
+    /// textures).
     pub flags: u32,
     pub heights: Option<SourceHeightField>,
-    /// `VNML`: нормаль на вершину, 1089 штук.
+    /// `VNML`: a normal per vertex, 1089 of them.
     pub normals: Option<Vec<[i8; 3]>>,
-    /// `VCLR`: цвет на вершину, 1089 штук.
+    /// `VCLR`: a color per vertex, 1089 of them.
     pub colors: Option<Vec<[u8; 3]>>,
-    /// Текстуры по квадрантам **в нумерации файла**. По OpenMW: 0 — юго-запад, 1 — юго-восток,
-    /// 2 — северо-запад, 3 — северо-восток; сторонам света их сопоставляет `transform`.
+    /// Textures by quadrant **in file numbering**. Per OpenMW: 0 — south-west, 1 — south-east, 2 —
+    /// north-west, 3 — north-east; `transform` maps them to the cardinal directions.
     pub quadrants: [LandQuadrant; 4],
 }
 
-/// `VHGT`: смещение и дельты, кодирование то же, что у TES3.
+/// `VHGT`: offset and deltas, the encoding is the same as in TES3.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceHeightField {
     pub offset: f32,
-    /// 1089 дельт строками.
+    /// 1089 deltas by rows.
     pub deltas: Vec<i8>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LandQuadrant {
-    /// `BTXT`: `FormID` базовой `LTEX`; `None` — текстура по умолчанию.
+    /// `BTXT`: the `FormID` of the base `LTEX`; `None` means the default texture.
     pub base: Option<u32>,
-    /// `ATXT` + `VTXT` в порядке файла.
+    /// `ATXT` + `VTXT` in file order.
     pub layers: Vec<LandLayer>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LandLayer {
-    /// `FormID` `LTEX`; 0 — текстура по умолчанию.
+    /// `LTEX` `FormID`; 0 means the default texture.
     pub texture: u32,
-    /// Номер слоя в квадранте, 0…7.
+    /// Layer number in the quadrant, 0…7.
     pub layer: u16,
-    /// Позиция в сетке 17×17 (`y * 17 + x`) и прозрачность. `ATXT` без `VTXT` даёт пустой список.
+    /// Position in the 17×17 grid (`y * 17 + x`) and opacity. An `ATXT` without `VTXT` gives an
+    /// empty list.
     pub opacity: Vec<(u16, f32)>,
 }
 
@@ -65,7 +67,7 @@ fn size_error(field: Tag, expected: usize, got: usize) -> Error {
     }
 }
 
-/// `BTXT`/`ATXT`: `FormID`, квадрант (u8), байт, u16 (у `ATXT` — номер слоя).
+/// `BTXT`/`ATXT`: `FormID`, quadrant (u8), a byte, u16 (the layer number for `ATXT`).
 fn texture_header(raw: &[u8], field: Tag) -> Result<(u32, usize, u16)> {
     if raw.len() != 8 {
         return Err(size_error(field, 8, raw.len()));
@@ -82,7 +84,7 @@ fn texture_header(raw: &[u8], field: Tag) -> Result<(u32, usize, u16)> {
         });
     }
     Ok((
-        u32::from_le_bytes(raw[0..4].try_into().expect("4 байта")),
+        u32::from_le_bytes(raw[0..4].try_into().expect("4 bytes")),
         quadrant,
         u16::from_le_bytes([raw[6], raw[7]]),
     ))
@@ -100,7 +102,7 @@ impl FromFields for Land {
                     return Err(size_error(*b"VHGT", 4 + LAND_VERTS + 3, raw.len()));
                 }
                 Some(SourceHeightField {
-                    offset: f32::from_le_bytes(raw[0..4].try_into().expect("4 байта")),
+                    offset: f32::from_le_bytes(raw[0..4].try_into().expect("4 bytes")),
                     deltas: raw[4..4 + LAND_VERTS]
                         .iter()
                         .map(|&b| i8::from_le_bytes([b]))
@@ -125,8 +127,8 @@ impl FromFields for Land {
         let colors = triples(*b"VCLR")?;
 
         let mut quadrants: [LandQuadrant; 4] = Default::default();
-        // `VTXT` относится к ближайшему `ATXT` перед ним; `ATXT` без `VTXT` — слой без
-        // отсчётов (так же поступает OpenMW).
+        // A `VTXT` belongs to the nearest `ATXT` before it; an `ATXT` without `VTXT` is a layer
+        // without samples (OpenMW does the same).
         let mut pending: Option<(usize, LandLayer)> = None;
         for (tag, raw) in fields.iter() {
             match &tag {
@@ -175,7 +177,7 @@ impl FromFields for Land {
                                 ),
                             });
                         }
-                        let opacity = f32::from_le_bytes(c[4..8].try_into().expect("4 байта"));
+                        let opacity = f32::from_le_bytes(c[4..8].try_into().expect("4 bytes"));
                         layer.opacity.push((position, opacity));
                     }
                     quadrants[q].layers.push(layer);
@@ -255,14 +257,14 @@ mod tests {
             txt(b"BTXT", 0, 3, 0),
             txt(b"ATXT", 0x20, 1, 0),
             vtxt(&[(0, 0.5), (288, 1.0)]),
-            // ATXT без VTXT: слой без отсчётов, следующий ATXT его не теряет.
+            // ATXT without VTXT: a layer without samples, the next ATXT does not lose it.
             txt(b"ATXT", 0x30, 1, 1),
             txt(b"ATXT", 0x40, 0, 0),
             vtxt(&[(17, 0.25)]),
         ])
         .unwrap();
         assert_eq!(land.quadrants[2].base, Some(0x10));
-        assert_eq!(land.quadrants[3].base, None, "FormID 0 — умолчание");
+        assert_eq!(land.quadrants[3].base, None, "FormID 0 means the default");
         let q1 = &land.quadrants[1].layers;
         assert_eq!(q1.len(), 2);
         assert_eq!(

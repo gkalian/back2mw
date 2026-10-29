@@ -1,16 +1,15 @@
-//! Остальные формы коллизии Havok и свойства, встречающиеся у статики (T1.3w).
+//! The remaining Havok collision shapes and the properties found on statics (T1.3w).
 //!
-//! Раскладки — `nif.xml` niftools для 20.0.0.4/20.0.0.5, `BSVER` 11; проверены тем, что все
-//! меши `STAT` с этими блоками разбираются до последнего байта файла
-//! (`tests/real_width.rs`). `HavokMaterial` в этих версиях — один `u32`,
-//! `bhkWorldObjCInfoProperty` — 12 байт.
+//! The layouts are niftools `nif.xml` for 20.0.0.4/20.0.0.5, `BSVER` 11; checked by the fact that
+//! all `STAT` meshes with these blocks parse to the last byte of the file (`tests/real_width.rs`).
+//! In these versions `HavokMaterial` is one `u32`, `bhkWorldObjCInfoProperty` is 12 bytes.
 
 use super::common::{BlockRef, ObjectNet, read_object_net, read_ref, read_ref_list};
 use super::cursor::Cursor;
 use super::error::Result;
 
-/// `NiStencilProperty` (`NiObjectNET`, без флагов до 10.0.1.2 включительно): у Oblivion нужен
-/// в основном `draw_mode` — режим двусторонности.
+/// `NiStencilProperty` (`NiObjectNET`, no flags up to and including 10.0.1.2): in Oblivion mostly
+/// `draw_mode` is needed — the two-sided mode.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NiStencilProperty {
     pub net: ObjectNet,
@@ -21,14 +20,14 @@ pub struct NiStencilProperty {
     pub fail_action: u32,
     pub z_fail_action: u32,
     pub pass_action: u32,
-    /// 0 — по умолчанию, 1 — CCW, 2 — CW, 3 — обе стороны.
+    /// 0 — default, 1 — CCW, 2 — CW, 3 — both sides.
     pub draw_mode: u32,
 }
 
 pub fn read_stencil_property(cur: &mut Cursor<'_>) -> Result<NiStencilProperty> {
     let net = read_object_net(cur)?;
     if cur.version() <= 0x0A00_0102 {
-        cur.u16()?; // флаги (до 10.0.1.2)
+        cur.u16()?; // flags (up to 10.0.1.2)
     }
     Ok(NiStencilProperty {
         net,
@@ -43,7 +42,7 @@ pub fn read_stencil_property(cur: &mut Cursor<'_>) -> Result<NiStencilProperty> 
     })
 }
 
-/// `NiSpecularProperty`: флаги (бит 0 — блики включены).
+/// `NiSpecularProperty`: flags (bit 0 — specular on).
 #[derive(Debug, Clone, PartialEq)]
 pub struct NiSpecularProperty {
     pub net: ObjectNet,
@@ -57,7 +56,7 @@ pub fn read_specular_property(cur: &mut Cursor<'_>) -> Result<NiSpecularProperty
     })
 }
 
-/// `BSFurnitureMarker`: точки сидения/лежания. В модель не переносится, читается ради длины.
+/// `BSFurnitureMarker`: sitting/lying points. Not carried into the model, read for its length.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FurnitureMarker {
     pub name: String,
@@ -67,13 +66,13 @@ pub struct FurnitureMarker {
 pub fn read_furniture_marker(cur: &mut Cursor<'_>) -> Result<FurnitureMarker> {
     let name = cur.sized_string()?;
     let positions = cur.len_u32()?;
-    // смещение f32×3, ориентация u16, две ссылки на маркер по u8
+    // offset f32×3, orientation u16, two marker references of u8 each
     cur.check_array(positions, 16)?;
     cur.bytes(positions * 16)?;
     Ok(FurnitureMarker { name, positions })
 }
 
-/// Параметры формы-примитива: материал и радиус скругления (`bhkConvexShape`).
+/// Parameters of a primitive shape: material and rounding radius (`bhkConvexShape`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ConvexBase {
     pub material: u32,
@@ -87,7 +86,7 @@ fn read_convex_base(cur: &mut Cursor<'_>) -> Result<ConvexBase> {
     })
 }
 
-/// `bhkBoxShape`: половины размеров по осям (`Dimensions`).
+/// `bhkBoxShape`: half-sizes along the axes (`Dimensions`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkBoxShape {
     pub base: ConvexBase,
@@ -98,11 +97,11 @@ pub fn read_box_shape(cur: &mut Cursor<'_>) -> Result<BhkBoxShape> {
     let base = read_convex_base(cur)?;
     cur.bytes(8)?;
     let half_extents = cur.floats()?;
-    cur.bytes(4)?; // неиспользуемая четвёртая компонента hkVector4
+    cur.bytes(4)?; // the unused fourth component of hkVector4
     Ok(BhkBoxShape { base, half_extents })
 }
 
-/// `bhkCapsuleShape`: две точки оси и два радиуса (совпадают).
+/// `bhkCapsuleShape`: two axis points and two radii (equal).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkCapsuleShape {
     pub base: ConvexBase,
@@ -124,7 +123,7 @@ pub fn read_capsule_shape(cur: &mut Cursor<'_>) -> Result<BhkCapsuleShape> {
     })
 }
 
-/// `bhkSphereShape`: только материал и радиус.
+/// `bhkSphereShape`: only the material and the radius.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkSphereShape {
     pub base: ConvexBase,
@@ -136,8 +135,8 @@ pub fn read_sphere_shape(cur: &mut Cursor<'_>) -> Result<BhkSphereShape> {
     })
 }
 
-/// `bhkMultiSphereShape`: материал (без радиуса оболочки), `bhkWorldObjCInfoProperty`
-/// (12 байт) и до восьми сфер `NiBound` — центр и радиус.
+/// `bhkMultiSphereShape`: material (without the shell radius), `bhkWorldObjCInfoProperty` (12
+/// bytes) and up to eight `NiBound` spheres — center and radius.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkMultiSphereShape {
     pub material: u32,
@@ -154,18 +153,18 @@ pub fn read_multi_sphere_shape(cur: &mut Cursor<'_>) -> Result<BhkMultiSphereSha
     })
 }
 
-/// `bhkConvexVerticesShape`: вершины и плоскости граней (нормаль наружу + расстояние).
+/// `bhkConvexVerticesShape`: vertices and face planes (outward normal + distance).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkConvexVerticesShape {
     pub base: ConvexBase,
     pub vertices: Vec<[f32; 3]>,
-    /// `x y z d`: точка `v` лежит на плоскости, если `n·v + d = 0`.
+    /// `x y z d`: point `v` lies on the plane if `n·v + d = 0`.
     pub planes: Vec<[f32; 4]>,
 }
 
 pub fn read_convex_vertices_shape(cur: &mut Cursor<'_>) -> Result<BhkConvexVerticesShape> {
     let base = read_convex_base(cur)?;
-    cur.bytes(12 + 12)?; // два bhkWorldObjCInfoProperty
+    cur.bytes(12 + 12)?; // two bhkWorldObjCInfoProperty
     let count = cur.len_u32()?;
     let vertices = cur
         .float_arrays::<4>(count)?
@@ -181,7 +180,7 @@ pub fn read_convex_vertices_shape(cur: &mut Cursor<'_>) -> Result<BhkConvexVerti
     })
 }
 
-/// `bhkPackedNiTriStripsShape`: оболочка над `hkPackedNiTriStripsData`.
+/// `bhkPackedNiTriStripsShape`: a wrapper over `hkPackedNiTriStripsData`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkPackedNiTriStripsShape {
     pub scale: [f32; 4],
@@ -190,23 +189,23 @@ pub struct BhkPackedNiTriStripsShape {
 
 pub fn read_packed_strips_shape(cur: &mut Cursor<'_>) -> Result<BhkPackedNiTriStripsShape> {
     let sub_shapes = cur.u16()? as usize;
-    // фильтр (4), число вершин (4), материал (4)
+    // filter (4), vertex count (4), material (4)
     cur.check_array(sub_shapes, 12)?;
     cur.bytes(sub_shapes * 12)?;
     cur.bytes(4)?; // user data
     cur.bytes(4)?;
-    cur.bytes(4)?; // радиус
+    cur.bytes(4)?; // radius
     cur.bytes(4)?;
     let scale = cur.floats()?;
-    cur.bytes(4)?; // копия радиуса
-    cur.bytes(16)?; // копия масштаба
+    cur.bytes(4)?; // radius copy
+    cur.bytes(16)?; // scale copy
     Ok(BhkPackedNiTriStripsShape {
         scale,
         data: read_ref(cur)?,
     })
 }
 
-/// `hkPackedNiTriStripsData`: готовые треугольники и вершины.
+/// `hkPackedNiTriStripsData`: ready triangles and vertices.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HkPackedNiTriStripsData {
     pub triangles: Vec<[u16; 3]>,
@@ -215,7 +214,7 @@ pub struct HkPackedNiTriStripsData {
 
 pub fn read_packed_strips_data(cur: &mut Cursor<'_>) -> Result<HkPackedNiTriStripsData> {
     let count = cur.len_u32()?;
-    // треугольник u16×3, сварка u16, нормаль f32×3
+    // triangle u16×3, welding u16, normal f32×3
     cur.check_array(count, 20)?;
     let mut triangles = Vec::with_capacity(count);
     for _ in 0..count {
@@ -231,7 +230,7 @@ pub fn read_packed_strips_data(cur: &mut Cursor<'_>) -> Result<HkPackedNiTriStri
     })
 }
 
-/// `bhkListShape`: список форм.
+/// `bhkListShape`: a list of shapes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkListShape {
     pub shapes: Vec<BlockRef>,
@@ -239,16 +238,16 @@ pub struct BhkListShape {
 
 pub fn read_list_shape(cur: &mut Cursor<'_>) -> Result<BhkListShape> {
     let shapes = read_ref_list(cur)?;
-    cur.bytes(4)?; // материал
-    cur.bytes(12 + 12)?; // два bhkWorldObjCInfoProperty
+    cur.bytes(4)?; // material
+    cur.bytes(12 + 12)?; // two bhkWorldObjCInfoProperty
     let filters = cur.len_u32()?;
     cur.check_array(filters, 4)?;
     cur.bytes(filters * 4)?;
     Ok(BhkListShape { shapes })
 }
 
-/// `bhkConvexTransformShape` и `bhkTransformShape`: форма и матрица 4×4 (16 `f32` в порядке
-/// файла — по столбцам; сдвиг — в четвёртом столбце).
+/// `bhkConvexTransformShape` and `bhkTransformShape`: a shape and a 4×4 matrix (16 `f32` in file
+/// order — by columns; the translation is in the fourth column).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkTransformShape {
     pub shape: BlockRef,
@@ -257,15 +256,15 @@ pub struct BhkTransformShape {
 
 pub fn read_transform_shape(cur: &mut Cursor<'_>) -> Result<BhkTransformShape> {
     let shape = read_ref(cur)?;
-    cur.bytes(4 + 4 + 8)?; // материал, радиус, 8 байт
+    cur.bytes(4 + 4 + 8)?; // material, radius, 8 bytes
     Ok(BhkTransformShape {
         shape,
         matrix: cur.floats()?,
     })
 }
 
-/// `bhkConvexSweepShape` (только 10.0.1.0): выпуклая форма, протянутая вдоль вектора. Протяжка
-/// не переносится — коллизия берётся по самой форме.
+/// `bhkConvexSweepShape` (only 10.0.1.0): a convex shape swept along a vector. The sweep is not
+/// carried over — the collision is taken from the shape itself.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkConvexSweepShape {
     pub shape: BlockRef,

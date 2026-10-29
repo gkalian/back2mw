@@ -1,10 +1,10 @@
-//! Измерение T1.12a: самый длинный строковый ID в ванильных мастерах Morrowind.
+//! Measurement T1.12a: the longest string ID in the vanilla Morrowind masters.
 //!
-//! Раз ванильный движок с такими ID работает, их максимум — заведомо безопасная нижняя
-//! граница для бюджета длины `transform::ids::DEFAULT_MAX_LEN`. Это измерение, синтетики
-//! нет; числа переносятся в `docs/ru/formats/tes3.md` руками.
+//! Since the vanilla engine works with such IDs, their maximum is a certainly safe lower bound for
+//! the length budget `transform::ids::DEFAULT_MAX_LEN`. This is a measurement, there is no
+//! synthetic test; the numbers are carried into `docs/en/formats/tes3.md` by hand.
 //!
-//! Запуск (PowerShell):
+//! Running (PowerShell):
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
 //! cargo test -p tes3_out --test real_vanilla_ids -- --ignored --nocapture
@@ -16,13 +16,12 @@ use std::collections::BTreeMap;
 
 use tes3::esp::{EditorId, Plugin, TypeInfo};
 
-/// Записи, у которых `editor_id` — не ID объекта, а производная строка: заголовок плагина,
-/// навыки и эффекты (перечисления), ячейки/ландшафт/сетки путей («имя (x, y)»).
+/// Records whose `editor_id` is not an object ID but a derived string: the plugin header, skills
+/// and effects (enumerations), cells/landscape/path grids ("name (x, y)").
 const NOT_OBJECT_IDS: [&str; 6] = ["TES3", "SKIL", "MGEF", "CELL", "LAND", "PGRD"];
 
-/// Записи, у которых «ID» — текст, а не имя объекта: реплика темы (`DIAL`) и числовой
-/// идентификатор реплики (`INFO`). Считаются отдельно, чтобы не искажать границу для ID
-/// объектов.
+/// Records whose "ID" is text rather than an object name: a topic (`DIAL`) and the numeric response
+/// identifier (`INFO`). Counted separately so as not to distort the bound for object IDs.
 const TEXT_IDS: [&str; 2] = ["DIAL", "INFO"];
 
 #[derive(Default)]
@@ -44,7 +43,7 @@ impl Max {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn vanilla_max_id_length() {
     let masters = ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"];
 
@@ -54,7 +53,7 @@ fn vanilla_max_id_length() {
 
     for master in masters {
         let plugin = Plugin::from_path(common::game_file(master))
-            .unwrap_or_else(|e| panic!("не загрузить {master}: {e}"));
+            .unwrap_or_else(|e| panic!("cannot load {master}: {e}"));
         for object in &plugin.objects {
             let tag = object.tag_str();
             if NOT_OBJECT_IDS.contains(&tag) {
@@ -72,11 +71,11 @@ fn vanilla_max_id_length() {
         }
     }
 
-    println!("=== Длина строкового ID в Morrowind + Tribunal + Bloodmoon ===");
-    println!("  {:<5} {:>8} {:>5}  пример", "тип", "записей", "макс");
+    println!("=== String ID length in Morrowind + Tribunal + Bloodmoon ===");
+    println!("  {:<5} {:>8} {:>5}  example", "type", "records", "max");
     for (tag, max) in &by_type {
         let note = if TEXT_IDS.contains(tag) {
-            "  (текст, не в общем максимуме)"
+            "  (text, not in the overall maximum)"
         } else {
             ""
         };
@@ -86,9 +85,9 @@ fn vanilla_max_id_length() {
         );
     }
     println!(
-        "  ИТОГО (ID объектов, без {NOT_OBJECT_IDS:?} и {TEXT_IDS:?}): {} знаков, тип {overall_type}, «{}»",
+        "  TOTAL (object IDs, without {NOT_OBJECT_IDS:?} and {TEXT_IDS:?}): {} characters, type {overall_type}, \"{}\"",
         overall.len, overall.example
     );
-    println!("  бюджет transform::ids::DEFAULT_MAX_LEN = 31");
-    assert!(overall.count > 0, "ни одного ID не прочитано");
+    println!("  budget transform::ids::DEFAULT_MAX_LEN = 31");
+    assert!(overall.count > 0, "not a single ID was read");
 }

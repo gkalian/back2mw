@@ -44,8 +44,8 @@ fn info(quest: u32, conditions: Vec<Condition>) -> Info {
 const SE_WORLD: u32 = 365;
 const PLAYABLE: u32 = 254;
 
-/// Квест 1 стартует с игрой, 2 — нет, у 3 условие квеста на расу, 4 — квест Сиродиила
-/// (`GetPlayerInSEWorld == 0` и `GetIsPlayableRace == 1`, как у `Generic`).
+/// Quest 1 starts with the game, 2 does not, 3 has a quest condition on race, 4 is a Cyrodiil quest
+/// (`GetPlayerInSEWorld == 0` and `GetIsPlayableRace == 1`, as in `Generic`).
 fn quests() -> HashMap<u32, Quest> {
     HashMap::from([
         (1, quest(true, vec![])),
@@ -105,13 +105,13 @@ fn run_on_selects_the_row_and_any_is_a_fallback() {
         t.kind(&cond(71, CONDITION_RUN_ON_TARGET, 1.0, 0)),
         Some(FilterKind::PcFaction)
     );
-    // `GetItemCount` у говорящего — фильтра нет, у игрока — Item.
+    // `GetItemCount` on the speaker — no filter, on the player — Item.
     assert_eq!(t.kind(&cond(47, 0, 1.0, 0)), None);
     assert_eq!(
         t.kind(&cond(47, CONDITION_RUN_ON_TARGET, 1.0, 0)),
         Some(FilterKind::Item)
     );
-    // `any` действует на обоих.
+    // `any` applies to both.
     for flags in [0, CONDITION_RUN_ON_TARGET] {
         assert_eq!(t.kind(&cond(58, flags, 1.0, 0)), Some(FilterKind::Quest));
     }
@@ -130,7 +130,7 @@ fn malformed_tables_are_rejected() {
     ] {
         assert!(ConditionTable::parse(bad).is_err(), "{bad:?}");
     }
-    // Контроль: правильная пара subject/target проходит.
+    // Control: the right subject/target pair passes.
     assert!(
         ConditionTable::parse(
             "71\tGetInFaction\tsubject\tfaction\n71\tGetInFaction\ttarget\tpc_faction\n"
@@ -162,7 +162,7 @@ fn each_rule_of_decision_one() {
         run(&info(1, vec![id, cond(58, 0, 10.0, 1)]), TOPIC_TOPIC, None),
         Err(Rejection::QuestCondition)
     );
-    // Условие на квест в «или» тоже отвергает: без квестов не вычислить.
+    // A condition on the quest inside an "or" rejects too: it cannot be computed without quests.
     assert_eq!(
         run(
             &info(1, vec![cond(58, CONDITION_OR, 10.0, 1), id]),
@@ -177,7 +177,7 @@ fn each_rule_of_decision_one() {
         run(&info(1, vec![global]), TOPIC_TOPIC, None),
         Err(Rejection::GlobalComparison)
     );
-    // `IsGuard` (125) — фильтра нет: отбрасывается вся реплика, а не одно условие.
+    // `IsGuard` (125) — no filter: the whole response is dropped, not one condition.
     assert_eq!(
         run(&info(1, vec![id, cond(125, 0, 1.0, 0)]), TOPIC_TOPIC, None),
         Err(Rejection::Unmapped(125))
@@ -198,7 +198,7 @@ fn quest_conditions_come_first_and_count() {
 
 #[test]
 fn or_expands_into_one_copy_per_alternative() {
-    // (A или B) и C → A C, B C.
+    // (A or B) and C → A C, B C.
     let a = cond(GET_IS_ID, CONDITION_OR, 1.0, 0x100);
     let b = cond(GET_IS_ID, 0, 1.0, 0x200);
     let c = cond(69, 0, 1.0, 0x50);
@@ -209,7 +209,7 @@ fn or_expands_into_one_copy_per_alternative() {
             vec![FilterKind::Id, FilterKind::Race],
         ])
     );
-    // (A или B) и (C или D) → четыре копии в порядке A C, A D, B C, B D.
+    // (A or B) and (C or D) → four copies in the order A C, A D, B C, B D.
     let mut c_or = c;
     c_or.flags = CONDITION_OR;
     let d = cond(68, 0, 1.0, 0x60);
@@ -231,13 +231,13 @@ fn or_expands_into_one_copy_per_alternative() {
         params,
         [[0x100, 0x50], [0x100, 0x60], [0x200, 0x50], [0x200, 0x60]]
     );
-    // Альтернатива без фильтра выпадает, остальные остаются.
+    // An alternative without a filter drops out, the rest remain.
     let guard = cond(125, CONDITION_OR, 1.0, 0);
     assert_eq!(
         run(&info(1, vec![guard, b]), TOPIC_TOPIC, None),
         Ok(vec![vec![FilterKind::Id]])
     );
-    // «Или» на последнем условии ни с чем не связывает — это обычное условие.
+    // An "or" on the last condition joins it with nothing — it is an ordinary condition.
     assert_eq!(
         run(&info(1, vec![a]), TOPIC_TOPIC, None),
         Ok(vec![vec![FilterKind::Id]])
@@ -246,7 +246,7 @@ fn or_expands_into_one_copy_per_alternative() {
 
 #[test]
 fn too_many_copies_reject_the_line() {
-    // 3 группы по 3 альтернативы — 27 копий, больше MAX_VARIANTS.
+    // 3 groups of 3 alternatives — 27 copies, more than MAX_VARIANTS.
     let mut list = Vec::new();
     for g in 0..3 {
         for alt in 0..3 {
@@ -258,7 +258,7 @@ fn too_many_copies_reject_the_line() {
         run(&info(1, list.clone()), TOPIC_TOPIC, None),
         Err(Rejection::TooManyVariants)
     );
-    // Контроль: две группы по 2 — 4 копии, проходит.
+    // Control: two groups of 2 — 4 copies, it passes.
     let small: Vec<Condition> = (0..4)
         .map(|i| {
             cond(
@@ -281,20 +281,20 @@ fn se_world_is_evaluated_by_the_converted_world() {
     assert_eq!(
         run_in(&cyrodiil, TOPIC_TOPIC, None, false),
         Ok(vec![vec![FilterKind::PlayableRace]]),
-        "в фильтры попадает только 254"
+        "only 254 gets into the filters"
     );
     assert_eq!(
         run_in(&cyrodiil, TOPIC_TOPIC, None, true),
         Err(Rejection::OtherWorld)
     );
-    // Реплика островов (`== 1`) — наоборот.
+    // A response of the Isles (`== 1`) — the other way round.
     let isles = info(1, vec![cond(SE_WORLD, 0, 1.0, 0)]);
     assert_eq!(run_in(&isles, TOPIC_TOPIC, None, true), Ok(vec![vec![]]));
     assert_eq!(
         run_in(&isles, TOPIC_TOPIC, None, false),
         Err(Rejection::OtherWorld)
     );
-    // Истинная альтернатива делает истинной всю группу «или».
+    // A true alternative makes the whole "or" group true.
     let either = info(
         1,
         vec![
@@ -319,7 +319,7 @@ fn with_a_worldspace_only_transferred_speakers_keep_their_lines() {
         run(&other, TOPIC_TOPIC, Some(&only)),
         Err(Rejection::SpeakerNotTransferred)
     );
-    // Из «или» по NPC остаются только переносимые.
+    // Of an "or" over NPCs, only the carried-over ones remain.
     let either = info(
         1,
         vec![
@@ -331,7 +331,7 @@ fn with_a_worldspace_only_transferred_speakers_keep_their_lines() {
         run(&either, TOPIC_TOPIC, Some(&only)).map(|v| v.len()),
         Ok(1)
     );
-    // «Не он» (`GetIsID == 0`) и общие реплики остаются.
+    // "Not him" (`GetIsID == 0`) and shared responses remain.
     assert!(
         run(
             &info(1, vec![cond(GET_IS_ID, 0, 0.0, 0x200)]),
@@ -341,7 +341,7 @@ fn with_a_worldspace_only_transferred_speakers_keep_their_lines() {
         .is_ok()
     );
     assert!(run(&info(1, vec![]), TOPIC_TOPIC, Some(&only)).is_ok());
-    // Контроль: без мира реплика чужого NPC остаётся.
+    // Control: without the world, a response of someone else's NPC remains.
     assert!(run(&other, TOPIC_TOPIC, None).is_ok());
 }
 
@@ -411,12 +411,12 @@ fn select_counts_by_topic_kind_and_names_missing_functions() {
         report.by_kind[&TOPIC_CONVERSATION].rejected[&Rejection::Conversation],
         1
     );
-    // Обе функции без фильтра посчитаны, хотя причиной названа первая.
+    // Both filterless functions are counted, although the first one is named as the reason.
     assert_eq!(report.unmapped, BTreeMap::from([(125, 1), (161, 1)]));
 }
 
-/// Решение владельца 2026-10-01: из тем Conversation отбирается только та, у которой есть пара в
-/// `data/voice_topics.tsv` (`HELLO`); прочие темы — под своим типом.
+/// Owner's decision 2026-10-01: of the Conversation topics, only the one with a pair in
+/// `data/voice_topics.tsv` (`HELLO`) is selected; the other topics stay under their own type.
 #[test]
 fn only_a_voiced_conversation_topic_passes_selection() {
     let topic = |edid: &str, kind| Topic {

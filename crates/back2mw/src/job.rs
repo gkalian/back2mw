@@ -1,24 +1,25 @@
-//! Задание интерфейса: конвертировать отмеченные плагины и положить результат в `Data Files`
-//! Morrowind — или только собрать его в папку результата, как консольный `all`.
+//! The interface's job: convert the ticked plugins and put the result into Morrowind's `Data Files`
+//! — or only build it into the result folder, like the console `all`.
 //!
-//! Что происходит:
+//! What happens:
 //!
-//! 1. Прогон [`pipeline::run`] собирает мод: при установке — в подготовительной папке
-//!    `<Morrowind>/_back2mw-output/stage`, без установки — прямо в папке результата ([`Job::output_dir`]), как `all`.
-//! 2. По желанию из собранного делается раздаточный zip, как у `package` (с BSA — ещё архивы и
-//!    `back2mw-bsa.zip`), в `<папка результата>/package`.
-//! 3. Каждый плагин Oblivion даёт свой плагин Morrowind с тем же именем. Если нужен BSA —
-//!    ассеты каждого плагина упаковываются в его собственный архив (`Mod1.esp` → `Mod1.bsa`, в
-//!    корень `Data Files`), свободные `Meshes`/`Textures`/`Icons`/`BookArt` не ставятся. Иначе
-//!    они ложатся папками в `Data Files`. Звуки и файлы `MWSE` (карта мира) всегда лежат
-//!    отдельными файлами.
-//! 4. При установке [`install::install`] копирует результат в `Data Files` и пишет манифест
-//!    `back2mw-install.tsv`: повторная конвертация заменяет прежнюю установку, а
-//!    `uninstall` её откатывает. Файлы Morrowind и чужие моды не перезаписываются.
+//! 1. A run of [`pipeline::run`] builds the mod: when installing, in the staging folder
+//!    `<Morrowind>/_back2mw-output/stage`; without installing, straight into the result folder
+//!    ([`Job::output_dir`]), like `all`.
+//! 2. Optionally a distribution zip is made from the build, as with `package` (with BSA, also the
+//!    archives and `back2mw-bsa.zip`), in `<result folder>/package`.
+//! 3. Each Oblivion plugin gives its own Morrowind plugin with the same name. If BSA is wanted,
+//!    each plugin's assets are packed into its own archive (`Mod1.esp` → `Mod1.bsa`, in the root of
+//!    `Data Files`), and loose `Meshes`/`Textures`/`Icons`/`BookArt` are not installed. Otherwise
+//!    they go into `Data Files` as folders. Sounds and the `MWSE` files (the world map) are always
+//!    loose files.
+//! 4. When installing, [`install::install`] copies the result into `Data Files` and writes the
+//!    manifest `back2mw-install.tsv`: a repeated conversion replaces the previous installation, and
+//!    `uninstall` rolls it back. Morrowind files and other mods are not overwritten.
 //!
-//! **Не делается:** запись в `Morrowind.ini`. Плагины и (для BSA) архивы нужно
-//! включить самому; об этом интерфейс напоминает по итогам. Проверка `esmtool`/`niftest`
-//! выполняется, только если пути к ним заданы.
+//! **Not done:** writing to `Morrowind.ini`. The plugins and (for BSA) the archives have to be
+//! enabled by hand; the interface reminds about it in the summary. The `esmtool`/`niftest` check
+//! runs only if their paths are set.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -31,48 +32,48 @@ use crate::package::{
 };
 use crate::pipeline::{self, PipelineError, Request};
 
-/// Параметры задания.
+/// Job parameters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Job {
-    /// Папка данных Oblivion.
+    /// Oblivion data folder.
     pub source_data: PathBuf,
-    /// Папка данных Morrowind (`Data Files`).
+    /// Morrowind data folder (`Data Files`).
     pub target_data: PathBuf,
-    /// Плагины Oblivion, которые нужно конвертировать (имена файлов).
+    /// Oblivion plugins to convert (file names).
     pub plugins: Vec<String>,
-    /// Собрать меши и текстуры в BSA.
+    /// Pack meshes and textures into BSA.
     pub pack_bsa: bool,
-    /// Подтянуть цены оружия и брони к Morrowind (только вверх).
+    /// Bring weapon and armor prices in line with Morrowind (upward only).
     pub morrowind_prices: bool,
-    /// Положить лист карты мира и мод MWSE-Lua (`crate::world_map`); нужен `worldspace`.
+    /// Add the world map sheet and the MWSE-Lua mod (`crate::world_map`); needs `worldspace`.
     pub lua_map: bool,
-    /// Ограничить набор `EDID` (для проверок); пусто — все записи.
+    /// Limit the set of `EDID`s (for checks); empty means all records.
     pub only: Vec<String>,
-    /// Рабочий каталог (распаковка, подготовка).
+    /// Work directory (unpacking, staging).
     pub work_dir: PathBuf,
-    /// Папка результата (`output` консоли): без установки мод собирается сюда, zip — в
-    /// `<она>/package`.
+    /// Result folder (the console's `output`): without installing, the mod is built here, the zip
+    /// goes to `<it>/package`.
     pub output_dir: PathBuf,
     pub esmtool: Option<PathBuf>,
     pub niftest: Option<PathBuf>,
-    /// Worldspace к переносу (`EDID`): его ячейки, интерьеры и города становятся плагином
-    /// `<EDID>.esp`. Отмеченные плагины без него конвертируются как обычно.
+    /// Worldspace to carry over (`EDID`): its cells, interiors and cities become the plugin
+    /// `<EDID>.esp`. Ticked plugins without it are converted as usual.
     pub worldspace: Option<String>,
-    /// Смещение worldspace в ячейках Morrowind (`--offset`); `None` — по умолчанию.
+    /// Worldspace offset in Morrowind cells (`--offset`); `None` means the default.
     pub offset: Option<(i32, i32)>,
-    /// Установить в `Data Files`. Нет — только собрать в [`Job::output_dir`].
+    /// Install into `Data Files`. If not, only build into [`Job::output_dir`].
     pub install: bool,
-    /// Собрать ещё и раздаточный zip (`package`).
+    /// Also build the distribution zip (`package`).
     pub zip: bool,
-    /// Чужие файлы в `Data Files`, которые игрок разрешил заменить (пути относительно неё).
-    /// Остальные чужие файлы на нашем месте останавливают установку.
+    /// Other people's files in `Data Files` that the player allowed to replace (paths relative to
+    /// it). Any other foreign file in our place stops the installation.
     pub replace: Vec<String>,
 }
 
-/// Плагины и архивы, которые задание положит в корень `Data Files`: имя плагина источника, при
-/// переносе worldspace — `<EDID>.esp` у плагина, где он есть; с BSA — ещё архив на каждый.
-/// Чтобы до долгой сборки спросить про чужие файлы с теми же именами
-/// ([`install::foreign_files`]). Ассеты не предсказываются — у них наш префикс `ob\`.
+/// Plugins and archives the job will put into the root of `Data Files`: the source plugin name, and
+/// when carrying over a worldspace, `<EDID>.esp` for the plugin that has it; with BSA, also one
+/// archive each. This lets us ask about other people's files with the same names before the long
+/// build ([`install::foreign_files`]). Assets are not predicted — they carry our `ob\` prefix.
 pub fn planned_files(job: &Job) -> Vec<String> {
     let mut out = Vec::new();
     for plugin in &job.plugins {
@@ -91,55 +92,55 @@ pub fn planned_files(job: &Job) -> Vec<String> {
     out
 }
 
-/// Итог.
+/// Result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobReport {
-    /// Записанные плагины Morrowind (имена как у источника), в порядке загрузки.
+    /// Written Morrowind plugins (named as in the source), in load order.
     pub plugins: Vec<String>,
-    /// Архивы BSA, по одному на плагин с ассетами.
+    /// BSA archives, one per plugin with assets.
     pub bsas: Vec<String>,
     pub statics_written: usize,
     pub weapons_written: usize,
     pub armor_written: usize,
     pub clothing_written: usize,
     pub items_written: usize,
-    /// Объекты, не попавшие в плагин (меш не нашёлся или не конвертируется).
+    /// Objects that did not go into the plugin (mesh not found or not convertible).
     pub statics_skipped: usize,
     pub meshes: usize,
     pub textures: usize,
     pub packed_into_bsa: bool,
-    /// Итог установки; `None` — мод только собран в папку результата.
+    /// Installation result; `None` means the mod was only built into the result folder.
     pub install: Option<InstallReport>,
-    /// Где лежит собранный мод, если он не установлен.
+    /// Where the built mod is, if it was not installed.
     pub built_into: Option<PathBuf>,
-    /// Раздаточные архивы, если их просили.
+    /// Distribution archives, if requested.
     pub package: Option<PackageReport>,
-    /// Замечания: плагин не читается, текстуры нет в архивах и т. п.
+    /// Notes: a plugin cannot be read, a texture is missing from the archives, and so on.
     pub notes: Vec<String>,
-    /// Проверка независимыми читателями выполнялась.
+    /// The independent readers' check was run.
     pub validated: bool,
-    /// Внешних ячеек и интерьеров во всех плагинах (при переносе worldspace).
+    /// Exterior cells and interiors in all plugins (when carrying over a worldspace).
     pub cells: usize,
     pub interiors: usize,
 }
 
-/// Каталог подготовки внутри рабочего.
+/// Staging directory inside the work directory.
 pub const STAGE_DIR: &str = "stage";
 
-/// Итог упаковки в BSA.
+/// BSA packing result.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Packed {
-    /// Имена записанных архивов.
+    /// Names of the written archives.
     archives: Vec<String>,
-    /// Файлов, вошедших хотя бы в один архив.
+    /// Files that went into at least one archive.
     packed: usize,
-    /// Файлы, оставшиеся loose из-за совпадения хеша в BSA.
+    /// Files left loose because of a hash collision in the BSA.
     left_loose: Vec<String>,
 }
 
-/// Собирает по BSA на каждый плагин (`package::build_plugin_bsas`) и убирает из подготовки
-/// свободные файлы, которые легли в архивы. Файл, который хоть в одном архиве не поместился
-/// (совпал хеш), остаётся loose: плагину без него нечем его заменить.
+/// Builds one BSA per plugin (`package::build_plugin_bsas`) and removes from staging the loose
+/// files that went into the archives. A file that did not fit into at least one archive (hash
+/// collision) stays loose: the plugin has nothing else to replace it with.
 fn pack_stage_into_bsa(stage: &Path) -> Result<Packed, String> {
     let archives = build_plugin_bsas(stage).map_err(|e| format!("BSA: {e}"))?;
     let mut packed: BTreeSet<String> = BTreeSet::new();
@@ -166,7 +167,7 @@ fn pack_stage_into_bsa(stage: &Path) -> Result<Packed, String> {
     })
 }
 
-/// Удаляет пустые каталоги снизу вверх (включая сам `dir`, если он опустел).
+/// Removes empty directories bottom-up (including `dir` itself if it became empty).
 fn remove_empty_dirs(dir: &Path) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -179,10 +180,10 @@ fn remove_empty_dirs(dir: &Path) {
     let _ = fs::remove_dir(dir);
 }
 
-/// Убирает из папки результата прежнюю сборку: плагины и архивы в корне, папки ассетов,
-/// [`ASSETS_FILE`] и `package/`. Иначе архив прежнего прогона остался бы рядом с новыми
-/// loose-файлами. Папку выбирает игрок, поэтому трогаем её, только если там лежит
-/// [`ASSETS_FILE`] — знак, что это наша сборка; прочее в ней не удаляется.
+/// Removes the previous build from the result folder: plugins and archives in the root, asset
+/// folders, [`ASSETS_FILE`] and `package/`. Otherwise an archive from the previous run would stay
+/// next to the new loose files. The player chooses the folder, so we touch it only if
+/// [`ASSETS_FILE`] is there — the sign that it is our build; nothing else in it is deleted.
 fn clear_previous_build(dir: &Path) -> Result<(), String> {
     if !dir.join(ASSETS_FILE).is_file() {
         return Ok(());
@@ -208,10 +209,11 @@ fn clear_previous_build(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Выполняет задание. `log` получает строки прогресса.
+/// Runs the job. `log` receives progress lines.
 pub fn run(job: &Job, log: &mut dyn FnMut(&str)) -> Result<JobReport, PipelineError> {
     let build = if job.install {
-        // Подготовка — в папке Morrowind (`<Morrowind>/_back2mw-output/stage`), не в `%TEMP%`.
+        // Staging goes into the Morrowind folder (`<Morrowind>/_back2mw-output/stage`), not
+        // `%TEMP%`.
         let stage = crate::config::default_stage_dir(&job.target_data)
             .unwrap_or_else(|| job.work_dir.join(STAGE_DIR));
         if stage.exists() {
@@ -249,7 +251,8 @@ pub fn run(job: &Job, log: &mut dyn FnMut(&str)) -> Result<JobReport, PipelineEr
     };
     let outcome = pipeline::run(&config, &request, log)?;
 
-    // zip — из loose-файлов, до упаковки в BSA: `package` сам собирает архивы плагинов.
+    // The zip is built from loose files, before BSA packing: `package` builds the plugin archives
+    // itself.
     let package = if job.zip {
         let dest = job.output_dir.join(PACKAGE_DIR);
         let report = crate::package::package_to(&build, &dest, job.pack_bsa)
@@ -313,8 +316,8 @@ pub fn run(job: &Job, log: &mut dyn FnMut(&str)) -> Result<JobReport, PipelineEr
             installed.already_present,
             installed.removed_stale
         ));
-        // Подготовка больше не нужна: всё лежит в `Data Files`. Не удалилась — не беда, следующий
-        // прогон её сотрёт.
+        // Staging is no longer needed: everything is in `Data Files`. If it fails to delete, no
+        // harm: the next run will wipe it.
         let _ = fs::remove_dir_all(&build);
         Some(installed)
     } else {
@@ -326,7 +329,8 @@ pub fn run(job: &Job, log: &mut dyn FnMut(&str)) -> Result<JobReport, PipelineEr
         None
     };
 
-    // Куда переместиться консолью — после строк об установке (или о готовом моде): их ищут глазами.
+    // Where the console should scroll to — after the lines about installation (or the built mod):
+    // those are what people look for.
     for p in &outcome.plugins {
         if let Some(start) = &p.start {
             log(&start.line(&p.name));

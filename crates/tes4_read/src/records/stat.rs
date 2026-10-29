@@ -2,19 +2,18 @@ use crate::container::Tag;
 use crate::error::Result;
 use crate::schema::{Fields, FromFields};
 
-/// Статический объект. Самая простая запись с мешем, поэтому с неё начинается
-/// сквозной путь «прочитал — написал»: в TES3 ей соответствует `STAT`, у
-/// которого нет ничего, кроме `NAME` и `MODL`.
+/// A static object. The simplest record with a mesh, so the end-to-end "read — write" path starts
+/// with it: in TES3 it corresponds to `STAT`, which has nothing but `NAME` and `MODL`.
 ///
-/// Поля различаются между играми, и спека покрывает оба варианта:
-/// в TES4 габарит задаётся `MODB` (радиус), в TES5 — `OBND` (шесть `i16`).
+/// The fields differ between the games, and the spec covers both variants: in TES4 the bounds are
+/// given by `MODB` (a radius), in TES5 by `OBND` (six `i16`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stat {
     pub editor_id: String,
     pub model: Option<String>,
-    /// TES4: радиус габаритной сферы.
+    /// TES4: bounding sphere radius.
     pub bound_radius: Option<f32>,
-    /// TES5: габаритный параллелепипед, min xyz и max xyz.
+    /// TES5: bounding box, min xyz and max xyz.
     pub bounds: Option<[i16; 6]>,
 }
 
@@ -38,7 +37,7 @@ fn decode_bounds(raw: [u8; 12]) -> [i16; 6] {
         *slot = i16::from_le_bytes(
             chunk
                 .try_into()
-                .expect("chunks_exact(2) даёт ровно 2 байта"),
+                .expect("chunks_exact(2) gives exactly 2 bytes"),
         );
     }
     out
@@ -108,12 +107,12 @@ mod tests {
         );
     }
 
-    /// Запись с пустыми данными (data_size = 0) возвращает MissingField для EDID.
+    /// A record with empty data (data_size = 0) returns MissingField for EDID.
     ///
-    /// Такие записи встречаются в Oblivion.esm (как минимум FormID=0008060C).
-    /// `Fields::parse` на пустом срезе честно возвращает пустой набор полей,
-    /// а попытка достать обязательный EDID оттуда → MissingField. Это ожидаемое
-    /// поведение; вызывающий должен пропускать записи с `data.is_empty()`.
+    /// Such records occur in Oblivion.esm (at least FormID=0008060C). `Fields::parse` on an empty
+    /// slice honestly returns an empty field set, and trying to get the required EDID from it gives
+    /// MissingField. This is expected behavior; the caller must skip records with
+    /// `data.is_empty()`.
     #[test]
     fn empty_data_returns_missing_field() {
         let record = stat_record(vec![]);
@@ -127,8 +126,8 @@ mod tests {
         );
     }
 
-    /// Сквозная проверка фазы 0: спека читает запись, вынутую из контейнера,
-    /// а не из подготовленных вручную байтов.
+    /// The end-to-end phase 0 check: the spec reads a record taken from the container, not from
+    /// hand-prepared bytes.
     #[test]
     fn reads_through_the_container() {
         let stat = synth::record(

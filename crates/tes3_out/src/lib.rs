@@ -1,18 +1,17 @@
-//! Вывод в формате TES3.
+//! Output in the TES3 format.
 //!
-//! Это **единственное** место, которое знает байтовую раскладку Morrowind, и
-//! знание это в основном чужое: запись `.esp`/`.esm`, NIF 4.0.0.2 и BSA даёт
-//! `Greatness7/tes3` (MIT). Наш код здесь — адаптер из модели `transform` в
-//! типы этой библиотеки.
+//! This is the **only** place that knows the Morrowind byte layout, and that knowledge is mostly
+//! someone else's: writing `.esp`/`.esm`, NIF 4.0.0.2 and BSA is provided by `Greatness7/tes3`
+//! (MIT). Our code here is an adapter from the `transform` model to that library's types.
 //!
-//! Граница существует ради второй цели: если однажды появится вариант под
-//! OpenMW, переписывать придётся только этот крейт, а не трансформации.
-//! Референс эту границу не провёл, и TES5 растворён у него в сотне файлов.
+//! The boundary exists for the sake of a second target: if an OpenMW variant ever appears, only
+//! this crate will have to be rewritten, not the transforms. The reference did not draw this
+//! boundary, and its TES5 is dissolved across a hundred files.
 //!
-//! Чего здесь нет намеренно: проверки вывода. `tes3conv` построен на той же
-//! библиотеке, которой мы пишем, поэтому round-trip через него проверял бы лишь
-//! правильность использования API. Независимые читатели формата — `esmtool` и
-//! `niftest` из OpenMW плюс Construction Set; они живут в стадии `validate`.
+//! What is deliberately missing here: output checking. `tes3conv` is built on the same library we
+//! write with, so a round trip through it would only check that the API is used correctly. The
+//! independent format readers are OpenMW's `esmtool` and `niftest` plus the Construction Set; they
+//! live in the `validate` stage.
 
 pub mod actors;
 mod archive;

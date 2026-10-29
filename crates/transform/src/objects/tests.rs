@@ -19,7 +19,7 @@ fn modl(path: &str) -> Vec<u8> {
 fn plugin_with(records: &[Vec<u8>]) -> Plugin {
     let group = synth::group(GameFormat::Tes4, b"STAT", 0, &records.concat());
     let bytes = synth::plugin(GameFormat::Tes4, &synth::header_fields(3), &[group]);
-    Plugin::parse(&bytes).expect("синтетический плагин разбирается")
+    Plugin::parse(&bytes).expect("the synthetic plugin parses")
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn record_without_editor_id_is_an_error() {
 
 #[test]
 fn non_ascii_model_path_is_an_error_naming_the_editor_id() {
-    let plugin = plugin_with(&[stat(7, &[edid("Odd"), modl("скала.nif")])]);
+    let plugin = plugin_with(&[stat(7, &[edid("Odd"), modl("rocher_é.nif")])]);
     let err = convert_statics(&plugin, &mut IdAllocator::default()).unwrap_err();
     assert!(
         matches!(&err, ObjectsError::Unrepresentable { editor_id, .. } if editor_id == "Odd"),
@@ -123,7 +123,7 @@ fn mapped_conversion_uses_absolute_form_ids_and_skips_unresolved_and_bad_records
     let plugin = plugin_with(&[
         stat(0x0100_0001, &[edid("Mapped"), modl("a.nif")]),
         stat(0x0200_0002, &[edid("NoMaster"), modl("b.nif")]),
-        stat(0x0000_0003, &[edid("Odd"), modl("скала.nif")]),
+        stat(0x0000_0003, &[edid("Odd"), modl("rocher_é.nif")]),
     ]);
     let mut ids = IdAllocator::default();
     let out = convert_statics_mapped(
@@ -159,7 +159,7 @@ fn an_override_keeps_the_master_id_even_with_another_editor_id() {
     assert_eq!(
         over.objects[0].id(),
         master.objects[0].id(),
-        "Morrowind сливает по ID: иначе запись мода встала бы рядом, а не вместо"
+        "Morrowind merges by ID: otherwise the mod's record would stand next to the master's instead of replacing it"
     );
     assert_eq!(over.objects[0].mesh(), mesh_path("b.nif").unwrap());
 }
@@ -209,7 +209,7 @@ fn a_weapon_becomes_a_weapon_not_a_static() {
     let out = all_models(&plugin);
     assert_eq!(out.objects.len(), 1);
     let Object::Weapon(w) = &out.objects[0] else {
-        panic!("ожидалось оружие, получено {:?}", out.objects[0]);
+        panic!("expected a weapon, got {:?}", out.objects[0]);
     };
     assert_eq!(w.name, "Iron Longsword");
     assert_eq!(w.stats.kind, tes3_out::WeaponKind::LongBladeOneHand);
@@ -218,14 +218,14 @@ fn a_weapon_becomes_a_weapon_not_a_static() {
     assert_eq!(
         out.origins[0].icon.as_deref(),
         Some("Weapons\\IronLongsword.dds"),
-        "стадия иконок ищет файл по исходному пути"
+        "the icons stage looks the file up by the source path"
     );
     assert_eq!(out.report.weapons, 1);
     assert_eq!(out.report.dropped_scripts, 1);
     assert_eq!(out.report.dropped_enchantments, 0);
 }
 
-/// В режиме «только `STAT`» оружие не берётся вовсе — срез M1 не меняется.
+/// In "only `STAT`" mode weapons are not taken at all — the M1 slice does not change.
 #[test]
 fn statics_mode_ignores_weapons() {
     let plugin = plugin_with(&[weap(1, &[edid("W"), modl("w.nif"), weap_data(0, 0.6, 5)])]);
@@ -242,9 +242,9 @@ fn a_weapon_without_icon_or_name_still_converts() {
     )]);
     let out = all_models(&plugin);
     let Object::Weapon(w) = &out.objects[0] else {
-        panic!("ожидалось оружие");
+        panic!("expected a weapon");
     };
-    assert_eq!(w.name, "WeapPlain", "без FULL имя — EDID");
+    assert_eq!(w.name, "WeapPlain", "without FULL the name is the EDID");
     assert!(w.icon.is_empty());
     assert_eq!(out.origins[0].icon, None);
     assert_eq!(w.stats.kind, tes3_out::WeaponKind::MarksmanBow);
@@ -266,9 +266,10 @@ fn an_unknown_weapon_type_is_skipped_with_a_problem_not_turned_into_a_static() {
     );
 }
 
-/// Имена модов бывают в cp1251 (русские переводы). Читаем мы их как cp1252, пишем тоже — и
-/// каждый байт 0x01..=0xFF, включая пять неопределённых в cp1252 (0x81, 0x8D, 0x8F, 0x90,
-/// 0x9D), должен лечь в `FNAM` без изменений: тогда русский Morrowind покажет русское имя.
+/// Mod names can be in cp1251 (Russian translations). We read them as cp1252 and write them the
+/// same way — and every byte 0x01..=0xFF, including the five undefined in cp1252 (0x81, 0x8D, 0x8F,
+/// 0x90, 0x9D), must land in `FNAM` unchanged: then the Russian Morrowind will show the Russian
+/// name.
 #[test]
 fn every_name_byte_survives_the_round_trip() {
     let all: Vec<u8> = (1..=255u8).collect();
@@ -299,7 +300,7 @@ fn every_name_byte_survives_the_round_trip() {
         fnam.push(0);
         assert!(
             bytes.windows(fnam.len()).any(|w| w == fnam),
-            "байты {:02X?} не дошли до FNAM",
+            "bytes {:02X?} did not reach FNAM",
             chunk
         );
     }
@@ -341,10 +342,10 @@ fn armor_gives_an_item_and_a_body_part_per_gender_with_their_origins() {
     assert_eq!(kinds, ["ARMO", "BODY", "BODY"]);
     assert_eq!(
         out.origins[0].model, "Armor/Iron/M/Cuirass_gnd.nif",
-        "мировая модель"
+        "world model"
     );
     assert!(out.origins[0].body.is_none());
-    let body = out.origins[2].body.as_ref().expect("меш на теле");
+    let body = out.origins[2].body.as_ref().expect("body mesh");
     assert!(body.female);
     assert_eq!(body.model, "Armor/Iron/F/Cuirass.nif");
     assert_eq!(out.objects[2].mesh(), body.mesh);
@@ -385,7 +386,7 @@ fn soul_gems_are_not_written_but_point_at_vanilla_gems() {
         ]
     );
     assert_eq!(out.report.soul_gems, 3);
-    assert_eq!(out.objects.len(), 1, "без вместимости — обычный предмет");
+    assert_eq!(out.objects.len(), 1, "without capacity — an ordinary item");
     assert_eq!(out.origins[0].editor_id, "Mg17BlackSoulGem");
     assert_eq!(out.report.items, 1);
     assert!(
@@ -393,7 +394,7 @@ fn soul_gems_are_not_written_but_point_at_vanilla_gems() {
             .problems
             .iter()
             .any(|p| p.contains("SoulGem5Grand5GrandSoul")),
-        "потеря души в отчёте: {:?}",
+        "soul loss in the report: {:?}",
         out.report.problems
     );
 }
@@ -430,13 +431,13 @@ fn book_images_reach_the_origin_for_the_asset_stage() {
             "book/fancy_font/a_70x61.dds",
             r"Book\Fancy_Font\A_70x61.dds"
         ],
-        "повторы по пути источника сводит стадия ассетов, здесь — как в тексте"
+        "repeats by source path are merged by the assets stage, here — as in the text"
     );
     let Object::Item(item) = &out.objects[0] else {
-        panic!("книга — предмет");
+        panic!("a book is an item");
     };
     let ItemKind::Book { text, .. } = &item.kind else {
-        panic!("книга");
+        panic!("book");
     };
     let path = crate::paths::book_art_path("book/fancy_font/a_70x61.dds").unwrap();
     assert_eq!(text.matches(&path).count(), 2, "{text}");
@@ -502,7 +503,7 @@ fn a_container_gets_item_ids_even_when_the_item_comes_later_in_the_file() {
         slgm(0x15B8B, "SoulGemEmpty3Common", 0, 3),
     ]));
     let Object::Container(c) = &out.objects[0] else {
-        panic!("контейнер первым: {:?}", out.objects[0]);
+        panic!("the container comes first: {:?}", out.objects[0]);
     };
     assert_eq!(
         c.items,
@@ -513,7 +514,10 @@ fn a_container_gets_item_ids_even_when_the_item_comes_later_in_the_file() {
     );
     assert!(c.respawns && !c.organic);
     assert_eq!(out.report.contents_resolved, 2);
-    assert_eq!(out.report.contents_unresolved, 1, "0x999 нет в плагине");
+    assert_eq!(
+        out.report.contents_unresolved, 1,
+        "0x999 is not in the plugin"
+    );
     assert_eq!(out.report.world, 1);
 }
 
@@ -571,9 +575,9 @@ fn world_records_become_their_morrowind_kinds() {
     );
     assert_eq!(
         out.origins[5].model, "",
-        "стадия мешей пропускает пустую модель"
+        "the meshes stage skips an empty model"
     );
-    // T2.6b: у двери свой меш (с петлёй в начале координат), у прочих записей — общий.
+    // T2.6b: a door has its own mesh (with the hinge at the origin), other records share one.
     let door_mesh = crate::paths::door_mesh_path("Doors/Door.nif").unwrap();
     let Object::Door(door) = &out.objects[2] else {
         unreachable!()
@@ -591,7 +595,7 @@ fn world_records_become_their_morrowind_kinds() {
     assert_eq!(out.report.without_model, 0);
     assert_eq!(
         out.report.contents_unresolved, 1,
-        "ингредиента 5 нет в плагине"
+        "ingredient 5 is not in the plugin"
     );
 }
 
@@ -623,9 +627,10 @@ fn a_tree_becomes_a_static_whose_mesh_is_built_from_the_spt() {
     ]);
     let out = all_models(&plugin);
     assert_eq!((out.report.trees, out.report.tree_variants), (2, 4));
-    // `MODL` дерева — относительно `Trees\`, с ведущим `\`.
+    // A tree's `MODL` is relative to `Trees\`, with a leading `\`.
     assert_eq!(out.origins[0].model, "trees\\Oak01su.spt");
-    // Семя — вариант: первый получает ID записи, прочие — производные с меткой `t<номер>`.
+    // A seed is a variant: the first gets the record's ID, the rest derived ones with the tag
+    // `t<number>`.
     let a = format!("ob_TreeOakA_{}", crate::ids::base36_u32(0x0001_0001));
     let ids: Vec<&str> = out.objects.iter().map(Object::id).collect();
     assert_eq!(
@@ -638,18 +643,19 @@ fn a_tree_becomes_a_static_whose_mesh_is_built_from_the_spt() {
     );
     let trees: Vec<&TreeSource> = out.origins.iter().filter_map(|o| o.tree.as_ref()).collect();
     let seeds: Vec<(usize, Option<i32>)> = trees.iter().map(|t| (t.variant, t.seed)).collect();
-    // Семя 1 движок не принимает — берётся семя `.spt` (`None`).
+    // The engine does not accept seed 1 — the `.spt` seed is taken (`None`).
     assert_eq!(
         seeds,
         [(0, Some(731)), (1, Some(5)), (2, Some(9)), (0, None)]
     );
     assert_eq!(trees[0].leaves.as_deref(), Some("Oak.dds"));
     assert_eq!(trees[3].leaves, None);
-    // Одна `.spt`, разные семя и листва — разные меши; путь меша у `STAT` тот же, что у стадии.
+    // One `.spt`, different seeds and foliage — different meshes; the `STAT`'s mesh path is the
+    // same as the stage's.
     let meshes: BTreeSet<&str> = trees.iter().map(|t| t.mesh.as_str()).collect();
     assert_eq!(meshes.len(), 4);
     assert!(matches!(&out.objects[1], Object::Static(s) if s.mesh == trees[1].mesh));
-    // В режиме `STAT` деревья не берутся.
+    // In `STAT` mode trees are not taken.
     let statics = convert_statics(&plugin, &mut IdAllocator::default()).unwrap();
     assert!(statics.objects.is_empty());
 }
@@ -690,12 +696,12 @@ fn chest_items(out: &ConvertedObjects) -> Vec<(i32, String)> {
             Object::Container(c) => Some(c.items.clone()),
             _ => None,
         })
-        .expect("в плагине есть контейнер")
+        .expect("the plugin has a container")
 }
 
 #[test]
 fn leveled_lists_are_written_and_containers_point_at_them() {
-    // Сундук → внешний список → вложенный список → чашка; всё стоит в файле раньше цели.
+    // Chest → outer list → nested list → cup; everything comes in the file before its target.
     let out = all_models(&plugin_with(&[
         chest_with(0x20, &[(0x30, 2)]),
         lvli(0x30, "LLOuter", 0x01, &[(1, 0x31, 1), (5, 0x21, 1)]),
@@ -736,11 +742,11 @@ fn gold_is_vanilla_everywhere_and_piles_up_in_lists() {
     ]));
     assert!(
         !out.objects.iter().any(|o| o.id().contains("Gold001")),
-        "своя запись золота не пишется"
+        "no record of our own is written for gold"
     );
     assert_eq!(out.report.gold, 1);
     assert!(out.vanilla.iter().any(|v| v.id == GOLD));
-    // В контейнере число есть — золото точное.
+    // A container has a count — the gold is exact.
     assert_eq!(chest_items(&out)[0], (250, GOLD.to_owned()));
     assert_eq!(
         out.leveled[0].items,
@@ -750,7 +756,8 @@ fn gold_is_vanilla_everywhere_and_piles_up_in_lists() {
 
 #[test]
 fn gold_from_a_master_resolves_without_the_masters_gold_record() {
-    // Мод без своего `Gold001`: золото узнаётся по `FormID`, `vanilla` мода пуст.
+    // A mod without its own `Gold001`: gold is recognized by `FormID`, the mod's `vanilla` is
+    // empty.
     let out = all_models(&plugin_with(&[chest_with(0x20, &[(GOLD_FORM_ID, 7)])]));
     assert_eq!(chest_items(&out), [(7, GOLD.to_owned())]);
 }
@@ -765,9 +772,9 @@ fn a_list_with_nothing_found_is_dropped_with_references_to_it() {
     ]));
     assert!(out.leveled.is_empty());
     assert_eq!(out.report.leveled_empty, 2);
-    // 0x999 во внутреннем и ссылка внешнего на опустевший внутренний.
+    // 0x999 in the inner one and the outer one's reference to the emptied inner one.
     assert_eq!(out.report.leveled_entries_unresolved, 2);
-    assert_eq!(chest_items(&out).len(), 1, "остался только предмет");
+    assert_eq!(chest_items(&out).len(), 1, "only the item remained");
     assert_eq!(out.report.contents_resolved, 1);
     assert_eq!(out.report.contents_unresolved, 1);
 }
@@ -781,7 +788,7 @@ fn a_use_all_list_is_expanded_in_the_container() {
     ]));
     let cup = out.objects[1].id().to_owned();
     assert_eq!(chest_items(&out), [(-6, cup)]);
-    // Сам список тоже пишется: на него могут ссылаться другие списки.
+    // The list itself is written too: other lists may reference it.
     assert_eq!(out.leveled.len(), 1);
 }
 
@@ -814,8 +821,9 @@ fn statics_mode_ignores_lists_and_gold() {
 
 #[test]
 fn references_to_a_record_that_failed_after_getting_an_id_are_removed() {
-    // Оружие неизвестного типа получает ID, но записью не становится (мягкий режим): ссылки на
-    // него из сундука и списка были бы битыми. Список с ним одним пустеет и уходит тоже.
+    // A weapon of an unknown type gets an ID but does not become a record (lenient mode):
+    // references to it from the chest and the list would be broken. A list with only it becomes
+    // empty and goes away too.
     let out = all_models(&plugin_with(&[
         chest_with(0x20, &[(3, 1), (0x30, 1), (0x31, 1)]),
         lvli(0x30, "LLOnlyOdd", 0, &[(1, 3, 1)]),
@@ -826,7 +834,7 @@ fn references_to_a_record_that_failed_after_getting_an_id_are_removed() {
     assert_eq!(out.leveled.len(), 1);
     let kept = &out.leveled[0];
     assert!(kept.id.starts_with("ob_LLOddAndCup_"), "{}", kept.id);
-    assert_eq!(kept.items.len(), 1, "осталась чашка");
+    assert_eq!(kept.items.len(), 1, "the cup remained");
     assert_eq!(chest_items(&out), [(1, kept.id.clone())]);
     assert_eq!(out.report.leveled_empty, 1);
     assert_eq!(out.report.leveled_entries_unresolved, 2);
@@ -890,7 +898,7 @@ fn weapon_enchantment(out: &ConvertedObjects, name: &str) -> String {
 
 #[test]
 fn a_weapon_enchantment_takes_the_weapon_charge() {
-    // ENCH стоит после оружия: ссылка разрешается, когда прочитан весь плагин.
+    // ENCH comes after the weapon: the reference is resolved once the whole plugin is read.
     let out = all_models(&plugin_with(&[
         enchanted_weapon(0x20, "FireSword", 0x30, 1050),
         ench(0x30, "EnFire", tes4_read::ENCHANT_WEAPON, b"FIDG"),
@@ -919,7 +927,7 @@ fn one_enchantment_on_weapons_with_different_charges_gives_variants() {
         .map(|e| (e.charge, e.id.as_str()))
         .collect();
     assert_eq!(charges.len(), 2, "{charges:?}");
-    // Меньший заряд — ID записи, больший — вариант.
+    // The smaller charge gets the record's ID, the larger one a variant.
     assert_eq!(charges[0].0, 500);
     assert!(charges[0].1.starts_with("ob_EnFire_"));
     assert_eq!(charges[1].0, 3000);
@@ -980,7 +988,7 @@ fn a_scroll_is_a_book_with_a_cast_once_enchantment() {
         ..
     } = &item.kind
     else {
-        panic!("книга");
+        panic!("book");
     };
     assert!(*scroll);
     assert_eq!(enchantment, &out.enchantments[0].id);
@@ -1049,7 +1057,8 @@ fn soun(form_id: u32, name: &str, file: &str) -> Vec<u8> {
     )
 }
 
-/// T10.1: звуки ставятся по ссылкам, пишутся только нужные, `SOUN` после двери — не помеха.
+/// T10.1: sounds are set by references, only the needed ones are written, a `SOUN` after the door
+/// is no obstacle.
 #[test]
 fn doors_and_lights_get_their_sounds_and_only_used_sounds_are_written() {
     let id = |v: u32| v.to_le_bytes();
@@ -1099,17 +1108,17 @@ fn doors_and_lights_get_their_sounds_and_only_used_sounds_are_written() {
         soun(0x32, "Unused", "fx\\unused.wav"),
     ]));
     let sound_ids: Vec<&str> = out.sounds.iter().map(|s| s.id.as_str()).collect();
-    assert_eq!(sound_ids.len(), 2, "0x32 никому не нужен: {sound_ids:?}");
+    assert_eq!(sound_ids.len(), 2, "nobody needs 0x32: {sound_ids:?}");
     let (open, shut) = (sound_ids[0], sound_ids[1]);
     let Object::Door(d) = &out.objects[0] else {
-        panic!("дверь первой");
+        panic!("the door comes first");
     };
     assert_eq!(
         (d.open_sound.as_str(), d.close_sound.as_str()),
         (open, shut)
     );
     let Object::Light(l) = &out.objects[1] else {
-        panic!("свет вторым");
+        panic!("the light comes second");
     };
     assert_eq!(l.sound, open);
     assert_eq!(out.sound_origins[0].source, "fx\\doors\\open.wav");
@@ -1123,12 +1132,13 @@ fn doors_and_lights_get_their_sounds_and_only_used_sounds_are_written() {
     );
     assert_eq!(
         out.report.sounds_dropped, 2,
-        "у контейнера Morrowind звуков нет"
+        "a Morrowind container has no sounds"
     );
     assert_eq!(out.report.sounds_unresolved, 0);
 }
 
-/// Контрольный опыт: ссылка на `SOUN` не из плагина — объект без звука и замечание.
+/// Control: a reference to a `SOUN` from outside the plugin — the object has no sound and there is
+/// a note.
 #[test]
 fn a_sound_from_elsewhere_leaves_the_door_silent() {
     let door = record_of(
@@ -1142,7 +1152,7 @@ fn a_sound_from_elsewhere_leaves_the_door_silent() {
     );
     let out = all_models(&plugin_with(&[door]));
     let Object::Door(d) = &out.objects[0] else {
-        panic!("дверь");
+        panic!("door");
     };
     assert!(d.open_sound.is_empty());
     assert!(out.sounds.is_empty());
@@ -1150,8 +1160,8 @@ fn a_sound_from_elsewhere_leaves_the_door_silent() {
     assert!(out.report.problems.iter().any(|p| p.contains("00000777")));
 }
 
-/// T10.3: петля `ACTI` (`SNAM`) — скрипт на сам активатор; два активатора с одним звуком делят
-/// один скрипт, активатор без звука остаётся без скрипта.
+/// T10.3: an `ACTI` loop (`SNAM`) becomes a script on the activator itself; two activators with one
+/// sound share one script, an activator without a sound stays without a script.
 #[test]
 fn an_activator_loop_becomes_its_script() {
     let acti = |form_id: u32, name: &str, sound: Option<u32>| {
@@ -1171,7 +1181,7 @@ fn an_activator_loop_becomes_its_script() {
     let sound = out.sounds[0].id.as_str();
     assert_eq!(out.scripts.len(), 1, "{:?}", out.scripts);
     let Script::LoopSound { id, sound: plays } = &out.scripts[0] else {
-        panic!("петля");
+        panic!("loop");
     };
     assert_eq!(plays, sound);
     assert!(id.starts_with("obls_MachineHum_"), "{id}");
@@ -1180,13 +1190,13 @@ fn an_activator_loop_becomes_its_script() {
         .iter()
         .map(|o| match o {
             Object::Activator(a) => a.script.as_str(),
-            other => panic!("не активатор: {other:?}"),
+            other => panic!("not an activator: {other:?}"),
         })
         .collect();
     assert_eq!(scripts, [id.as_str(), id.as_str(), ""]);
     assert_eq!(out.report.activator_loops, 2);
     assert_eq!(
         out.report.sounds_dropped, 0,
-        "звук активатора теперь переносится"
+        "the activator's sound is now carried over"
     );
 }

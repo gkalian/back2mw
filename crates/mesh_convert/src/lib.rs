@@ -1,19 +1,19 @@
-//! Конвертация мешей: NIF 20.0.0.x (Oblivion) → 4.0.0.2 (Morrowind).
+//! Mesh conversion: NIF 20.0.0.x (Oblivion) → 4.0.0.2 (Morrowind).
 //!
-//! Что в этом слое нельзя забыть:
+//! What must not be forgotten in this layer:
 //!
-//! * **Разбор NIF источника пишем сами.** Это единственный слой, где Rust
-//!   слабее Python: готовой библиотеки нет. Крейт `nif` (amPerl) заброшен,
-//!   «super-primitive», и годится только как справка.
-//! * **Текстуры не конвертируются, а копируются.** Morrowind понимает DDS
-//!   Oblivion. Переносить нужно лишь слоты, выжившие после замены шейдерных
-//!   свойств, — диффуз и glow; нормали и спекуляр ванильный движок не
-//!   использует, и тащить их значит раздувать мод мёртвым весом.
-//! * **Коллизия: havok-юниты умножаются на 7.** Подтверждено на исходниках
-//!   референса (`asset_convert/collision/collision_extract.py:43`).
-//!   `bhk*` разбирается в треугольники внутри `RootCollisionNode`.
+//! * **We write the source NIF parser ourselves.** This is the only layer where Rust is weaker than
+//!   Python: there is no ready library. The `nif` crate (amPerl) is abandoned, "super-primitive",
+//!   and good only as a reference.
+//! * **Textures are not converted but copied.** Morrowind understands Oblivion DDS. Only the slots
+//!   that survive the replacement of shader properties need to be carried over — diffuse and glow;
+//!   the vanilla engine does not use normal and specular maps, and dragging them along would bloat
+//!   the mod with dead weight.
+//! * **Collision: havok units are multiplied by 7.** Confirmed in the reference's sources
+//!   (`asset_convert/collision/collision_extract.py:43`). `bhk*` is unrolled into triangles inside
+//!   `RootCollisionNode`.
 
-/// Игровых юнитов в одном havok-юните у Oblivion.
+/// Game units in one Oblivion havok unit.
 pub const HAVOK_UNITS_TO_GAME: f32 = 7.0;
 
 pub mod audio;
@@ -32,36 +32,37 @@ pub mod skin;
 pub mod speedtree;
 pub mod textures;
 
-/// Версия NIF, которую понимает Morrowind.
+/// The NIF version Morrowind understands.
 pub const NIF_VERSION_TES3: u32 = 0x0400_0002;
 
-/// Версия NIF основной массы Oblivion: 90.7% архива и все 4 712 читаемых мешей `STAT`.
+/// The NIF version of most of Oblivion: 90.7% of the archive and all 4,712 readable `STAT` meshes.
 pub const NIF_VERSION_TES4: u32 = 0x1400_0004;
 
-/// Редкая версия Oblivion (1.2% архива); в мешах `STAT` не встретилась, раскладка не
-/// проверена на данных.
+/// A rare Oblivion version (1.2% of the archive); not met in `STAT` meshes, the layout is not
+/// checked on data.
 pub const NIF_VERSION_TES4_ALT: u32 = 0x1400_0005;
 
-/// Узел, в котором Morrowind ищет коллизию. Пустой узел движок трактует как
-/// «коллизия только для камеры».
+/// The node in which Morrowind looks for collision. The engine treats an empty node as "camera-only
+/// collision".
 pub const ROOT_COLLISION_NODE: &str = "RootCollisionNode";
 
-/// Начало имени узла, занятое Construction Set: узел, чьё имя начинается на `Collision` (девять
-/// знаков, без учёта регистра), редактор при загрузке модели переносит в отдельный узел коллизии
-/// объекта, который сам вешает под корень меша. Если так назван корень, узел коллизии
-/// становится собственным потомком, и редактор падает с переполнением стека, когда грузит модель
-/// такого объекта (дамп 2026-10-02: `CollisionBox01` и `CollisionBoxStatic` Oblivion — 363
-/// ссылки `SEWorld`; разбор — `docs/ru/formats/tes3.md`, «Имя узла `Collision…`»). Делает ли то
-/// же движок игры — не проверено.
+/// A node name prefix taken by the Construction Set: a node whose name starts with `Collision`
+/// (nine characters, case-insensitive) is moved by the editor, when loading the model, into a
+/// separate collision node of the object that the editor itself hangs under the mesh root. If the
+/// root is named like that, the collision node becomes its own descendant, and the editor crashes
+/// with a stack overflow when loading the model of such an object (dump 2026-10-02: Oblivion's
+/// `CollisionBox01` and `CollisionBoxStatic` — 363 `SEWorld` references; analysis in
+/// `docs/en/formats/tes3.md`, "A node named `Collision…`"). Whether the game engine does the same
+/// is not verified.
 pub const RESERVED_NODE_PREFIX: &str = "collision";
 
-/// Что ставится перед именем узла, начинающимся на [`RESERVED_NODE_PREFIX`].
+/// What is put in front of a node name starting with [`RESERVED_NODE_PREFIX`].
 pub const NODE_NAME_GUARD: &str = "ob_";
 
-/// Имя узла выхода по имени узла источника: как есть, кроме имён на [`RESERVED_NODE_PREFIX`] —
-/// перед ними ставится [`NODE_NAME_GUARD`]. По именам узлов мировых объектов Morrowind ничего
-/// не ищет, так что переименование ничего не ломает; скелеты существ и тел идут мимо — их кости
-/// ищутся по имени.
+/// The output node name from the source node name: as is, except names starting with
+/// [`RESERVED_NODE_PREFIX`] — [`NODE_NAME_GUARD`] is put in front of them. Morrowind does not look
+/// anything up by the node names of world objects, so renaming breaks nothing; the skeletons of
+/// creatures and bodies bypass this — their bones are looked up by name.
 pub fn node_name(name: &str) -> String {
     let reserved = name
         .as_bytes()
@@ -83,8 +84,8 @@ mod tests {
         assert_eq!(node_name("CollisionBox01"), "ob_CollisionBox01");
         assert_eq!(node_name("COLLISIONgarlic"), "ob_COLLISIONgarlic");
         assert_eq!(node_name("collision"), "ob_collision");
-        // Контроль: остальные имена не трогаются, в том числе узел коллизии Morrowind и имя
-        // короче девяти знаков.
+        // Control: other names are not touched, including Morrowind's collision node and a name
+        // shorter than nine characters.
         assert_eq!(node_name("RootCollisionNode"), "RootCollisionNode");
         assert_eq!(node_name("Collisio"), "Collisio");
         assert_eq!(node_name("c_col"), "c_col");

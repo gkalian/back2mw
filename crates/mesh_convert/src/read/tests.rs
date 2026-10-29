@@ -1,12 +1,12 @@
-//! Синтетические тесты блоков: байты собраны руками по раскладке из `nif.xml`, так что
-//! тест ловит расхождение кода с раскладкой, а не с самим собой. Проверка на реальных
-//! файлах — `tests/real_blocks.rs`.
+//! Synthetic block tests: the bytes are assembled by hand following the layout in `nif.xml`, so the
+//! test catches a mismatch between the code and the layout, not between the code and itself. The
+//! check on real files is `tests/real_blocks.rs`.
 
 use super::cursor::Cursor;
 use super::havok::{read_collision_object, read_rigid_body};
 use super::*;
 
-/// Писатель байт.
+/// A byte writer.
 #[derive(Default)]
 struct W(Vec<u8>);
 
@@ -45,7 +45,7 @@ impl W {
     fn net(&mut self, name: &str) -> &mut Self {
         self.s(name).u32(0).i32(-1)
     }
-    /// `NiAVObject` с заметными значениями, чтобы перепутанный порядок полей был виден.
+    /// A `NiAVObject` with noticeable values, so a mixed-up field order is visible.
     fn av(&mut self, name: &str) -> &mut Self {
         self.net(name)
             .u16(0x000E)
@@ -57,19 +57,19 @@ impl W {
     }
 }
 
-/// Разбирает блок и требует, чтобы курсор встал ровно в конец.
+/// Parses a block and requires the cursor to stop exactly at the end.
 fn read_exact<T>(bytes: &[u8], read: impl FnOnce(&mut Cursor<'_>) -> Result<T>) -> T {
     let mut cur = Cursor::new(bytes);
     let value = read(&mut cur).unwrap();
-    assert_eq!(cur.remaining(), 0, "блок разобран не до конца");
+    assert_eq!(cur.remaining(), 0, "the block was not parsed to the end");
     value
 }
 
-/// Любое усечение блока — ошибка, а не паника.
+/// Any truncation of a block is an error, not a panic.
 fn assert_truncation_is_error<T>(bytes: &[u8], read: impl Fn(&mut Cursor<'_>) -> Result<T>) {
     for cut in 0..bytes.len() {
         let mut cur = Cursor::new(&bytes[..cut]);
-        assert!(read(&mut cur).is_err(), "усечение до {cut} байт прошло");
+        assert!(read(&mut cur).is_err(), "truncation to {cut} bytes passed");
     }
 }
 
@@ -137,7 +137,7 @@ fn tri_strips_without_and_with_shader() {
     assert_truncation_is_error(&w.0, geometry::read_tri_strips);
 }
 
-/// Полосы: `[0,1,2,3]` и `[2,3,0]` — 2 + 1 = 3 треугольника.
+/// Strips: `[0,1,2,3]` and `[2,3,0]` — 2 + 1 = 3 triangles.
 fn strips_data(with_tangents: bool, with_colors: bool, uv_sets: u16) -> Vec<u8> {
     let mut w = W::default();
     w.i32(0).u16(4).u8(0).u8(0);
@@ -151,7 +151,7 @@ fn strips_data(with_tangents: bool, with_colors: bool, uv_sets: u16) -> Vec<u8> 
         w.f(&[1.0, 0.0, 0.0].repeat(4));
         w.f(&[0.0, 1.0, 0.0].repeat(4));
     }
-    w.f(&[0.5, 0.5, 0.0]).f(&[1.5]); // ограничивающая сфера
+    w.f(&[0.5, 0.5, 0.0]).f(&[1.5]); // bounding sphere
     if with_colors {
         w.u8(1).f(&[1.0, 0.5, 0.25, 1.0].repeat(4));
     } else {
@@ -214,7 +214,7 @@ fn strips_data_with_zero_uv_sets_and_no_points() {
     w.f(&[0.0; 3]).f(&[0.0]);
     w.u8(0); // Has Vertex Colors
     w.u16(0).i32(-1);
-    w.u16(0).u16(1).u16(5).u8(0); // 1 полоса длиной 5, Has Points = 0
+    w.u16(0).u16(1).u16(5).u8(0); // 1 strip of length 5, Has Points = 0
     let data = read_exact(&w.0, geometry::read_tri_strips_data);
     assert!(data.vertices.is_empty() && data.uv_sets.is_empty());
     assert!(data.strips.is_empty());
@@ -223,8 +223,8 @@ fn strips_data_with_zero_uv_sets_and_no_points() {
 #[test]
 fn a_huge_declared_strip_count_is_an_error_not_an_allocation() {
     let mut bytes = strips_data(false, false, 0);
-    // после заголовка блока и массивов число полос — последнее u16 перед длинами;
-    // проще поставить заведомо большое число вершин
+    // after the block header and the arrays, the strip count is the last u16 before the lengths;
+    // simpler to put a deliberately large vertex count
     bytes[4..6].copy_from_slice(&u16::MAX.to_le_bytes());
     let mut cur = Cursor::new(&bytes);
     assert!(geometry::read_tri_strips_data(&mut cur).is_err());
@@ -276,7 +276,7 @@ fn texturing_property_with_base_only_and_seven_slots() {
     tex_desc(&mut w, 5, false);
     w.u8(0).u8(0).u8(0).u8(0); // dark, detail, gloss, glow
     w.u8(0); // bump
-    w.u8(0); // decal 0: texture_count 7 покрывает только его (нужно > 6)
+    w.u8(0); // decal 0: texture_count 7 covers only it (needs > 6)
     w.u32(0); // Num Shader Textures
     let p = read_exact(&w.0, properties::read_texturing_property);
     assert_eq!(p.texture_count, 7);
@@ -303,7 +303,7 @@ fn texturing_property_reads_transform_bump_decal_and_shader_slots() {
     w.u8(1);
     tex_desc(&mut w, 4, false); // decal 0
     w.u8(0).u8(0); // decal 1, decal 2
-    // texture_count 9 покрывает decal 0..2 (нужно > 6, > 7, > 8), decal 3 — нет
+    // texture_count 9 covers decal 0..2 (needs > 6, > 7, > 8), not decal 3
     w.u32(1); // Num Shader Textures
     w.u8(1);
     tex_desc(&mut w, 6, false);
@@ -386,21 +386,21 @@ fn collision_object_reads_target_flags_and_body() {
 fn rigid_body_bytes() -> Vec<u8> {
     let mut w = W::default();
     w.i32(8); // shape
-    w.u8(1).u8(0).u16(0); // HavokFilter: слой, флаги, группа
-    w.zeros(4).u8(1).zeros(3).zeros(12); // информация о мире
+    w.u8(1).u8(0).u16(0); // HavokFilter: layer, flags, group
+    w.zeros(4).u8(1).zeros(3).zeros(12); // world info
     w.u8(1).u8(0).u16(0xFFFF); // bhkEntityCInfo
     w.zeros(4); // unused 01
-    w.u8(1).u8(0).u16(0); // фильтр в CInfo
+    w.u8(1).u8(0).u16(0); // filter in CInfo
     w.zeros(4); // unused 02
-    w.u8(1).u8(0).u16(0xFFFF); // отклик, unused 03, задержка
+    w.u8(1).u8(0).u16(0xFFFF); // response, unused 03, delay
     w.zeros(4); // unused 04
-    w.f(&[10.0, 20.0, 30.0, 0.0]); // сдвиг
-    w.f(&[0.0, 0.0, 0.707, 0.707]); // поворот
-    w.zeros(32).zeros(48).zeros(16); // скорости, инерция, центр
+    w.f(&[10.0, 20.0, 30.0, 0.0]); // translation
+    w.f(&[0.0, 0.0, 0.707, 0.707]); // rotation
+    w.zeros(32).zeros(48).zeros(16); // velocities, inertia, center
     w.f(&[0.0, 0.1, 0.05, 0.5, 0.4, 104.4, 31.57, 0.15]);
-    w.u8(7).u8(0).u8(0).u8(1); // motion, деактиватор, решатель, качество
+    w.u8(7).u8(0).u8(0).u8(1); // motion, deactivator, solver, quality
     w.zeros(12);
-    w.u32(1).i32(11); // ограничения
+    w.u32(1).i32(11); // constraints
     w.u32(1); // Body Flags
     w.0
 }
@@ -464,10 +464,10 @@ fn tri_strips_shape_reads_refs_and_filters() {
 }
 
 // ---------------------------------------------------------------------------
-// Файл целиком
+// The whole file
 // ---------------------------------------------------------------------------
 
-/// Собирает NIF 20.0.0.4: заголовок, тела блоков, футер с корнем `0`.
+/// Builds a NIF 20.0.0.4: the header, the block bodies, the footer with root `0`.
 fn file(types: &[&str], index: &[u16], bodies: &[Vec<u8>]) -> Vec<u8> {
     let mut w = W::default();
     w.0.extend_from_slice(b"Gamebryo File Format, Version 20.0.0.4\n");
@@ -534,7 +534,7 @@ fn parse_rejects_bytes_after_the_footer() {
             assert_eq!((last_block, last_type.as_str()), (0, "NiNode"));
             assert_eq!(pos + 1, len);
         }
-        other => panic!("ожидалась TrailingData, получено {other:?}"),
+        other => panic!("expected TrailingData, got {other:?}"),
     }
 }
 
@@ -556,7 +556,7 @@ fn parse_reports_an_unsupported_block_with_its_index_and_type() {
 
 #[test]
 fn parse_names_the_block_where_a_read_failed() {
-    // NiTriStrips с булевым `Has Shader` = 2: раскладка съехала внутри блока 1.
+    // NiTriStrips with boolean `Has Shader` = 2: the layout drifted inside block 1.
     let mut broken = W::default();
     broken.av("Shape").i32(0).i32(-1).u8(2);
     let bytes = file(
@@ -573,7 +573,7 @@ fn parse_names_the_block_where_a_read_failed() {
             assert_eq!((index, type_name.as_str()), (1, "NiTriStrips"));
             assert!(matches!(*source, Error::InvalidBool { value: 2, .. }));
         }
-        other => panic!("ожидалась InBlock, получено {other:?}"),
+        other => panic!("expected InBlock, got {other:?}"),
     }
 }
 
@@ -583,7 +583,7 @@ fn every_truncation_of_a_whole_file_is_an_error_not_a_panic() {
     for cut in 0..bytes.len() {
         assert!(
             parse(&bytes[..cut]).is_err(),
-            "усечение до {cut} байт прошло"
+            "truncation to {cut} bytes passed"
         );
     }
 }
@@ -597,7 +597,7 @@ fn alpha_property_reads_flags_and_threshold() {
     assert_truncation_is_error(&w.0, properties::read_alpha_property);
 }
 
-// --- T1.3w: остальные свойства и формы -----------------------------------------------
+// --- T1.3w: the remaining properties and shapes -----------------------------------------
 
 #[test]
 fn stencil_property_reads_every_field_and_no_flags() {
@@ -679,7 +679,7 @@ fn convex_vertices_shape_reads_vertices_and_planes() {
 #[test]
 fn packed_strips_shape_and_data() {
     let mut w = W::default();
-    w.u16(1).u32(0).u32(3).u32(0); // один подчастный: фильтр, вершины, материал
+    w.u16(1).u32(0).u32(3).u32(0); // one subpart: filter, vertices, material
     w.u32(0).zeros(4).f(&[0.1]).zeros(4);
     w.f(&[1.0, 1.0, 1.0, 0.0])
         .f(&[0.1])
@@ -724,7 +724,7 @@ fn transform_shape_reads_the_child_and_sixteen_floats() {
 
 #[test]
 fn supported_types_match_read_block() {
-    // Тип из списка не должен давать UnsupportedBlock (на пустых данных — любая другая ошибка).
+    // A type from the list must not give UnsupportedBlock (on empty data any other error is fine).
     for name in SUPPORTED_TYPES {
         let mut cur = Cursor::new(&[]);
         let err = read_block(&mut cur, 0, name).unwrap_err();
@@ -742,14 +742,14 @@ fn tri_shape_data_reads_triangles_and_skips_match_groups() {
     let mut w = W::default();
     w.i32(0).u16(3).u8(0).u8(0);
     w.u8(1).f(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
-    w.u16(0); // data_flags: без UV и тангенты
-    w.u8(0); // нормалей нет
-    w.f(&[0.0, 0.0, 0.0, 1.0]); // сфера
-    w.u8(0); // цветов нет
+    w.u16(0); // data_flags: no UV and no tangents
+    w.u8(0); // no normals
+    w.f(&[0.0, 0.0, 0.0, 1.0]); // sphere
+    w.u8(0); // no colors
     w.u16(0).i32(-1); // consistency, additional data
-    w.u16(1).u32(3).u8(1); // 1 треугольник, 3 индекса, треугольники есть
+    w.u16(1).u32(3).u8(1); // 1 triangle, 3 indices, triangles present
     w.u16(0).u16(1).u16(2);
-    w.u16(1).u16(2).u16(0).u16(1); // одна группа совпадений из двух вершин
+    w.u16(1).u16(2).u16(0).u16(1); // one match group of two vertices
     let d = read_exact(&w.0, geometry::read_tri_shape_data);
     assert_eq!(d.triangles, [[0, 1, 2]]);
     assert!(d.strips.is_empty());
@@ -757,7 +757,7 @@ fn tri_shape_data_reads_triangles_and_skips_match_groups() {
     assert_truncation_is_error(&w.0, geometry::read_tri_shape_data);
 }
 
-/// Блок из `anim::IGNORED_TYPES`, прочитанный через `read_block`, ровно до конца.
+/// A block from `anim::IGNORED_TYPES` read through `read_block`, exactly to the end.
 fn read_ignored_exact(bytes: &[u8], type_name: &str) {
     let block = read_exact(bytes, |cur| read_block(cur, 0, type_name));
     assert!(
@@ -767,7 +767,7 @@ fn read_ignored_exact(bytes: &[u8], type_name: &str) {
     assert_truncation_is_error(bytes, |cur| read_block(cur, 0, type_name));
 }
 
-/// `NiTimeController`: следующий, флаги, частота, фаза, начало, конец, цель.
+/// `NiTimeController`: next, flags, frequency, phase, start, stop, target.
 fn time_controller(w: &mut W) -> &mut W {
     w.i32(-1).u16(0x48).f(&[1.0, 0.0, 0.0, 2.0]).i32(0)
 }
@@ -781,7 +781,7 @@ fn controller_manager_and_sequence_are_read_to_the_end() {
     let mut w = W::default();
     w.s("Open").u32(2).u32(1);
     for i in 0..2 {
-        // интерполятор, контроллер, приоритет, палитра, пять смещений
+        // interpolator, controller, priority, palette, five offsets
         w.i32(i)
             .i32(9)
             .u8(26)
@@ -874,7 +874,7 @@ fn interpolators_read_their_values() {
     w.f(&[0.5]).i32(2);
     read_ignored_exact(&w.0, "NiFloatInterpolator");
 
-    // Значение 2 — «не задано»: это байт, не bool, и отказа быть не должно.
+    // Value 2 is "not set": this is a byte, not a bool, and there must be no refusal.
     let mut w = W::default();
     w.u8(2).i32(2);
     read_ignored_exact(&w.0, "NiBoolInterpolator");
@@ -890,7 +890,7 @@ fn interpolators_read_their_values() {
 
 #[test]
 fn blend_interpolators_read_items_only_without_the_manager_flag() {
-    // Флаг 0: полный набор полей и два элемента по 17 байт.
+    // Flag 0: the full set of fields and two items of 17 bytes.
     let mut w = W::default();
     w.u8(0).u8(2).f(&[0.0]).u8(1).u8(0).u8(0).u8(0).f(&[0.0; 4]);
     for i in 0..2 {
@@ -899,7 +899,7 @@ fn blend_interpolators_read_items_only_without_the_manager_flag() {
     w.f(&[0.25]);
     read_ignored_exact(&w.0, "NiBlendFloatInterpolator");
 
-    // Флаг 1 (управляется менеджером): после порога веса — сразу значение.
+    // Flag 1 (manager-controlled): right after the weight threshold comes the value.
     let mut w = W::default();
     w.u8(1).u8(4).f(&[0.0]).f(&[1.0, 2.0, 3.0]);
     read_ignored_exact(&w.0, "NiBlendPoint3Interpolator");
@@ -911,14 +911,14 @@ fn blend_interpolators_read_items_only_without_the_manager_flag() {
 
 #[test]
 fn key_data_sizes_follow_the_interpolation_type() {
-    // Кватернионы TBC (4 + 16 + 12), сдвиги квадратичные (4 + 3 × 12), масштабов нет.
+    // TBC quaternions (4 + 16 + 12), quadratic translations (4 + 3 × 12), no scales.
     let mut w = W::default();
     w.u32(2).u32(3).zeros(2 * 32);
     w.u32(1).u32(2).zeros(4 + 36);
     w.u32(0);
     read_ignored_exact(&w.0, "NiTransformData");
 
-    // XYZ-вращение: три группы ключей, у каждой свой тип.
+    // XYZ rotation: three key groups, each with its own type.
     let mut w = W::default();
     w.u32(1).u32(4);
     w.u32(1).u32(1).zeros(8);
@@ -988,7 +988,7 @@ fn billboard_node_is_a_node_with_a_mode() {
     w.av("Flame").u32(1).i32(1).u32(0).u16(2);
     let block = read_exact(&w.0, |cur| read_block(cur, 0, "NiBillboardNode"));
     let Block::Node(node) = block else {
-        panic!("узел: {block:?}");
+        panic!("node: {block:?}");
     };
     assert_eq!(node.av.net.name, "Flame");
     assert_eq!(node.children, [BlockRef(Some(1))]);
@@ -1023,26 +1023,26 @@ fn lights_in_the_mesh_are_read_and_dropped() {
 
 #[test]
 fn version_10_2_reads_ps2_fields_in_texture_descriptions() {
-    // TexDesc: флаг наличия, источник, clamp, filter, набор UV, у 10.2.0.0 — PS2 L и PS2 K,
-    // флаг преобразования.
+    // TexDesc: presence flag, source, clamp, filter, UV set, PS2 L and PS2 K in 10.2.0.0, transform
+    // flag.
     let mut w = W::default();
     w.u8(1).i32(1).u32(0).u32(2).u32(0).u16(0).u16(0xFFB5).u8(0);
     let mut cur = Cursor::new(&w.0);
     cur.set_version(header::VERSION_10_2_0_0, 9);
     let desc = properties::read_opt_tex_desc(&mut cur).unwrap();
-    assert_eq!(cur.remaining(), 0, "PS2-поля прочитаны");
+    assert_eq!(cur.remaining(), 0, "the PS2 fields were read");
     assert_eq!(desc.map(|d| d.source), Some(BlockRef(Some(1))));
 
-    // Контрольный опыт: те же байты как 20.0.0.4 — поля PS2 лишние, флаг преобразования
-    // читается из них и курсор до конца не доходит.
+    // Control: the same bytes as 20.0.0.4 — the PS2 fields are extra, the transform flag is read
+    // from them and the cursor does not reach the end.
     let mut cur = Cursor::new(&w.0);
     let _ = properties::read_opt_tex_desc(&mut cur);
     assert_ne!(cur.remaining(), 0);
 }
 
-// --- Частицы (T2.3b) ----------------------------------------------------------------
+// --- Particles (T2.3b) ----------------------------------------------------------------
 
-/// Как [`read_ignored_exact`], но у файла версия `version` и `BSVER` `bsver`.
+/// Like [`read_ignored_exact`], but the file has version `version` and `BSVER` `bsver`.
 fn read_ignored_exact_at(bytes: &[u8], type_name: &str, version: u32, bsver: u32) {
     let read = |cur: &mut Cursor<'_>| {
         cur.set_version(version, bsver);
@@ -1060,27 +1060,27 @@ fn read_ignored_exact_at(bytes: &[u8], type_name: &str, version: u32, bsver: u32
 fn every_particle_type_is_listed_as_supported() {
     for name in PARTICLE_TYPES {
         assert!(SUPPORTED_TYPES.contains(name), "{name}");
-        assert!(!IGNORED_TYPES.contains(name), "{name} в двух списках");
+        assert!(!IGNORED_TYPES.contains(name), "{name} is in two lists");
     }
 }
 
 #[test]
 fn particle_system_is_geometry_with_modifier_list() {
     let mut w = W::default();
-    w.av("Fire").i32(5).i32(-1).u8(0); // данные, скиннинг, шейдера нет
-    w.u8(1).u32(2).i32(6).i32(7); // world space, два модификатора
+    w.av("Fire").i32(5).i32(-1).u8(0); // data, skinning, no shader
+    w.u8(1).u32(2).i32(6).i32(7); // world space, two modifiers
     read_ignored_exact(&w.0, "NiParticleSystem");
     read_ignored_exact(&w.0, "NiMeshParticleSystem");
     assert!(is_particle_system("NiParticleSystem"));
     assert!(!is_particle_system("NiPSysData"));
 }
 
-/// `NiGeometryData` на две вершины, без нормалей, цветов и UV.
+/// A `NiGeometryData` for two vertices, without normals, colors and UV.
 fn particle_geometry(w: &mut W) -> &mut W {
     w.i32(0).u16(2).u8(0).u8(0);
-    w.u8(1).f(&[0.0; 6]); // вершины
-    w.u16(0).u8(0); // data flags, нормалей нет
-    w.f(&[0.0, 0.0, 0.0, 1.0]).u8(0); // сфера, цветов нет
+    w.u8(1).f(&[0.0; 6]); // vertices
+    w.u16(0).u8(0); // data flags, no normals
+    w.f(&[0.0, 0.0, 0.0, 1.0]).u8(0); // sphere, no colors
     w.u16(0) // consistency
 }
 
@@ -1088,18 +1088,18 @@ fn particle_geometry(w: &mut W) -> &mut W {
 fn particle_data_20_0_0_4_has_rotation_angles_and_short_particle_info() {
     let mut w = W::default();
     particle_geometry(&mut w).i32(-1); // additional data
-    w.u8(1).f(&[1.0, 2.0]); // радиусы
-    w.u16(2); // активных
-    w.u8(0); // размеров нет
-    w.u8(1).f(&[0.0; 8]); // вращения, два кватерниона
-    w.u8(1).f(&[0.5, 0.5]); // углы
-    w.u8(0); // осей нет
-    w.zeros(2 * 28); // NiParticleInfo без оси вращения
-    w.u8(1).f(&[3.0, 4.0]); // скорости вращения
+    w.u8(1).f(&[1.0, 2.0]); // radii
+    w.u16(2); // active ones
+    w.u8(0); // no sizes
+    w.u8(1).f(&[0.0; 8]); // rotations, two quaternions
+    w.u8(1).f(&[0.5, 0.5]); // angles
+    w.u8(0); // no axes
+    w.zeros(2 * 28); // NiParticleInfo without a rotation axis
+    w.u8(1).f(&[3.0, 4.0]); // rotation speeds
     w.u16(0).u16(0);
     read_ignored_exact(&w.0, "NiPSysData");
 
-    // NiMeshPSysData: пул, заполнение, поколения, меши.
+    // NiMeshPSysData: pool, fill, generations, meshes.
     w.u32(8).u8(1).u32(2).u32(0).u32(1).i32(9);
     read_ignored_exact(&w.0, "NiMeshPSysData");
 }
@@ -1107,14 +1107,14 @@ fn particle_data_20_0_0_4_has_rotation_angles_and_short_particle_info() {
 #[test]
 fn particle_data_10_2_has_rotation_axis_in_particle_info_and_no_angles() {
     let mut w = W::default();
-    particle_geometry(&mut w); // без additional data
-    w.u8(0).u16(2).u8(0).u8(0); // радиусов, размеров, вращений нет
-    w.zeros(2 * 40); // NiParticleInfo с осью вращения
-    w.u16(0).u16(0); // скоростей вращения нет вовсе (с 20.0.0.2)
+    particle_geometry(&mut w); // no additional data
+    w.u8(0).u16(2).u8(0).u8(0); // no radii, sizes, rotations
+    w.zeros(2 * 40); // NiParticleInfo with a rotation axis
+    w.u16(0).u16(0); // no rotation speeds at all (since 20.0.0.2)
     read_ignored_exact_at(&w.0, "NiPSysData", header::VERSION_10_2_0_0, 9);
 }
 
-/// `NiPSysModifier`: имя, порядок, система, включён.
+/// `NiPSysModifier`: name, order, system, active.
 fn modifier(w: &mut W) -> &mut W {
     w.s("Mod").u32(3).i32(1).u8(1)
 }
@@ -1187,7 +1187,7 @@ fn rotation_modifier_fields_since_20_0_0_2_are_absent_in_10_2() {
     read_ignored_exact_at(&w.0, "NiPSysRotationModifier", header::VERSION_10_2_0_0, 9);
 }
 
-/// `NiPSysEmitter`: скорость, углы, цвет, радиус, (разброс радиуса), жизнь.
+/// `NiPSysEmitter`: speed, angles, color, radius, (radius variation), lifetime.
 fn emitter(w: &mut W, radius_variation: bool) -> &mut W {
     modifier(w)
         .f(&[10.0, 1.0, 0.0, 0.5, 0.0, 3.1])
@@ -1317,9 +1317,9 @@ fn multi_sphere_shape_reads_its_spheres() {
     assert_truncation_is_error(&w.0, shapes::read_multi_sphere_shape);
 }
 
-// --- Старые 10.x (T2.3b) ------------------------------------------------------------
+// --- Old 10.x (T2.3b) ------------------------------------------------------------------
 
-/// Как [`read_exact`], но у файла версия `version` и `BSVER` `bsver`.
+/// Like [`read_exact`], but the file has version `version` and `BSVER` `bsver`.
 fn read_exact_at<T>(
     bytes: &[u8],
     version: u32,
@@ -1335,7 +1335,7 @@ fn read_exact_at<T>(
     value
 }
 
-/// Файл 10.0.1.0: без пользовательской версии и заголовка Bethesda, перед каждым блоком `u32`.
+/// A 10.0.1.0 file: without a user version and the Bethesda header, a `u32` before each block.
 fn old_file(separators: &[u32]) -> Vec<u8> {
     let mut w = W::default();
     w.0.extend_from_slice(b"NetImmerse File Format, Version 10.0.1.0\n");
@@ -1365,14 +1365,14 @@ fn old_10x_blocks_are_preceded_by_a_zero_u32() {
 #[test]
 fn geometry_data_before_10_1_has_no_group_id_or_keep_flags() {
     let mut w = W::default();
-    w.u16(3); // вершин; Group ID (с 10.1.0.114) и флагов (с 10.1.0.0) нет
+    w.u16(3); // vertices; no Group ID (since 10.1.0.114) and no flags (since 10.1.0.0)
     w.u8(1).f(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
-    w.u16(0).u8(0); // data flags, нормалей нет
-    w.f(&[0.0, 0.0, 0.0, 1.0]).u8(0); // сфера, цветов нет
-    w.u16(0); // consistency; Additional Data (с 20.0.0.4) нет
-    w.u16(1).u32(3); // треугольников, индексов; `Has Triangles` (с 10.1.0.0) нет
+    w.u16(0).u8(0); // data flags, no normals
+    w.f(&[0.0, 0.0, 0.0, 1.0]).u8(0); // sphere, no colors
+    w.u16(0); // consistency; no Additional Data (since 20.0.0.4)
+    w.u16(1).u32(3); // triangles, indices; no `Has Triangles` (since 10.1.0.0)
     w.u16(0).u16(1).u16(2);
-    w.u16(0); // групп нет
+    w.u16(0); // no groups
     let d = read_exact_at(
         &w.0,
         header::VERSION_10_0_1_0,
@@ -1391,7 +1391,7 @@ fn geometry_data_before_10_1_has_no_group_id_or_keep_flags() {
         .f(&[0.0; 4])
         .u8(0)
         .u16(0);
-    w.u16(1).u16(1).u16(3); // треугольников, одна полоса из трёх; `Has Points` (с 10.0.1.3) нет
+    w.u16(1).u16(1).u16(3); // triangles, one strip of three; no `Has Points` (since 10.0.1.3)
     w.u16(0).u16(1).u16(2);
     let d = read_exact_at(
         &w.0,
@@ -1401,7 +1401,7 @@ fn geometry_data_before_10_1_has_no_group_id_or_keep_flags() {
     );
     assert_eq!(d.strips, [vec![0, 1, 2]]);
 
-    // 10.1.0.106: флаги сохранения и сжатия есть, `Group ID` ещё нет.
+    // 10.1.0.106: the keep and compress flags are present, `Group ID` is not yet.
     let mut w = W::default();
     w.u16(0)
         .u8(0)
@@ -1440,10 +1440,10 @@ fn properties_before_10_0_1_3_carry_flags_and_textures_lack_direct_render() {
     assert_eq!(m.diffuse, [0.5; 3]);
 
     let mut w = W::default();
-    w.net("tex").u16(0).u32(2).u32(1); // флаги (до 10.0.1.2), apply, один слот
-    w.u8(1).i32(4).u32(3).u32(2).u32(0).u16(0).u16(0); // base без преобразования
+    w.net("tex").u16(0).u32(2).u32(1); // flags (up to 10.0.1.2), apply, one slot
+    w.u8(1).i32(4).u32(3).u32(2).u32(0).u16(0).u16(0); // base without a transform
     w.u8(0).u8(0).u8(0).u8(0); // dark, detail, gloss, glow
-    w.u32(0); // шейдерных нет
+    w.u32(0); // no shader slots
     let t = read_exact_at(
         &w.0,
         header::VERSION_10_0_1_0,
@@ -1453,8 +1453,8 @@ fn properties_before_10_0_1_3_carry_flags_and_textures_lack_direct_render() {
     assert_eq!(t.base.map(|d| d.source), Some(BlockRef(Some(4))));
 
     let mut w = W::default();
-    w.net("t").u8(1).s("textures\\a.dds"); // внешняя: имя, ссылки нет
-    w.u32(6).u32(1).u32(3).u8(1); // форматы, static; Direct Render (с 10.1.0.103) нет
+    w.net("t").u8(1).s("textures\\a.dds"); // external: name, no reference
+    w.u32(6).u32(1).u32(3).u8(1); // formats, static; no Direct Render (since 10.1.0.103)
     let s = read_exact_at(
         &w.0,
         header::VERSION_10_0_1_0,
@@ -1466,7 +1466,7 @@ fn properties_before_10_0_1_3_carry_flags_and_textures_lack_direct_render() {
     assert!(s.direct_render);
 
     let mut w = W::default();
-    w.net("t").u8(1).s("a.dds").i32(-1); // 10.1.0.101: ссылка есть, Direct Render нет
+    w.net("t").u8(1).s("a.dds").i32(-1); // 10.1.0.101: reference present, no Direct Render
     w.u32(6).u32(1).u32(3).u8(1);
     read_exact_at(
         &w.0,
@@ -1479,19 +1479,19 @@ fn properties_before_10_0_1_3_carry_flags_and_textures_lack_direct_render() {
 #[test]
 fn controller_sequence_10_1_0_106_keeps_strings_in_its_blocks() {
     let mut w = W::default();
-    w.s("Open").u32(1).u32(1); // имя, один блок, grow by
-    w.i32(3).i32(4).i32(-1).u16(0).u8(26); // интерполятор, контроллер, смешивание, приоритет
+    w.s("Open").u32(1).u32(1); // name, one block, grow by
+    w.i32(3).i32(4).i32(-1).u16(0).u8(26); // interpolator, controller, blend, priority
     for s in ["Door", "", "NiTransformController", "", ""] {
         w.s(s);
     }
-    w.f(&[1.0]).i32(-1).u32(0).f(&[1.0, 0.0, 0.0, 2.0]); // вес, ключи, цикл, частота…конец
-    w.u8(0).i32(1).s("Door"); // назад, менеджер, корень накопления; палитры нет
+    w.f(&[1.0]).i32(-1).u32(0).f(&[1.0, 0.0, 0.0, 2.0]); // weight, keys, cycle, frequency…stop
+    w.u8(0).i32(1).s("Door"); // backwards, manager, accumulation root; no palette
     read_ignored_exact_at(&w.0, "NiControllerSequence", header::VERSION_10_1_0_106, 5);
 }
 
 #[test]
 fn interpolators_and_controllers_10_1_0_106_have_old_fields() {
-    // NiTransformInterpolator: NiQuatTransform с тремя флагами `TRS Valid`, данные.
+    // NiTransformInterpolator: NiQuatTransform with three `TRS Valid` flags, data.
     let mut w = W::default();
     w.f(&[0.0; 8]).u8(1).u8(1).u8(1).i32(2);
     read_ignored_exact_at(
@@ -1501,11 +1501,11 @@ fn interpolators_and_controllers_10_1_0_106_have_old_fields() {
         5,
     );
 
-    // Смешивающий до 10.1.0.109: `u16`-размеры, элементы по 20 байт, `i32`-приоритеты.
+    // Blend before 10.1.0.109: `u16` sizes, items of 20 bytes, `i32` priorities.
     let mut w = W::default();
     w.u16(1).u16(1).i32(3).f(&[1.0, 1.0]).i32(0).f(&[0.0]);
     w.u8(0).f(&[0.0]).u8(0).u16(1).u16(0).i32(0).i32(0);
-    w.f(&[0.0; 8]).u8(1).u8(1).u8(1); // значение-преобразование
+    w.f(&[0.0; 8]).u8(1).u8(1).u8(1); // transform value
     read_ignored_exact_at(
         &w.0,
         "NiBlendTransformInterpolator",
@@ -1513,12 +1513,12 @@ fn interpolators_and_controllers_10_1_0_106_have_old_fields() {
         5,
     );
 
-    // NiTransformController: `Manager Controlled` (10.1.0.104 … 10.1.0.108), интерполятор.
+    // NiTransformController: `Manager Controlled` (10.1.0.104 … 10.1.0.108), interpolator.
     let mut w = W::default();
     time_controller(&mut w).u8(1).i32(5);
     read_ignored_exact_at(&w.0, "NiTransformController", header::VERSION_10_1_0_106, 5);
 
-    // До 10.1.0.104 интерполятора нет, есть ссылка на данные.
+    // Before 10.1.0.104 there is no interpolator, there is a data reference.
     let mut w = W::default();
     time_controller(&mut w).i32(5);
     read_ignored_exact_at(&w.0, "NiKeyframeController", header::VERSION_10_0_1_2, 3);
@@ -1534,16 +1534,16 @@ fn light_10_1_0_101_has_affected_nodes_but_no_switch() {
 #[test]
 fn rigid_body_before_10_1_lacks_the_first_cinfo_fields() {
     let mut w = W::default();
-    w.i32(2).u32(0); // форма, `u32` до 10.0.1.2
-    w.u8(1).u8(0).u16(0); // фильтр
+    w.i32(2).u32(0); // shape, `u32` up to 10.0.1.2
+    w.u8(1).u8(0).u16(0); // filter
     w.zeros(20); // bhkWorldObjectCInfo
     w.zeros(4); // bhkEntityCInfo
     w.zeros(4); // unused 04
-    w.f(&[1.0, 2.0, 3.0, 0.0]).f(&[0.0, 0.0, 0.0, 1.0]); // сдвиг, поворот
-    w.zeros(16 + 16 + 48 + 16); // скорости, тензор, центр
-    w.f(&[0.0, 0.1, 0.05, 0.3, 0.3]); // масса, демпфирование, трение, упругость
-    w.u8(7).u8(1).u8(0).u8(0).zeros(12); // движение…, unused 05
-    w.u32(0).u32(0); // связей нет, флаги
+    w.f(&[1.0, 2.0, 3.0, 0.0]).f(&[0.0, 0.0, 0.0, 1.0]); // translation, rotation
+    w.zeros(16 + 16 + 48 + 16); // velocities, tensor, center
+    w.f(&[0.0, 0.1, 0.05, 0.3, 0.3]); // mass, damping, friction, restitution
+    w.u8(7).u8(1).u8(0).u8(0).zeros(12); // motion…, unused 05
+    w.u32(0).u32(0); // no constraints, flags
     let body = read_exact_at(&w.0, header::VERSION_10_0_1_2, 3, |cur| {
         read_rigid_body(cur, true)
     });
@@ -1566,7 +1566,7 @@ fn old_havok_shapes_are_read() {
     assert_eq!(sweep.shape, BlockRef(Some(2)));
 
     let mut w = W::default();
-    w.i32(3).zeros(12).f(&[1.0]).u32(2).u8(9).u8(9); // MOPP без смещения (до 10.1.0.0)
+    w.i32(3).zeros(12).f(&[1.0]).u32(2).u8(9).u8(9); // MOPP without an offset (before 10.1.0.0)
     let mopp = read_exact_at(&w.0, header::VERSION_10_0_1_2, 3, havok::read_mopp_shape);
     assert_eq!(mopp.mopp_size, 2);
 }
@@ -1581,8 +1581,8 @@ fn boolean_and_integer_extra_data_are_read_to_the_end() {
     read_ignored_exact(&w.0, "NiIntegerExtraData");
 }
 
-/// Файл из одних блоков анимации для `motion::sequences`: типы и байты блоков подряд. Сами
-/// блоки в `SourceNif` второму проходу не нужны — только заголовок и смещения.
+/// A file made only of animation blocks for `motion::sequences`: the block types and bytes in a
+/// row. The second pass does not need the blocks in `SourceNif` — only the header and the offsets.
 fn motion_file(version: u32, blocks: &[(&str, Vec<u8>)]) -> (Vec<u8>, SourceNif, Vec<usize>) {
     let mut bytes = Vec::new();
     let mut offsets = Vec::new();
@@ -1610,15 +1610,15 @@ fn motion_file(version: u32, blocks: &[(&str, Vec<u8>)]) -> (Vec<u8>, SourceNif,
     (bytes, source, offsets)
 }
 
-/// T2.6: значения анимации двери читаются вторым проходом — имя узла из палитры, поза
-/// интерполятора, первый и последний ключ; наклоны квадратичных ключей пропускаются.
+/// T2.6: door animation values are read in a second pass — the node name from the palette, the
+/// interpolator pose, the first and last key; the tangents of quadratic keys are skipped.
 #[test]
 fn motion_reads_the_open_sequence_of_a_door() {
     use motion::{Rotations, sequences};
 
     let mut seq = W::default();
     seq.s("Open").u32(2).u32(1);
-    // интерполятор, контроллер, приоритет, палитра, смещение имени узла и ещё четыре
+    // interpolator, controller, priority, palette, node name offset and four more
     seq.i32(2)
         .i32(9)
         .u8(26)
@@ -1656,11 +1656,11 @@ fn motion_reads_the_open_sequence_of_a_door() {
         .i32(3);
 
     let mut data = W::default();
-    // Два линейных ключа поворота: время, w, x, y, z.
+    // Two linear rotation keys: time, w, x, y, z.
     data.u32(2).u32(1);
     data.f(&[0.0, 1.0, 0.0, 0.0, 0.0]);
     data.f(&[2.5, 0.66, 0.0, 0.0, -0.75]);
-    // Два квадратичных ключа сдвига: время, значение и два наклона по три числа.
+    // Two quadratic translation keys: time, value and two tangents of three numbers each.
     data.u32(2).u32(2);
     data.f(&[0.0, 48.8, 2.9, 0.0]).zeros(24);
     data.f(&[2.5, 48.8, 2.9, 1.5]).zeros(24);
@@ -1693,7 +1693,7 @@ fn motion_reads_the_open_sequence_of_a_door() {
     );
     let keys = open.tracks[0].keys.as_ref().unwrap();
     assert_eq!(keys.pose_translation, Some([48.8, 2.9, 0.0]));
-    assert_eq!(keys.pose_rotation, None, "−MAX — «не задано»");
+    assert_eq!(keys.pose_rotation, None, "−MAX means \"not set\"");
     assert_eq!(
         keys.rotations,
         Rotations::Quat(vec![
@@ -1705,23 +1705,23 @@ fn motion_reads_the_open_sequence_of_a_door() {
         keys.translations,
         [(0.0, [48.8, 2.9, 0.0]), (2.5, [48.8, 2.9, 1.5])]
     );
-    assert_eq!(open.tracks[1].keys, None, "не NiTransformInterpolator");
+    assert_eq!(open.tracks[1].keys, None, "not a NiTransformInterpolator");
 
-    // Усечение файла в любом месте — ошибка или меньше данных, но не паника.
+    // Truncating the file anywhere gives an error or less data, but not a panic.
     for cut in 0..bytes.len() {
         let _ = sequences(&bytes[..cut], &source, &offsets);
     }
 }
 
-/// Дорожки Эйлера и раскладка 10.1.0.106: блок управления несёт строки сам, у интерполятора —
-/// три байта `TRS Valid`, у последовательности — фаза и «проигрывать назад».
+/// Euler tracks and the 10.1.0.106 layout: the controlled block carries the strings itself, the
+/// interpolator has three `TRS Valid` bytes, the sequence has the phase and "play backwards".
 #[test]
 fn motion_reads_euler_keys_and_the_inline_names_of_10_1() {
     use motion::{Rotations, sequences};
 
     let mut seq = W::default();
     seq.s("Open").u32(1).u32(1);
-    // интерполятор, контроллер, смешивающий, его индекс, приоритет, пять строк
+    // interpolator, controller, blend, its index, priority, five strings
     seq.i32(1).i32(9).i32(-1).u16(0).u8(26);
     seq.s("Gate").s("").s("NiTransformController").s("").s("");
     seq.f(&[1.0])
@@ -1743,7 +1743,7 @@ fn motion_reads_euler_keys_and_the_inline_names_of_10_1() {
         .i32(2);
 
     let mut data = W::default();
-    // XYZ: число ключей (любое ненулевое), тип 4, три группы; у Z — два ключа TBC.
+    // XYZ: number of keys (any non-zero), type 4, three groups; Z has two TBC keys.
     data.u32(1).u32(4);
     data.u32(0);
     data.u32(0);
@@ -1772,14 +1772,15 @@ fn motion_reads_euler_keys_and_the_inline_names_of_10_1() {
     );
     assert!(keys.translations.is_empty());
 
-    // До 10.1.0.106 блок управления другой: последовательности не читаются, а не читаются криво.
+    // Before 10.1.0.106 the controlled block is different: sequences are not read, rather than read
+    // wrongly.
     let (bytes, mut old, offsets) =
         motion_file(0x0A01_0065, &[("NiControllerSequence", vec![0; 4])]);
     old.header.version = 0x0A01_0065;
     assert_eq!(sequences(&bytes, &old, &offsets), Ok(Vec::new()));
 }
 
-/// Смещения блоков — те самые места, с которых `read_block` читал блок.
+/// Block offsets are exactly the places `read_block` read the block from.
 #[test]
 fn parse_with_offsets_points_at_block_starts() {
     let bytes = file(&["NiNode", "BSXFlags"], &[0, 1], &[node_body(), bsx_body()]);
@@ -1794,12 +1795,12 @@ fn parse_with_offsets_points_at_block_starts() {
     assert_eq!(parse(&bytes).unwrap(), source);
 }
 
-/// Общая часть воздействия `NiPSysModifier`: имя, порядок, владелец, включено.
+/// The common part of a `NiPSysModifier`: name, order, owner, active.
 fn psys_modifier<'a>(w: &'a mut W, name: &str, active: bool) -> &'a mut W {
     w.s(name).u32(1).i32(0).u8(u8::from(active))
 }
 
-/// `NiParticleSystem` с контроллером `controller` и списком воздействий.
+/// A `NiParticleSystem` with controller `controller` and a list of modifiers.
 fn particle_system(controller: i32, modifiers: &[i32]) -> Vec<u8> {
     let mut w = W::default();
     w.s("Fire").u32(0).i32(controller);
@@ -1809,7 +1810,7 @@ fn particle_system(controller: i32, modifiers: &[i32]) -> Vec<u8> {
         .f(&[1.0])
         .u32(0)
         .i32(-1);
-    // данные, скин, шейдера нет; затем «в мире» и воздействия
+    // data, skin, no shader; then "in world" and the modifiers
     w.i32(1).i32(-1).u8(0).u8(1);
     w.u32(u32::try_from(modifiers.len()).unwrap());
     for m in modifiers {
@@ -1818,7 +1819,7 @@ fn particle_system(controller: i32, modifiers: &[i32]) -> Vec<u8> {
     w.0
 }
 
-/// Начало `NiPSysData` — `NiGeometryData` с пулом из `pool` вершин без массивов.
+/// The start of `NiPSysData` — a `NiGeometryData` with a pool of `pool` vertices without arrays.
 fn psys_data(pool: u16) -> Vec<u8> {
     let mut w = W::default();
     w.i32(0).u16(pool).u8(0).u8(0).u8(0).u16(0).u8(0);
@@ -1829,14 +1830,14 @@ fn psys_data(pool: u16) -> Vec<u8> {
 fn box_emitter(name: &str) -> Vec<u8> {
     let mut w = W::default();
     psys_modifier(&mut w, name, true);
-    // скорость и её разброс, склонение, плоский угол с разбросами
+    // speed and its variation, declination, planar angle with variations
     w.f(&[20.0, 10.0, 0.1, 0.28, 0.2, 3.0]);
     w.f(&[1.0, 0.5, 0.25, 1.0]).f(&[8.0, 0.0]).f(&[1.5, 0.5]);
     w.i32(4).f(&[1.0, 2.0, 3.0]);
     w.0
 }
 
-/// `NiPSysEmitterCtlr`: флаги, окно, интерполятор, имя эмиттера.
+/// `NiPSysEmitterCtlr`: flags, window, interpolator, emitter name.
 fn emitter_controller(flags: u16, interpolator: i32, emitter: &str) -> Vec<u8> {
     let mut w = W::default();
     w.i32(-1).u16(flags).f(&[1.0, 0.0, 0.0, 0.95]).i32(0);
@@ -1844,8 +1845,8 @@ fn emitter_controller(flags: u16, interpolator: i32, emitter: &str) -> Vec<u8> {
     w.0
 }
 
-/// T2.7: система частиц читается со значениями — эмиттер, темп рождения из своего
-/// интерполятора, пул, воздействия; выключенное воздействие остаётся выключенным.
+/// T2.7: a particle system is read with its values — the emitter, the birth rate from its own
+/// interpolator, the pool, the modifiers; a disabled modifier stays disabled.
 #[test]
 fn psys_reads_a_self_driven_particle_system() {
     use psys::{EmitterShape, ModifierKind, systems};
@@ -2003,16 +2004,16 @@ fn psys_reads_a_self_driven_particle_system() {
             &ModifierKind::Housekeeping,
         ]
     );
-    assert!(!s.modifiers[6].active, "сопротивление выключено");
+    assert!(!s.modifiers[6].active, "drag is disabled");
 
-    // Усечение файла в любом месте — ошибка или меньше данных, но не паника.
+    // Truncating the file anywhere gives an error or less data, but not a panic.
     for cut in 0..bytes.len() {
         let _ = systems(&bytes[..cut], &source, &offsets);
     }
 }
 
-/// Контроллер без своего интерполятора: темп и окно — из последовательности менеджера. `Idle`
-/// в петле — постоянный эффект; только `Forward` или зажатая `Idle` — эффект по событию.
+/// A controller without its own interpolator: the rate and window come from the manager's sequence.
+/// A looped `Idle` is a constant effect; only `Forward` or a clamped `Idle` is an event effect.
 #[test]
 fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_triggered() {
     use psys::systems;
@@ -2020,7 +2021,7 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
     let sequence = |name: &str, cycle: u32, interpolator: i32| {
         let mut w = W::default();
         w.s(name).u32(1).u32(1);
-        // интерполятор, контроллер (блок 3), приоритет, палитра, пять смещений
+        // interpolator, controller (block 3), priority, palette, five offsets
         w.i32(interpolator).i32(3).u8(26).i32(-1);
         w.u32(0).u32(0).u32(0).u32(0).u32(0);
         w.f(&[1.0])
@@ -2050,7 +2051,7 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
             ("NiParticleSystem", particle_system(3, &[2])),
             ("NiPSysData", psys_data(50)),
             ("NiPSysBoxEmitter", box_emitter("Emitter")),
-            // Управляется менеджером: своего интерполятора нет.
+            // Manager-controlled: no interpolator of its own.
             (
                 "NiPSysEmitterCtlr",
                 emitter_controller(0x0028, -1, "Emitter"),
@@ -2065,7 +2066,7 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
         motion_file(0x1400_0004, &blocks)
     };
 
-    // `Forward` стоит в файле первой, но мир сам проигрывает `Idle`.
+    // `Forward` comes first in the file, but the world plays `Idle` by itself.
     let (bytes, source, offsets) = file(vec![
         ("NiControllerSequence", sequence("Forward", 2, 7)),
         ("NiControllerSequence", sequence("idle", 0, 5)),
@@ -2074,10 +2075,14 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
     let e = found[0].emission.as_ref().unwrap();
     assert_eq!(e.sequence.as_deref(), Some("idle"));
     assert!(!e.triggered && !e.once);
-    assert_eq!((e.start, e.stop), (0.5, 4.5), "окно — у последовательности");
+    assert_eq!(
+        (e.start, e.stop),
+        (0.5, 4.5),
+        "the window belongs to the sequence"
+    );
     assert_eq!(e.mean_rate(), Some(10.0), "(6 + 24) / 3");
 
-    // Только действие: частицы — по событию.
+    // An action only: the particles are an event effect.
     let (bytes, source, offsets) = file(vec![("NiControllerSequence", sequence("Forward", 2, 7))]);
     let found = systems(&bytes, &source, &offsets).unwrap();
     let e = found[0].emission.as_ref().unwrap();
@@ -2085,7 +2090,7 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
     assert!(e.triggered && e.once);
     assert_eq!(e.mean_rate(), Some(40.0));
 
-    // Зажатая `SpecialIdle` — разовая вспышка, тоже по событию.
+    // A clamped `SpecialIdle` is a one-off burst, also an event effect.
     let (bytes, source, offsets) = file(vec![(
         "NiControllerSequence",
         sequence("SpecialIdle", 2, 5),
@@ -2093,7 +2098,7 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
     let found = systems(&bytes, &source, &offsets).unwrap();
     assert!(found[0].emission.as_ref().unwrap().triggered);
 
-    // Контроль: последовательностей нет вовсе — темпа нет, но и «по событию» сказать нельзя.
+    // Control: no sequences at all — no rate, but "on event" cannot be claimed either.
     let (bytes, source, offsets) = file(Vec::new());
     let found = systems(&bytes, &source, &offsets).unwrap();
     let e = found[0].emission.as_ref().unwrap();
@@ -2101,16 +2106,16 @@ fn psys_takes_the_birth_rate_from_an_ambient_sequence_or_marks_the_system_trigge
     assert!(!e.triggered);
 }
 
-/// T11.5b: блоки B-сплайнов и уровни детализации скелета читаются до конца.
+/// T11.5b: B-spline blocks and skeleton levels of detail are read to the end.
 #[test]
 fn spline_blocks_and_bone_lod_are_read_to_the_end() {
-    // Начало, конец, данные, базис; поза; три смещения опорных точек.
+    // Start, stop, data, basis; pose; three control point offsets.
     let mut w = W::default();
     w.f(&[0.0, 2.0]).i32(3).i32(4);
     w.f(&[0.0; 3]).f(&[1.0, 0.0, 0.0, 0.0]).f(&[1.0]);
     w.u32(0).u32(12).u32(0xFFFF);
     read_ignored_exact(&w.0, "NiBSplineTransformInterpolator");
-    // Сжатый — ещё шесть чисел: смещение и множитель сдвига, поворота, масштаба.
+    // Compressed — six more numbers: offset and multiplier of translation, rotation, scale.
     w.f(&[0.0, 10.0, 0.0, 1.0, 0.0, 1.0]);
     read_ignored_exact(&w.0, "NiBSplineCompTransformInterpolator");
 
@@ -2123,7 +2128,7 @@ fn spline_blocks_and_bone_lod_are_read_to_the_end() {
         .f(&[0.0, 1.0]);
     read_ignored_exact(&w.0, "NiBSplineCompFloatInterpolator");
 
-    // Два `f32` и три `i16`.
+    // Two `f32` and three `i16`.
     let mut w = W::default();
     w.u32(2).f(&[1.0, 2.0]).u32(3).u16(1).u16(2).u16(3);
     read_ignored_exact(&w.0, "NiBSplineData");
@@ -2132,7 +2137,7 @@ fn spline_blocks_and_bone_lod_are_read_to_the_end() {
     w.u32(7);
     read_ignored_exact(&w.0, "NiBSplineBasisData");
 
-    // Два уровня: три кости и одна.
+    // Two levels: three bones and one.
     let mut w = W::default();
     time_controller(&mut w).u32(0).u32(2).u32(2);
     w.u32(3).i32(1).i32(2).i32(3);
@@ -2155,20 +2160,20 @@ fn bs_bound_reads_center_and_half_extents() {
     ));
 }
 
-/// T11.5b: клип существа — метки, корень накопления, дорожка на сжатом сплайне и дорожка на
-/// ключах с масштабом.
+/// T11.5b: a creature clip — text keys, the accumulation root, a track on a compressed spline and a
+/// track on keys with scale.
 #[test]
 fn clip_reads_marks_accum_root_keys_and_compact_splines() {
     use clip::{Channel, Rotation, clips};
 
     let mut seq = W::default();
     seq.s("Forward").u32(2).u32(1);
-    // интерполятор, контроллер, приоритет, палитра, смещение имени узла и ещё четыре
+    // interpolator, controller, priority, palette, node name offset and four more
     for (interpolator, name_at) in [(2, 0), (5, 6)] {
         seq.i32(interpolator).i32(-1).u8(26).i32(1).u32(name_at);
         seq.u32(17).u32(17).u32(17).u32(17);
     }
-    // вес, метки, цикл, частота, начало, конец, менеджер, корень накопления, палитра
+    // weight, text keys, cycle, frequency, start, stop, manager, accumulation root, palette
     seq.f(&[1.0])
         .i32(6)
         .u32(0)
@@ -2180,7 +2185,8 @@ fn clip_reads_marks_accum_root_keys_and_compact_splines() {
     let mut palette = W::default();
     palette.s("Bip01\0Bip01 Tail\0").u32(17);
 
-    // Сплайн: сдвиг — с нулевого числа, поворота и масштаба нет; сдвиг = i16 / 32767 × 50 + 100.
+    // Spline: translation from number zero, no rotation and scale; translation = i16 / 32767 × 50 + 100.
+    //
     let mut spline = W::default();
     spline.f(&[0.0, 2.0]).i32(3).i32(4);
     spline.f(&[0.0, 0.0, 5.0]).f(&[-f32::MAX; 4]).f(&[1.0]);
@@ -2251,11 +2257,11 @@ fn clip_reads_marks_accum_root_keys_and_compact_splines() {
     assert_eq!(root.interpolator, "NiBSplineCompTransformInterpolator");
     let motion = root.motion.as_ref().unwrap();
     assert_eq!(motion.pose_translation, Some([0.0, 0.0, 5.0]));
-    assert_eq!(motion.pose_rotation, None, "−MAX — «не задано»");
+    assert_eq!(motion.pose_rotation, None, "−MAX means \"not set\"");
     assert_eq!(motion.rotation, Rotation::None);
     assert_eq!(motion.scale, Channel::None);
     let Channel::Spline(travel) = &motion.translation else {
-        panic!("сдвиг — сплайн: {:?}", motion.translation);
+        panic!("translation is a spline: {:?}", motion.translation);
     };
     assert_eq!((travel.start, travel.stop), (0.0, 2.0));
     assert_eq!(
@@ -2280,7 +2286,7 @@ fn clip_reads_marks_accum_root_keys_and_compact_splines() {
     );
     assert_eq!(motion.scale, Channel::Keys(vec![(0.0, [2.0])]));
 
-    // Смещение опорных точек за концом данных — ошибка, а не чтение мимо.
+    // A control point offset past the end of the data is an error, not a read out of bounds.
     let mut bad = bytes.clone();
     let handle_at = offsets[2] + 16 + 32;
     bad[handle_at..handle_at + 4].copy_from_slice(&1u32.to_le_bytes());
@@ -2289,14 +2295,14 @@ fn clip_reads_marks_accum_root_keys_and_compact_splines() {
         Err(Error::UnknownValue { value: 1, .. })
     ));
 
-    // Усечение файла в любом месте — ошибка или меньше данных, но не паника.
+    // Truncating the file anywhere gives an error or less data, but not a panic.
     for cut in 0..bytes.len() {
         let _ = clips(&bytes[..cut], &source, &offsets);
     }
 }
 
-/// Кубический B-сплайн, прижатый к концам: на краях — крайние опорные точки, четыре точки —
-/// кривая Безье, между точками на прямой — точка той же прямой.
+/// A cubic B-spline clamped at the ends: at the edges — the edge control points, four points — a
+/// Bézier curve, between points on a line — a point on the same line.
 #[test]
 fn spline_is_clamped_cubic_and_degrades_with_few_points() {
     use clip::Spline;
@@ -2308,14 +2314,14 @@ fn spline_is_clamped_cubic_and_degrades_with_few_points() {
     };
     assert_eq!(bezier.at(1.0), Some([0.0]));
     assert_eq!(bezier.at(3.0), Some([40.0]));
-    // Середина кривой Безье: (P0 + 3·P1 + 3·P2 + P3) / 8.
+    // The middle of a Bézier curve: (P0 + 3·P1 + 3·P2 + P3) / 8.
     let mid = bezier.at(2.0).unwrap()[0];
     assert!((mid - 16.25).abs() < 1e-4, "{mid}");
-    // За пределами отрезка — значение на краю.
+    // Outside the range — the value at the edge.
     assert_eq!(bezier.at(-5.0), Some([0.0]));
     assert_eq!(bezier.at(9.0), Some([40.0]));
 
-    // Семь точек на прямой y = 2x: кривая идёт по той же прямой и не поворачивает назад.
+    // Seven points on the line y = 2x: the curve follows the same line and does not turn back.
     let line = Spline {
         start: 0.0,
         stop: 1.0,
@@ -2327,12 +2333,12 @@ fn spline_is_clamped_cubic_and_degrades_with_few_points() {
     for step in 0..=20u8 {
         let [x, y] = line.at(f32::from(step) / 20.0).unwrap();
         assert!((y - 2.0 * x).abs() < 1e-4, "{x} {y}");
-        assert!(x > before, "{x} после {before}");
+        assert!(x > before, "{x} after {before}");
         before = x;
     }
     assert_eq!(line.at(1.0), Some([6.0, 12.0]));
 
-    // Все точки равны — кривая стоит.
+    // All points are equal — the curve stands still.
     let still = Spline {
         start: 0.0,
         stop: 2.0,
@@ -2343,7 +2349,8 @@ fn spline_is_clamped_cubic_and_degrades_with_few_points() {
         assert!((v[0] - 3.0).abs() < 1e-5 && (v[1] - 4.0).abs() < 1e-5);
     }
 
-    // Меньше четырёх точек — степень ниже: две точки — отрезок, одна — постоянная, ни одной — нет.
+    // Fewer than four points — a lower degree: two points give a segment, one a constant, none
+    // nothing.
     let two = Spline {
         start: 0.0,
         stop: 1.0,
@@ -2362,7 +2369,7 @@ fn spline_is_clamped_cubic_and_degrades_with_few_points() {
         points: Vec::new(),
     };
     assert_eq!(none.at(0.5), None);
-    // Отрезок нулевой длины — начало, а не деление на ноль.
+    // A zero-length range gives the start, not a division by zero.
     let instant = Spline {
         start: 2.0,
         stop: 2.0,

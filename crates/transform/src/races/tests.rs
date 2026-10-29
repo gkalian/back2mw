@@ -37,7 +37,7 @@ fn vanilla() -> Vec<VanillaBodyPart> {
         part("b_n_high elf_f_chest", "High Elf", 3, true),
         part("b_n_high elf_m_hand", "High Elf", 5, false),
         part("b_n_high elf_m_hand.1st", "High Elf", 5, false),
-        // Головы, причёски, особые, вампирские и чужие не копируются.
+        // Heads, hair, special, vampire and foreign parts are not copied.
         part("b_n_high elf_m_head_01", "High Elf", 0, false),
         part("b_n_high elf_m_hair_01", "High Elf", 1, false),
         VanillaBodyPart {
@@ -67,8 +67,11 @@ fn builtin_table_parses_and_knows_the_owner_decisions() {
         }
     );
     assert_eq!(t.len(), 15);
-    assert!(parse_table("Saint\town\n").is_err(), "своя без донора");
-    assert!(parse_table("A\tImperial\nA\tNord\n").is_err(), "повтор");
+    assert!(
+        parse_table("Saint\town\n").is_err(),
+        "our own without a donor"
+    );
+    assert!(parse_table("A\tImperial\nA\tNord\n").is_err(), "repeat");
 }
 
 #[test]

@@ -9,7 +9,7 @@ fn filter(kind: FilterKind, comparison: Comparison, value: Value) -> Filter {
     }
 }
 
-/// Поле `tag` каждой записи `rec` плагина, по порядку: (тег записи, байты поля).
+/// Field `tag` of each record `rec` of the plugin, in order: (record tag, field bytes).
 fn fields(bytes: &[u8], tag: &[u8; 4]) -> Vec<Vec<u8>> {
     let mut out = Vec::new();
     let mut p = 0;
@@ -34,7 +34,7 @@ fn bytes_of(topic: Topic) -> Vec<u8> {
     b.to_bytes().unwrap()
 }
 
-/// Строки `SCVR` — как у ванили (`03sX0NoLore`, `12fX3GameHour`, `01380`, `5IX…`).
+/// `SCVR` strings — as in vanilla (`03sX0NoLore`, `12fX3GameHour`, `01380`, `5IX…`).
 #[test]
 fn filters_are_written_like_vanilla_scvr() {
     let mut info = Info::new("1000", "Hello.");
@@ -91,8 +91,8 @@ fn filters_are_written_like_vanilla_scvr() {
     assert_eq!(intv, [0, 1, 200, 3, 0]);
 }
 
-/// Цепочка: `PNAM` первой пуст, `NNAM` последней — первая реплика мастера (вставка в начало
-/// ванильной темы); `DATA` — тип темы, пол, ранги.
+/// Chain: the first one's `PNAM` is empty, the last one's `NNAM` is the master's first response
+/// (inserting at the start of a vanilla topic); `DATA` holds the topic type, sex, ranks.
 #[test]
 fn infos_are_chained_before_the_vanilla_block() {
     let mut a = Info::new("11", "A");
@@ -112,12 +112,12 @@ fn infos_are_chained_before_the_vanilla_block() {
     assert_eq!(pnam, ["", "11"]);
     assert_eq!(nnam, ["22", "1224319899288117550"]);
     let data = fields(&bytes, b"DATA");
-    // DIAL: один байт типа; INFO: тип u32, отношение i32, ранг, пол, ранг игрока, пусто.
+    // DIAL: one type byte; INFO: type u32, disposition i32, rank, sex, player rank, empty.
     assert_eq!(data[0], [2]);
     assert_eq!(data[1], [2, 0, 0, 0, 30, 0, 0, 0, 2, 1, 0xFF, 0]);
     assert_eq!(data[2], [2, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0]);
 
-    // Контроль: новая тема заканчивает цепочку пустым `NNAM`.
+    // Control: a new topic ends the chain with an empty `NNAM`.
     let bytes = bytes_of(Topic {
         name: "Bruma".into(),
         kind: TopicKind::Topic,
@@ -154,8 +154,8 @@ fn format_limits_are_errors() {
     assert!(b.add_topic(topic(bad)).is_err());
 }
 
-/// Голос и убеждение (T10.7): тип — в `DATA` темы и каждой реплики, как у ванильных `Attack` (1)
-/// и `Admire Success` (3).
+/// Voice and persuasion (T10.7): the type is in the `DATA` of the topic and of each response, as
+/// with vanilla `Attack` (1) and `Admire Success` (3).
 #[test]
 fn voice_and_persuasion_kinds_go_to_both_data() {
     for (kind, byte) in [(TopicKind::Voice, 1u8), (TopicKind::Persuasion, 3)] {
@@ -171,7 +171,7 @@ fn voice_and_persuasion_kinds_go_to_both_data() {
     }
 }
 
-/// `SNAM` — путь голоса относительно `Sound\`, как у ванили; без звука поля нет.
+/// `SNAM` is the voice path relative to `Sound\`, as in vanilla; without a sound there is no field.
 #[test]
 fn sound_goes_to_snam() {
     let mut voiced = Info::new("11", "Die!");

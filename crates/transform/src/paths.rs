@@ -1,35 +1,35 @@
-//! Короткие пути файлов в плагине Morrowind: меши (`MODL`), иконки (`ITEX`) и картинки книг.
+//! Short file paths in the Morrowind plugin: meshes (`MODL`), icons (`ITEX`) and book images.
 //!
-//! **Почему пути не повторяют источник.** Construction Set хранит `MODL` в буфере на 32 байта:
-//! 31 знак плюс нуль. Длиннее — CS обрезает путь при загрузке, и сохранённый в CS плагин
-//! теряет модель (`Chunk size 73 too big in chunk MODL_ID … Max size is 32`, 2026-09-24). В
-//! ванили то же видно по данным: из 12 697 `MODL` в `Morrowind.esm`, DLC и двух модах пакета
-//! длиннее 32 байт нет ни одного (`docs/ru/formats/tes3.md`). А в Oblivion.esm длиннее 31 знака
-//! 5 722 пути из 6 012 `STAT`. Поэтому путь строится заново и всегда влезает в
-//! [`MAX_PATH_LEN`].
+//! **Why the paths do not repeat the source.** The Construction Set keeps `MODL` in a 32-byte
+//! buffer: 31 characters plus a zero. Longer ones — the CS truncates the path on load, and a plugin
+//! saved in the CS loses the model (`Chunk size 73 too big in chunk MODL_ID … Max size is 32`,
+//! 2026-09-24). In vanilla the same shows in the data: of 12,697 `MODL` in `Morrowind.esm`, the
+//! DLCs and two mods of the pack, not one is longer than 32 bytes (`docs/en/formats/tes3.md`). And
+//! in Oblivion.esm 5,722 of the 6,012 `STAT` paths are longer than 31 characters. So the path is
+//! built anew and always fits into [`MAX_PATH_LEN`].
 //!
-//! **Схема:** `ob\<имя>_<хеш>.<расш>`. Хеш — FNV-1a 64 от нормализованного пути источника
-//! (нижний регистр, `\`, без пустых сегментов), записанный десятью знаками base36. Путь —
-//! чистая функция от пути источника: не зависит ни от порядка обхода, ни от того, какие ещё
-//! плагины конвертируются. FNV реализован здесь, а не взят из `std`: `DefaultHasher` не обещает
-//! одинаковый результат между версиями Rust, а путь — часть совместимости вывода.
+//! **Scheme:** `ob\<name>_<hash>.<ext>`. The hash is FNV-1a 64 of the normalized source path (lower
+//! case, `\`, no empty segments), written as ten base36 characters. The path is a pure function of
+//! the source path: it depends neither on the traversal order nor on which other plugins are
+//! converted. FNV is implemented here rather than taken from `std`: `DefaultHasher` does not
+//! promise the same result across Rust versions, and the path is part of output compatibility.
 //!
-//! **Столкновения.** Десять знаков base36 — 51.7 бита; на 20 000 путей вероятность хоть одного
-//! совпадения ~5·10⁻⁸. Её не прячем: вызывающий обязан проверять уникальность
-//! (`pipeline` обрывает прогон с именами обоих источников).
+//! **Collisions.** Ten base36 characters are 51.7 bits; over 20,000 paths the probability of even
+//! one collision is ~5·10⁻⁸. We do not hide it: the caller must check uniqueness (`pipeline` aborts
+//! the run naming both sources).
 
-/// Каталог конвертера внутри `Meshes\` и `Icons\`. Совпадает по смыслу с префиксом ID `ob_`.
+/// The converter's directory inside `Meshes\` and `Icons\`. Matches the `ob_` ID prefix in meaning.
 pub const OUTPUT_DIR: &str = "ob";
 
-/// Предел длины пути в `MODL`/`ITEX`: буфер CS 32 байта минус завершающий нуль.
+/// Path length limit in `MODL`/`ITEX`: the CS buffer of 32 bytes minus the terminating zero.
 pub const MAX_PATH_LEN: usize = 31;
 
-/// Знаков хеша в имени.
+/// Hash characters in the name.
 pub const HASH_LEN: usize = 10;
 
 const ALPHABET: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 
-/// FNV-1a 64: стабилен между версиями компилятора и платформами.
+/// FNV-1a 64: stable across compiler versions and platforms.
 pub fn fnv1a64(bytes: &[u8]) -> u64 {
     const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -38,20 +38,20 @@ pub fn fnv1a64(bytes: &[u8]) -> u64 {
         .fold(OFFSET, |hash, &b| (hash ^ u64::from(b)).wrapping_mul(PRIME))
 }
 
-/// Младшие [`HASH_LEN`] знаков base36 от `value`, с ведущими нулями.
+/// The low [`HASH_LEN`] base36 characters of `value`, with leading zeros.
 fn base36_tail(mut value: u64) -> String {
     let mut buf = [b'0'; HASH_LEN];
     for slot in buf.iter_mut().rev() {
-        *slot = ALPHABET[usize::try_from(value % 36).expect("остаток от 36 влезает в usize")];
+        *slot = ALPHABET[usize::try_from(value % 36).expect("a remainder of 36 fits into usize")];
         value /= 36;
     }
     std::str::from_utf8(&buf)
-        .expect("алфавит base36 состоит из ASCII")
+        .expect("the base36 alphabet consists of ASCII")
         .to_owned()
 }
 
-/// Путь источника в нормальной форме: нижний регистр, разделитель `\`, без пустых сегментов.
-/// Не ASCII или пусто — `None`.
+/// A source path in normal form: lower case, separator `\`, no empty segments. Non-ASCII or empty
+/// gives `None`.
 pub fn normalize(source: &str) -> Option<String> {
     if !source.is_ascii() {
         return None;
@@ -64,23 +64,23 @@ pub fn normalize(source: &str) -> Option<String> {
     Some(segments.join("\\"))
 }
 
-/// Короткий путь с расширением `ext` (без точки) для файла источника `source`.
+/// A short path with extension `ext` (without the dot) for source file `source`.
 ///
-/// Читаемая часть — имя файла источника без расширения: латиница и цифры, прочее — `_`,
-/// обрезано так, чтобы весь путь влез в [`MAX_PATH_LEN`]. Она только для людей: уникальность
-/// держит хеш.
+/// The readable part is the source file name without the extension: Latin letters and digits,
+/// everything else becomes `_`, truncated so the whole path fits into [`MAX_PATH_LEN`]. It is only
+/// for people: uniqueness is kept by the hash.
 pub fn short_path(source: &str, ext: &str) -> Option<String> {
     short_path_within(source, ext, MAX_PATH_LEN)
 }
 
-/// То же, но весь путь не длиннее `limit`: запас нужен пути, к которому движок сам дописывает
-/// знаки ([`creature_mesh_path`]).
+/// The same, but the whole path is no longer than `limit`: the margin is needed for a path to which
+/// the engine appends characters itself ([`creature_mesh_path`]).
 fn short_path_within(source: &str, ext: &str, limit: usize) -> Option<String> {
     let normalized = normalize(source)?;
     let hash = base36_tail(fnv1a64(normalized.as_bytes()));
     let file = normalized.rsplit('\\').next().unwrap_or(&normalized);
     let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
-    // `ob\` + имя + `_` + хеш + `.` + расширение.
+    // `ob\` + name + `_` + hash + `.` + extension.
     let overhead = OUTPUT_DIR.len() + 1 + 1 + HASH_LEN + 1 + ext.len();
     let budget = limit.checked_sub(overhead)?;
     let name = readable(stem, budget);
@@ -91,14 +91,15 @@ fn short_path_within(source: &str, ext: &str, limit: usize) -> Option<String> {
     })
 }
 
-/// Путь меша в плагине Morrowind для `MODL` источника (относительно `Meshes\`).
+/// Mesh path in the Morrowind plugin for a source `MODL` (relative to `Meshes\`).
 pub fn mesh_path(model: &str) -> Option<String> {
     short_path(model, "nif")
 }
 
-/// Путь меша дерева (T2.4g). Меш зависит не только от `.spt`: семя и текстура листвы — у
-/// записи `TREE`, и у одной `.spt` бывает несколько записей. Поэтому хеш — от всех трёх, а
-/// читаемая часть — по-прежнему имя `.spt` (модель — последний сегмент строки).
+/// Tree mesh path (T2.4g). The mesh depends not only on the `.spt`: the seed and the foliage
+/// texture belong to the `TREE` record, and one `.spt` can have several records. So the hash is of
+/// all three, and the readable part is still the `.spt` name (the model is the last segment of the
+/// string).
 pub fn tree_mesh_path(model: &str, seed: Option<i32>, leaves: Option<&str>) -> Option<String> {
     let seed = seed.map_or_else(|| "spt".to_owned(), |s| s.to_string());
     short_path(
@@ -107,19 +108,21 @@ pub fn tree_mesh_path(model: &str, seed: Option<i32>, leaves: Option<&str>) -> O
     )
 }
 
-/// Путь меша двери (T2.6b). У двери свой меш, даже если ту же модель берёт статика: начало
-/// координат меша двери переносится в петлю створки (`mesh_convert::door::rehinge`), а статике
-/// нужна модель как есть. Читаемая часть — имя модели, хеш — от пути с меткой двери.
+/// Door mesh path (T2.6b). A door has its own mesh even if a static uses the same model: the door
+/// mesh's origin is moved to the leaf's hinge (`mesh_convert::door::rehinge`), while the static
+/// needs the model as is. The readable part is the model name, the hash is of the path with a door
+/// tag.
 pub fn door_mesh_path(model: &str) -> Option<String> {
     short_path(&format!("door\\{model}"), "nif")
 }
 
-/// Путь меша существа со своей моделью (T11.5e). Меш собирается из скелета и набора частей
-/// `NIFZ`, поэтому хеш — от того и другого: записи с одним набором делят меш. Читаемая часть —
-/// папка модели (`creatures\goblin\skeleton.nif` → `goblin`).
+/// Mesh path of a creature with its own model (T11.5e). The mesh is built from the skeleton and a
+/// set of `NIFZ` parts, so the hash is of both: records with the same set share a mesh. The
+/// readable part is the model folder (`creatures\goblin\skeleton.nif` → `goblin`).
 ///
-/// Путь на знак короче предела: движок рядом с `<имя>.nif` ищет пару `x<имя>.nif` и
-/// `x<имя>.kf` ([`creature_pair`]), и её путь тоже обязан влезть в [`MAX_PATH_LEN`].
+/// The path is one character shorter than the limit: next to `<name>.nif` the engine looks for the
+/// pair `x<name>.nif` and `x<name>.kf` ([`creature_pair`]), and its path must also fit into
+/// [`MAX_PATH_LEN`].
 pub fn creature_mesh_path(model: &str, parts: &[String]) -> Option<String> {
     let model = normalize(model)?;
     let folder = model.rsplit('\\').nth(1)?.to_owned();
@@ -128,46 +131,48 @@ pub fn creature_mesh_path(model: &str, parts: &[String]) -> Option<String> {
         source.push('|');
         source.push_str(&normalize(part)?);
     }
-    // Последний сегмент — папка: из него берётся читаемая часть имени.
+    // The last segment is the folder: the readable part of the name is taken from it.
     short_path_within(&format!("{source}\\{folder}"), "nif", MAX_PATH_LEN - 1)
 }
 
-/// Пара файлов анимации для меша существа `mesh`: `ob\x<имя>.nif` и `ob\x<имя>.kf`. Так пару
-/// ищет движок: `x` перед именем файла в той же папке.
+/// The pair of animation files for creature mesh `mesh`: `ob\x<name>.nif` and `ob\x<name>.kf`. This
+/// is how the engine looks for the pair: `x` before the file name in the same folder.
 pub fn creature_pair(mesh: &str) -> Option<(String, String)> {
     let (dir, file) = mesh.rsplit_once('\\')?;
     let stem = file.strip_suffix(".nif")?;
     Some((format!("{dir}\\x{stem}.nif"), format!("{dir}\\x{stem}.kf")))
 }
 
-/// Путь иконки в плагине Morrowind (относительно `Icons\`) для `ICON` источника (относительно
+/// Icon path in the Morrowind plugin (relative to `Icons\`) for a source `ICON` (relative to
 /// `Textures\Menus\Icons\`).
 pub fn icon_path(icon: &str) -> Option<String> {
     short_path(icon, "dds")
 }
 
-/// Путь звука в плагине Morrowind (относительно `Sound\`) для `FNAM` `SOUN` источника
-/// (относительно `Sound\`, T10.1). У каталога (`fx\npc\foot\`) — тоже один путь: в него
-/// ложится выбранный из каталога файл, а читаемая часть — имя каталога.
+/// Sound path in the Morrowind plugin (relative to `Sound\`) for the `FNAM` of a source `SOUN`
+/// (relative to `Sound\`, T10.1). A directory (`fx\npc\foot\`) also gets one path: the file chosen
+/// from the directory goes there, and the readable part is the directory name.
 pub fn sound_path(file: &str) -> Option<String> {
     short_path(file, "wav")
 }
 
-/// Имя картинки книги в плагине Morrowind (относительно `BookArt\`) для `src` из текста книги
-/// Oblivion (относительно `Textures\Menus\`).
+/// Book image name in the Morrowind plugin (relative to `BookArt\`) for a `src` from Oblivion book
+/// text (relative to `Textures\Menus\`).
 ///
-/// Без подкаталога: у ванили все `<IMG SRC>` — голое имя файла в `BookArt\` (24 в
-/// `Morrowind.esm`, 4 в `Tribunal.esm`, 1 в `Bloodmoon.esm`, 2026-09-25), понимает ли движок
-/// подкаталог — не проверено. Поэтому `ob_<имя>_<хеш>.dds` вместо `ob\…`, та же длина. `.dds`
-/// ваниль в `BookArt` уже использует: `Bloodmoon.esm`, `bk_BM_StoneMap` → `magicstonemap4.dds`.
+/// Without a subdirectory: in vanilla every `<IMG SRC>` is a bare file name in `BookArt\` (24 in
+/// `Morrowind.esm`, 4 in `Tribunal.esm`, 1 in `Bloodmoon.esm`, 2026-09-25); whether the engine
+/// understands a subdirectory is not verified. So `ob_<name>_<hash>.dds` instead of `ob\…`, the
+/// same length. Vanilla already uses `.dds` in `BookArt`: `Bloodmoon.esm`, `bk_BM_StoneMap` →
+/// `magicstonemap4.dds`.
 pub fn book_art_path(src: &str) -> Option<String> {
     short_path(src, "dds").map(|p| p.replacen('\\', "_", 1))
 }
 
-/// Файл голоса реплики (T10.8), `SNAM` относительно `Sound\`: `Vo\ob\<хеш>.mp3`, 20 знаков (у ванили
-/// самый длинный `SNAM` — 24, `Vo\d\f\Hlo_DF000e.mp3`). Файл — склейка mp3 ответов, поэтому хеш —
-/// от путей источников по порядку: одна склейка у разных копий реплики — один файл. Читаемой части
-/// нет: ванильный префикс `Vo\` и так почти съедает бюджет. Пусто или не ASCII — `None`.
+/// A response voice file (T10.8), `SNAM` relative to `Sound\`: `Vo\ob\<hash>.mp3`, 20 characters
+/// (the longest vanilla `SNAM` is 24, `Vo\d\f\Hlo_DF000e.mp3`). The file is a join of the answers'
+/// mp3s, so the hash is of the source paths in order: one join for different copies of the response
+/// is one file. There is no readable part: the vanilla prefix `Vo\` already eats almost the whole
+/// budget. Empty or non-ASCII gives `None`.
 pub fn voice_path(sources: &[String]) -> Option<String> {
     let normalized: Vec<String> = sources
         .iter()
@@ -180,7 +185,8 @@ pub fn voice_path(sources: &[String]) -> Option<String> {
     Some(format!("Vo\\{OUTPUT_DIR}\\{hash}.mp3"))
 }
 
-/// Латиница и цифры как есть, всё прочее — одно `_`; без `_` по краям; не длиннее `budget`.
+/// Latin letters and digits as is, everything else becomes a single `_`; no `_` at the ends; no
+/// longer than `budget`.
 fn readable(stem: &str, budget: usize) -> String {
     let mut out = String::new();
     for ch in stem.chars() {
@@ -204,7 +210,7 @@ mod tests {
 
     #[test]
     fn fnv_matches_the_published_test_vectors() {
-        // Векторы из спецификации FNV (isthe.com/chongo/tech/comp/fnv).
+        // Vectors from the FNV specification (isthe.com/chongo/tech/comp/fnv).
         assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
         assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
         assert_eq!(fnv1a64(b"foobar"), 0x8594_4171_f739_67e8);
@@ -214,7 +220,11 @@ mod tests {
     fn the_path_from_the_bug_report_now_fits() {
         let source = "00TamrExt\\Armor\\DarkSoulsSeries\\DragonSlayerSet\\ArmorGold_gnd.NIF";
         let path = mesh_path(source).unwrap();
-        assert!(path.len() <= MAX_PATH_LEN, "{path} длиной {}", path.len());
+        assert!(
+            path.len() <= MAX_PATH_LEN,
+            "{path} of length {}",
+            path.len()
+        );
         assert!(path.starts_with("ob\\armorgold_gnd_"), "{path}");
         assert!(path.ends_with(".nif"));
     }
@@ -224,7 +234,11 @@ mod tests {
         let long = format!("{}\\{}.nif", "dir".repeat(40), "x".repeat(200));
         for source in [long.as_str(), "a.nif", "___.nif", "no_extension", ".nif"] {
             let path = mesh_path(source).unwrap();
-            assert!(path.len() <= MAX_PATH_LEN, "{path} длиной {}", path.len());
+            assert!(
+                path.len() <= MAX_PATH_LEN,
+                "{path} of length {}",
+                path.len()
+            );
             assert!(path.is_ascii());
         }
         let icon = icon_path(&long).unwrap();
@@ -232,7 +246,7 @@ mod tests {
         assert!(icon.ends_with(".dds"));
     }
 
-    /// Путь меша существа оставляет знак под `x` пары и зависит от набора частей.
+    /// A creature mesh path leaves a character for the pair's `x` and depends on the set of parts.
     #[test]
     fn creature_paths_leave_room_for_the_pair_prefix() {
         let parts = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
@@ -245,7 +259,7 @@ mod tests {
             (long, parts(&["body.nif"])),
         ] {
             let mesh = creature_mesh_path(model, &set).unwrap();
-            assert!(mesh.len() < MAX_PATH_LEN, "{mesh} длиной {}", mesh.len());
+            assert!(mesh.len() < MAX_PATH_LEN, "{mesh} of length {}", mesh.len());
             let (x_nif, x_kf) = creature_pair(&mesh).unwrap();
             assert!(x_nif.len() <= MAX_PATH_LEN && x_kf.len() <= MAX_PATH_LEN);
             assert_eq!(x_nif, mesh.replacen("ob\\", "ob\\x", 1));
@@ -253,8 +267,11 @@ mod tests {
         }
         let goblin = "Creatures\\Goblin\\Skeleton.NIF";
         let a = creature_mesh_path(goblin, &parts(&["GoblinHead.NIF", "goblegs01.nif"])).unwrap();
-        assert!(a.starts_with("ob\\goblin_"), "читаемая часть — папка: {a}");
-        // Регистр и разделитель пути не меняют имя; набор частей и их порядок — меняют.
+        assert!(
+            a.starts_with("ob\\goblin_"),
+            "the readable part is the folder: {a}"
+        );
+        // Case and path separator do not change the name; the set of parts and their order do.
         assert_eq!(
             creature_mesh_path(
                 "creatures/goblin/skeleton.nif",
@@ -270,7 +287,7 @@ mod tests {
             creature_mesh_path(goblin, &parts(&["goblegs01.nif", "goblinhead.nif"])),
             Some(a.clone())
         );
-        // Скелет другой — модель другая, даже с теми же частями.
+        // Another skeleton — another model, even with the same parts.
         assert_ne!(
             creature_mesh_path(
                 "Creatures\\Goblin\\Skeleton_Lord.NIF",
@@ -278,7 +295,7 @@ mod tests {
             ),
             Some(a)
         );
-        assert_eq!(creature_mesh_path("skeleton.nif", &[]), None, "нет папки");
+        assert_eq!(creature_mesh_path("skeleton.nif", &[]), None, "no folder");
         assert_eq!(creature_pair("ob\\goblin.kf"), None);
     }
 
@@ -291,7 +308,7 @@ mod tests {
         assert_eq!(
             book_art_path("Book\\birthsign_the lady.DDS"),
             Some(path),
-            "регистр и разделители не меняют имя"
+            "case and separators do not change the name"
         );
     }
 
@@ -311,7 +328,7 @@ mod tests {
         assert!(a.starts_with("ob\\dagger_") && b.starts_with("ob\\dagger_"));
     }
 
-    /// T2.6b: у двери свой меш — та же модель у статики остаётся с началом координат как есть.
+    /// T2.6b: a door has its own mesh — the same model used by a static keeps its origin as is.
     #[test]
     fn a_door_gets_its_own_mesh_next_to_the_plain_one() {
         let model = "Architecture\\Bravil\\FenceDoor01.NIF";
@@ -322,7 +339,7 @@ mod tests {
         assert_eq!(
             door_mesh_path("architecture/bravil/fencedoor01.nif").unwrap(),
             door,
-            "регистр и разделители не меняют путь"
+            "case and separators do not change the path"
         );
     }
 
@@ -331,7 +348,7 @@ mod tests {
         let mut seen = HashSet::new();
         for i in 0..50_000u32 {
             let path = mesh_path(&format!("meshes\\set{}\\part{i}.nif", i % 97)).unwrap();
-            assert!(seen.insert(path), "совпадение на {i}");
+            assert!(seen.insert(path), "collision at {i}");
         }
     }
 
@@ -343,18 +360,18 @@ mod tests {
         assert!(a.starts_with("ob\\oak01su_"), "{a}");
         assert!(a != b && a != c && b != c);
         assert_ne!(Some(a), mesh_path("trees\\Oak01su.spt"));
-        assert_eq!(tree_mesh_path("trees\\дуб.spt", None, None), None);
+        assert_eq!(tree_mesh_path("trees\\chêne.spt", None, None), None);
     }
 
     #[test]
     fn empty_and_non_ascii_are_rejected() {
         assert_eq!(mesh_path(""), None);
         assert_eq!(mesh_path("\\\\"), None);
-        assert_eq!(mesh_path("rocks\\скала.nif"), None);
+        assert_eq!(mesh_path("rocks\\rocher_é.nif"), None);
     }
 
-    /// Контрольный опыт: без обрезки читаемой части путь вышел бы за предел — значит, тест
-    /// `every_path_fits…` проверяет обрезку, а не проходит на коротких именах.
+    /// Control: without truncating the readable part the path would exceed the limit — so the
+    /// `every_path_fits…` test checks the truncation rather than passing on short names.
     #[test]
     fn the_readable_part_is_what_gets_trimmed() {
         let path = mesh_path("abcdefghijklmnopqrstuvwxyz.nif").unwrap();
@@ -369,7 +386,7 @@ mod tests {
         let p = voice_path(&[a.clone(), b.clone()]).unwrap();
         assert_eq!(p.len(), 20);
         assert!(p.starts_with(r"Vo\ob\") && p.ends_with(".mp3"), "{p}");
-        // Регистр и разделитель не важны; порядок ответов важен.
+        // Case and separator do not matter; the order of the answers does.
         assert_eq!(voice_path(&[a.to_uppercase(), b.clone()]).unwrap(), p);
         assert_ne!(voice_path(&[b, a.clone()]).unwrap(), p);
         assert_ne!(voice_path(&[a]).unwrap(), p);

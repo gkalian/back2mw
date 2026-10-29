@@ -1,6 +1,7 @@
 use super::*;
 
-/// Кадр MPEG-1 Layer III 64 кбит/с 44 100 Гц: 208 байт, с дополнением — 209. `fill` — байт тела.
+/// An MPEG-1 Layer III frame, 64 kbit/s, 44,100 Hz: 208 bytes, 209 with padding. `fill` is the body
+/// byte.
 fn frame(padding: bool, mono: bool, fill: u8) -> Vec<u8> {
     let mut f = vec![
         0xFF,
@@ -14,7 +15,7 @@ fn frame(padding: bool, mono: bool, fill: u8) -> Vec<u8> {
 
 fn id3v2(body: usize) -> Vec<u8> {
     let mut t = b"ID3\x03\x00\x00".to_vec();
-    // Размер 7-битными байтами.
+    // Size in 7-bit bytes.
     let b = u32::try_from(body).unwrap();
     t.extend([21, 14, 7, 0].map(|s| u8::try_from((b >> s) & 0x7F).unwrap()));
     t.resize(10 + body, 0);
@@ -33,7 +34,7 @@ fn frames_are_kept_and_tags_are_cut() {
     file.extend(&v1);
     let frames = voice_frames(&file).unwrap();
     assert_eq!(frames, [a.as_slice(), b.as_slice()].concat());
-    // Контроль: без тегов — файл как есть.
+    // Control: without tags the file stays as is.
     let plain = [a.clone(), b.clone()].concat();
     assert_eq!(voice_frames(&plain).unwrap(), plain.as_slice());
 }
@@ -45,7 +46,7 @@ fn xing_frame_is_dropped() {
     let a = frame(false, true, 7);
     let file = [xing, a.clone()].concat();
     assert_eq!(voice_frames(&file).unwrap(), a.as_slice());
-    // Только служебный кадр — звука нет.
+    // Only a header frame — no sound.
     assert_eq!(voice_frames(&file[..208]), Err(Mp3Error::Empty));
 }
 
@@ -68,7 +69,7 @@ fn other_formats_and_garbage_are_errors() {
         Err(Mp3Error::Format { mono: false, .. })
     ));
     let mut fast = frame(false, true, 0);
-    fast[2] = 0x90; // 128 кбит/с
+    fast[2] = 0x90; // 128 kbit/s
     assert!(matches!(
         voice_frames(&fast),
         Err(Mp3Error::Format {
@@ -76,7 +77,7 @@ fn other_formats_and_garbage_are_errors() {
             ..
         })
     ));
-    // Мусор после кадров (как у `testtoddquest`) и обрезанный кадр.
+    // Junk after the frames (as in `testtoddquest`) and a truncated frame.
     let mut tail = frame(false, true, 0);
     tail.extend([0u8; 30]);
     assert_eq!(voice_frames(&tail), Err(Mp3Error::NotFrame { offset: 208 }));

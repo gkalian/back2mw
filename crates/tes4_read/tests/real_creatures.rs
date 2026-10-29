@@ -1,4 +1,4 @@
-//! T11.2: существа `CREA` и уровневые списки существ `LVLC` `Oblivion.esm` через спеку. Требует
+//! T11.2: `Oblivion.esm` creatures `CREA` and leveled creature lists `LVLC` through the spec. Needs
 //! `BACK2MW_GAME_DATA`.
 //!
 //! ```text
@@ -6,7 +6,7 @@
 //!   cargo test -p tes4_read --test real_creatures -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Существа».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Creatures".
 
 mod common;
 
@@ -19,9 +19,9 @@ use tes4_read::{
 };
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_creature_and_creature_list_reads_through_the_spec() {
-    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("read Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
     let tag_of: BTreeMap<u32, [u8; 4]> = plugin
         .records()
@@ -30,7 +30,7 @@ fn every_creature_and_creature_list_reads_through_the_spec() {
 
     let creatures: Vec<Creature> = plugin
         .records_of(*b"CREA")
-        .map(|r| Creature::from_record(r).expect("спека читает каждый CREA"))
+        .map(|r| Creature::from_record(r).expect("the spec reads every CREA"))
         .collect();
     let mut kinds: BTreeMap<u8, usize> = BTreeMap::new();
     let mut souls: BTreeMap<u8, usize> = BTreeMap::new();
@@ -51,7 +51,7 @@ fn every_creature_and_creature_list_reads_through_the_spec() {
             assert_eq!(
                 tag_of.get(&s.sound),
                 Some(b"SOUN"),
-                "{}: звук не SOUN",
+                "{}: the sound is not a SOUN",
                 c.editor_id
             );
         }
@@ -68,9 +68,9 @@ fn every_creature_and_creature_list_reads_through_the_spec() {
         .filter(|c| c.sound_source.is_some())
         .count();
     println!(
-        "CREA {}: с моделью {with_model}, частей {parts} (до {max_parts:?}); \
-         флаги: двуногих {biped}, бессмертных {essential}, плавают {swims}, летают {flies}, ходят {walks}; \
-         типы {kinds:?}; души {souls:?}; звуков {sounds} {sound_kinds:?}, CSCR {inherit}",
+        "CREA {}: with a model {with_model}, parts {parts} (up to {max_parts:?}); \
+         flags: biped {biped}, essential {essential}, swim {swims}, fly {flies}, walk {walks}; \
+         types {kinds:?}; souls {souls:?}; sounds {sounds} {sound_kinds:?}, CSCR {inherit}",
         creatures.len()
     );
     assert_eq!(creatures.len(), 914);
@@ -88,7 +88,7 @@ fn every_creature_and_creature_list_reads_through_the_spec() {
     let mut counted = 0usize;
     let mut with_template = 0usize;
     for record in plugin.records_of(*b"LVLC") {
-        let c = LeveledCreatures::from_record(record).expect("спека читает каждый LVLC");
+        let c = LeveledCreatures::from_record(record).expect("the spec reads every LVLC");
         lists += 1;
         with_template += usize::from(c.template.is_some());
         for e in &c.list.entries {
@@ -100,19 +100,20 @@ fn every_creature_and_creature_list_reads_through_the_spec() {
         }
     }
     println!(
-        "LVLC {lists}: шаблон у {with_template}, строк с числом > 1: {counted}, цели {targets:?}"
+        "LVLC {lists}: with a template {with_template}, rows with a count > 1: {counted}, targets {targets:?}"
     );
     assert_eq!(lists, 682);
 }
 
-/// T11.4: как существа и их списки расставлены в мире. `ACRE` читается спекой размещения; база
-/// `ACRE` — существо или список существ, список бывает и базой `ACHR`.
+/// T11.4: how creatures and their lists are placed in the world. `ACRE` is read by the placement
+/// spec; the base of an `ACRE` is a creature or a creature list, and a list can also be the base of
+/// an `ACHR`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn creature_placements_read_through_the_placement_spec() {
     use tes4_read::Placement;
 
-    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("read Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
     let tag_of: BTreeMap<u32, [u8; 4]> = plugin
         .records()
@@ -120,14 +121,14 @@ fn creature_placements_read_through_the_placement_spec() {
         .collect();
     let name = |t: &[u8; 4]| String::from_utf8_lossy(t).into_owned();
 
-    // (тип ссылки, тип базы) → число; только базы-актёры и списки существ.
+    // (reference type, base type) → count; only actor bases and creature lists.
     let mut bases: BTreeMap<(String, String), usize> = BTreeMap::new();
     let (mut acre, mut scaled, mut disabled, mut parented) = (0usize, 0usize, 0usize, 0usize);
     for r in plugin.records() {
         if !matches!(&r.header.tag, b"REFR" | b"ACHR" | b"ACRE") {
             continue;
         }
-        let p = Placement::from_record(r).expect("спека читает каждое размещение");
+        let p = Placement::from_record(r).expect("the spec reads every placement");
         let base = tag_of.get(&p.base).map_or("—".to_owned(), name);
         if &r.header.tag == b"ACRE" {
             acre += 1;
@@ -140,17 +141,17 @@ fn creature_placements_read_through_the_placement_spec() {
         }
     }
     println!(
-        "ACRE {acre}: с масштабом {scaled}, выключены {disabled}, с родителем включения {parented};          базы актёров и списков {bases:?}"
+        "ACRE {acre}: with scale {scaled}, disabled {disabled}, with an enable parent {parented};          bases of actors and lists {bases:?}"
     );
     assert_eq!(acre, 1473);
 
-    // Списки: флаги, шанс «ничего», строки с числом > 1, уровни.
+    // Lists: flags, the "nothing" chance, rows with a count > 1, levels.
     let mut flags: BTreeMap<u8, usize> = BTreeMap::new();
     let mut over_100 = 0usize;
     let mut counted: Vec<(String, i16)> = Vec::new();
     let (mut bad_levels, mut max_level, mut empty) = (0usize, 0i16, 0usize);
     for record in plugin.records_of(*b"LVLC") {
-        let c = LeveledCreatures::from_record(record).expect("спека читает каждый LVLC");
+        let c = LeveledCreatures::from_record(record).expect("the spec reads every LVLC");
         *flags.entry(c.list.flags).or_default() += 1;
         over_100 += usize::from(c.list.chance_none > 100);
         empty += usize::from(c.list.entries.is_empty());
@@ -163,6 +164,6 @@ fn creature_placements_read_through_the_placement_spec() {
         }
     }
     println!(
-        "LVLC: флаги {flags:?}, шанс > 100 у {over_100}, пустых {empty}, уровень < 1 у {bad_levels} строк,          макс. уровень {max_level}; строки с числом > 1: {counted:?}"
+        "LVLC: flags {flags:?}, chance > 100 in {over_100}, empty {empty}, level < 1 in {bad_levels} rows,          max level {max_level}; rows with a count > 1: {counted:?}"
     );
 }

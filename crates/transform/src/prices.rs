@@ -1,11 +1,12 @@
-//! Подтяжка цен к Morrowind (по желанию игрока, галочка окна и `--morrowind-prices`).
+//! Bringing prices in line with Morrowind (at the player's choice, the window checkbox and
+//! `--morrowind-prices`).
 //!
-//! По умолчанию цены — точно как в Oblivion (решение владельца 2026-09-27, T9.5). Но экономика
-//! Morrowind у дорогих материалов в 7–28 раз дороже: стеклянный клеймор — 1 150 против 32 000.
-//! С пересчётом цена оружия и брони поднимается до кривой по одноимённым парам, если в Oblivion
-//! она ниже, и **никогда не опускается** (решение владельца 2026-09-27). Кривая —
-//! `data/anchors/value.tsv`. Стрелы, одежда и прочие вещи не трогаются: у стрел Morrowind не
-//! дороже, у остального пар для калибровки нет.
+//! By default prices are exactly as in Oblivion (owner's decision 2026-09-27, T9.5). But
+//! Morrowind's economy is 7–28 times more expensive for costly materials: a glass claymore is 1,150
+//! versus 32,000. With the adjustment, a weapon or armor price is raised to a curve built from
+//! same-name pairs if it is lower in Oblivion, and **never lowered** (owner's decision 2026-09-27).
+//! The curve is `data/anchors/value.tsv`. Arrows, clothing and other items are not touched:
+//! Morrowind arrows are not more expensive, and the rest have no pairs for calibration.
 
 use std::sync::OnceLock;
 
@@ -13,15 +14,15 @@ use tes3_out::{ArmorKind, Object, WeaponKind};
 
 const TABLE: &str = include_str!("../../../data/anchors/value.tsv");
 
-/// Опорные точки по категориям, по возрастанию цены Oblivion; (0, 0) — первая.
+/// Control points by category, by ascending Oblivion price; (0, 0) is the first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Curves {
     pub weapon: Vec<(f64, f64)>,
     pub armor: Vec<(f64, f64)>,
 }
 
-/// Разбор таблицы. Ошибка — с номером строки: колонок меньше трёх, неизвестная категория,
-/// не число, кривая не растёт.
+/// Parses the table. An error carries the line number: fewer than three columns, an unknown
+/// category, not a number, a curve that does not grow.
 pub fn parse_table(text: &str) -> Result<Curves, String> {
     let mut curves = Curves {
         weapon: vec![(0.0, 0.0)],
@@ -59,7 +60,7 @@ pub fn parse_table(text: &str) -> Result<Curves, String> {
                 ));
             }
         };
-        let last = *curve.last().expect("кривая начинается с (0, 0)");
+        let last = *curve.last().expect("the curve starts at (0, 0)");
         if point.0 <= last.0 || point.1 < last.1 {
             return Err(lang::tr!(
                 "строка {at}: точка {point:?} после {last:?} — кривая должна расти",
@@ -75,12 +76,13 @@ fn curves() -> &'static Curves {
     static CURVES: OnceLock<Curves> = OnceLock::new();
     CURVES.get_or_init(|| {
         parse_table(TABLE).expect(
-            "data/anchors/value.tsv встроен в сборку и проверен тестом embedded_table_parses",
+            "data/anchors/value.tsv is built into the binary and checked by the embedded_table_parses test",
         )
     })
 }
 
-/// Цена по кривой: прямая между точками, за последней — отношение последней точки.
+/// The price on the curve: a straight line between points, beyond the last — the ratio of the last
+/// point.
 fn on_curve(curve: &[(f64, f64)], value: f64) -> f64 {
     for w in curve.windows(2) {
         let ((x0, y0), (x1, y1)) = (w[0], w[1]);
@@ -88,11 +90,11 @@ fn on_curve(curve: &[(f64, f64)], value: f64) -> f64 {
             return y0 + (value - x0) * (y1 - y0) / (x1 - x0);
         }
     }
-    let (x, y) = *curve.last().expect("кривая не пуста");
+    let (x, y) = *curve.last().expect("the curve is not empty");
     value * y / x
 }
 
-/// Цена Oblivion → не ниже её самой и не ниже кривой.
+/// Oblivion price → not lower than itself and not lower than the curve.
 pub fn raised(curve: &[(f64, f64)], value: u32) -> u32 {
     let target = on_curve(curve, f64::from(value)).round();
     let target = if target >= f64::from(u32::MAX) {
@@ -101,7 +103,7 @@ pub fn raised(curve: &[(f64, f64)], value: u32) -> u32 {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "значение округлено, неотрицательно и меньше u32::MAX"
+            reason = "the value is rounded, non-negative and less than u32::MAX"
         )]
         let t = target as u32;
         t
@@ -109,15 +111,16 @@ pub fn raised(curve: &[(f64, f64)], value: u32) -> u32 {
     value.max(target)
 }
 
-/// Сколько цен подняла [`raise_prices`].
+/// How many prices [`raise_prices`] raised.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Raised {
     pub weapons: usize,
     pub armor: usize,
 }
 
-/// Поднимает цены оружия и брони до кривой Morrowind. Перчатки Oblivion — пара, у нас две вещи
-/// по половине цены (T9.2c): кривая берётся от цены пары, результат снова делится пополам.
+/// Raises weapon and armor prices to the Morrowind curve. Oblivion gauntlets are a pair, we have
+/// two items at half the price each (T9.2c): the curve is taken from the pair's price, and the
+/// result is halved again.
 pub fn raise_prices(objects: &mut [Object]) -> Raised {
     let c = curves();
     let mut out = Raised::default();

@@ -2,35 +2,35 @@ use crate::container::Tag;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Флаг `SNDX`: звук повторяется по кругу.
+/// `SNDX` flag: the sound loops.
 pub const SOUND_LOOP: u32 = 0x10;
 
-/// Звук (`SOUN`, T10.1).
+/// A sound (`SOUN`, T10.1).
 ///
-/// Раскладка измерена на `Oblivion.esm` (2026-09-28, `docs/ru/formats/tes4.md`, «Звуки»): `FNAM` есть
-/// у всех 1 140, у 618 это файл `.wav`, у 522 — **каталог** с `\` на конце (движок каждый раз
-/// берёт случайный файл оттуда). `SNDX` (12 байт) у 1 138, старый `SNDD` (8 байт, без затухания и
-/// времени) — у 2.
+/// The layout was measured on `Oblivion.esm` (2026-09-28, `docs/en/formats/tes4.md`, "Sounds"): all
+/// 1,140 have `FNAM`, in 618 it is a `.wav` file, in 522 a **directory** ending with `\` (the
+/// engine takes a random file from it each time). `SNDX` (12 bytes) in 1,138, the old `SNDD` (8
+/// bytes, without attenuation and time) in 2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sound {
     pub editor_id: String,
-    /// `FNAM` — относительно `Sound\`: файл или каталог (кончается на `\`).
+    /// `FNAM` — relative to `Sound\`: a file or a directory (ends with `\`).
     pub file: String,
-    /// Расстояние, до которого звук не затухает, в пятёрках единиц.
+    /// The distance up to which the sound does not attenuate, in fives of units.
     pub min_distance: u8,
-    /// Расстояние, за которым звук не слышен, в сотнях единиц.
+    /// The distance beyond which the sound is not heard, in hundreds of units.
     pub max_distance: u8,
-    /// Сдвиг частоты, %.
+    /// Frequency shift, %.
     pub frequency: i8,
-    /// 0x1 случайный сдвиг частоты, 0x2 играть случайно, 0x4 без среды, 0x8 случайное место,
-    /// 0x10 петля ([`SOUND_LOOP`]), 0x20 звук меню, 0x40 2D, 0x80 LFE.
+    /// 0x1 random frequency shift, 0x2 play at random, 0x4 no reverb, 0x8 random location, 0x10
+    /// loop ([`SOUND_LOOP`]), 0x20 menu sound, 0x40 2D, 0x80 LFE.
     pub flags: u32,
-    /// Постоянное ослабление, сотые доли дБ (0 — у `SNDD`, где поля нет).
+    /// Static attenuation, hundredths of a dB (0 for `SNDD`, which has no such field).
     pub attenuation: u16,
 }
 
 impl Sound {
-    /// `FNAM` — каталог: движок выбирает файл случайно.
+    /// `FNAM` is a directory: the engine picks a file at random.
     pub fn is_directory(&self) -> bool {
         self.file.ends_with(['\\', '/'])
     }
@@ -60,7 +60,7 @@ impl FromFields for Sound {
             min_distance: raw[0],
             max_distance: raw[1],
             frequency: i8::from_le_bytes([raw[2]]),
-            flags: u32::from_le_bytes(raw[4..8].try_into().expect("срез ровно 4 байта")),
+            flags: u32::from_le_bytes(raw[4..8].try_into().expect("the slice is exactly 4 bytes")),
             attenuation: raw
                 .get(8..10)
                 .map_or(0, |b| u16::from_le_bytes([b[0], b[1]])),

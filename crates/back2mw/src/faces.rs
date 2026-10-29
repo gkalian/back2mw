@@ -1,11 +1,12 @@
-//! Лица NPC (фаза 8, T8.5): запекание голов и причёсок и записи `BODY` к ним.
+//! NPC faces (phase 8, T8.5): baking heads and hair, and the `BODY` records for them.
 //!
-//! Голова NPC — части головы его расы Oblivion с морфами лица `.egm` и мимикой `.tri`
-//! (`mesh_convert::head`), причёска — меш `HAIR` с тем же морфом и цветом `HCLR` в материале.
-//! Одинаковые лица делят меш: путь — [`short_path`] от ключа лица (пол, части, коэффициенты), так
-//! что одинаковый вход даёт одинаковый путь. Запись `BODY` — у каждого NPC своя (`obh_…` голова,
-//! `obhr_…` причёска), она ссылается на общий меш. Не запеклось (нет файла, меш не читается) —
-//! у NPC остаются ванильные голова и причёска фазы 7, причина — в замечаниях.
+//! An NPC's head is the head parts of its Oblivion race with the `.egm` face morphs and `.tri`
+//! expressions (`mesh_convert::head`); hair is the `HAIR` mesh with the same morph and the `HCLR`
+//! color in the material. Identical faces share a mesh: the path is [`short_path`] of the face key
+//! (sex, parts, coefficients), so the same input gives the same path. Each NPC has its own `BODY`
+//! record (`obh_…` head, `obhr_…` hair) that references the shared mesh. If baking fails (no file,
+//! unreadable mesh), the NPC keeps the vanilla head and hair from phase 7, and the reason goes into
+//! the notes.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -25,23 +26,24 @@ use transform::paths::short_path;
 use crate::extract::extracted_path;
 use crate::pipeline::MeshResult;
 
-/// Начало имени запечённой кожи в `Textures\` (T8.8). Копии текстур источника называются `ob_…`
-/// (`mesh_convert::textures`), так что имена не пересекаются.
+/// Name prefix of baked skin in `Textures\` (T8.8). Copies of source textures are called `ob_…`
+/// (`mesh_convert::textures`), so the names do not collide.
 const SKIN_PREFIX: &str = "obface_";
 
-/// Скелет пола и байты его `base_anim` (узел крепления головы).
+/// A sex's skeleton and the bytes of its `base_anim` (the head attachment node).
 pub(crate) struct Rig {
     pub(crate) skeleton: TargetSkeleton,
     pub(crate) hierarchy: Vec<u8>,
 }
 
-/// Скелеты мужчин и женщин.
+/// Male and female skeletons.
 pub(crate) struct Rigs {
     pub(crate) male: Rig,
     pub(crate) female: Rig,
 }
 
-/// Готовый меш: ключ стадии мешей, путь в `Meshes\`, источник для проверки столкновений путей.
+/// A finished mesh: the meshes stage key, the path in `Meshes\`, the source for checking path
+/// collisions.
 pub(crate) struct BakedMesh {
     pub(crate) key: String,
     pub(crate) rel: String,
@@ -49,21 +51,21 @@ pub(crate) struct BakedMesh {
     pub(crate) result: Result<MeshResult, String>,
 }
 
-/// Итог по плагину.
+/// Result for a plugin.
 #[derive(Default)]
 pub(crate) struct Baked {
     pub(crate) meshes: Vec<BakedMesh>,
-    /// Записи `BODY` голов и причёсок с происхождением (ключ меша — в `model`).
+    /// `BODY` records of heads and hair with their origin (the mesh key is in `model`).
     pub(crate) parts: Vec<(Object, ObjectOrigin)>,
     pub(crate) heads: usize,
     pub(crate) hairs: usize,
-    /// NPC, чьё лицо не запеклось: `EDID`-подобная подпись и причина.
+    /// NPCs whose face failed to bake: an `EDID`-like label and the reason.
     pub(crate) failed: Vec<String>,
 }
 
-/// Файлы в архивах источника, нужные для лиц: части головы, их `.egm`/`.tri`/`.egt`, текстуры
-/// частей (база кожи, T8.8), причёски и их текстуры. Путь — как в архиве (`meshes\…`,
-/// `textures\…`), нижний регистр.
+/// Files in the source archives needed for faces: head parts, their `.egm`/`.tri`/`.egt`, part
+/// textures (skin base, T8.8), hair and its textures. The path is as in the archive (`meshes\…`,
+/// `textures\…`), lower case.
 pub(crate) fn wanted_files(actors: &ConvertedActors) -> Vec<String> {
     let mut out = BTreeSet::new();
     let mesh = |m: &str| format!("meshes\\{}", m.to_ascii_lowercase());
@@ -92,7 +94,7 @@ pub(crate) fn wanted_files(actors: &ConvertedActors) -> Vec<String> {
     out.into_iter().collect()
 }
 
-/// Тот же путь с другим расширением.
+/// The same path with a different extension.
 fn with_ext(path: &str, ext: &str) -> String {
     match path.rsplit_once('.') {
         Some((stem, _)) => format!("{stem}.{ext}"),
@@ -100,7 +102,7 @@ fn with_ext(path: &str, ext: &str) -> String {
     }
 }
 
-/// Прочитанные файлы источника: один раз на путь.
+/// Source files already read: once per path.
 struct Sources<'a> {
     work_dir: &'a Path,
     nifs: HashMap<String, Result<SourceNif, String>>,
@@ -108,7 +110,7 @@ struct Sources<'a> {
     tris: HashMap<String, Option<Tri>>,
     means: HashMap<String, Option<[f32; 3]>>,
     egts: HashMap<String, Option<Egt>>,
-    /// Запечённая кожа по имени `obface_…` (T8.8): одна и та же у одинаковых лиц.
+    /// Baked skin by the name `obface_…` (T8.8): identical faces share it.
     skins: HashMap<String, Option<Vec<u8>>>,
 }
 
@@ -160,10 +162,10 @@ impl Sources<'_> {
         self.egts[&key].as_ref()
     }
 
-    /// Кожа части (T8.8): текстура части `texture` (относительно `Textures\`) × карта
-    /// детализации `.egt` меша `model` с коэффициентами `coefs` → DDS DXT1. Имя — `obface_` и хеш
-    /// входа: одинаковая кожа — один файл. `None` — у части нет `.egt` (глаза, зубы) или текстура
-    /// не читается: тогда у части текстура расы как есть.
+    /// Part skin (T8.8): part texture `texture` (relative to `Textures\`) × the `.egt` detail map
+    /// of mesh `model` with coefficients `coefs` → DDS DXT1. The name is `obface_` plus a hash of
+    /// the input: identical skin is one file. `None` means the part has no `.egt` (eyes, teeth) or
+    /// the texture cannot be read: then the part keeps the race texture as is.
     fn skin(&mut self, model: &str, texture: &str, coefs: &[f32]) -> Option<(String, Vec<u8>)> {
         use mesh_convert::face_texture::{Rgb, compose, encode_dds_dxt1};
         let key = format!(
@@ -213,13 +215,13 @@ impl Sources<'_> {
     }
 }
 
-/// Путь источника без разделителей каталогов, нижний регистр: `characters\orc\headorc.nif` →
+/// Source path without directory separators, lower case: `characters\orc\headorc.nif` →
 /// `characters_orc_headorc.nif`.
 fn flat(path: &str) -> String {
     path.to_ascii_lowercase().replace(['\\', '/'], "_")
 }
 
-/// Биты коэффициентов в ключ: одинаковое лицо — одинаковая строка.
+/// Coefficient bits into the key: the same face gives the same string.
 fn coefficients(values: &[f32]) -> String {
     values
         .iter()
@@ -227,8 +229,8 @@ fn coefficients(values: &[f32]) -> String {
         .collect()
 }
 
-/// Запекает лица NPC плагина. У NPC в `actors` голова и причёска заменяются на запечённые;
-/// записи `BODY` и меши — в результате.
+/// Bakes the faces of a plugin's NPCs. NPCs in `actors` get the baked head and hair instead of
+/// their own; the `BODY` records and meshes go into the result.
 pub(crate) fn bake(
     work_dir: &Path,
     actors: &mut ConvertedActors,
@@ -245,7 +247,7 @@ pub(crate) fn bake(
         means: HashMap::new(),
     };
     let mut out = Baked::default();
-    // Ключ лица → путь меша (или причина неудачи): общее лицо печётся один раз.
+    // Face key → mesh path (or the reason for failure): a shared face is baked once.
     let mut done: BTreeMap<String, Result<String, String>> = BTreeMap::new();
     let faces = actors.faces.clone();
     for (form_id, npc) in &mut actors.npcs {
@@ -257,8 +259,8 @@ pub(crate) fn bake(
         } else {
             &rigs.male
         };
-        // Читаемая часть пути — последний сегмент ключа (`short_path`), поэтому разделители путей
-        // частей заменены: имя начинается с `head_` и головы расы.
+        // The readable part of the path is the last segment of the key (`short_path`), so the part
+        // path separators are replaced: the name starts with `head_` and the race head.
         let mut head_key = format!(
             "faces/head#{}#{}#{}#{}",
             if face.female { "f" } else { "m" },
@@ -266,8 +268,8 @@ pub(crate) fn bake(
             coefficients(&face.geometry_symmetric),
             coefficients(&face.geometry_asymmetric)
         );
-        // Текстуры частей (раса, `EYES`, T8.7) и коэффициенты кожи (T8.8) — в ключ, только если
-        // они есть: у головы без них путь меша прежний.
+        // Part textures (race, `EYES`, T8.7) and skin coefficients (T8.8) go into the key only if
+        // present: a head without them keeps its old mesh path.
         if face.textures.iter().any(Option::is_some) {
             let textures: Vec<&str> = face
                 .textures
@@ -349,8 +351,8 @@ pub(crate) fn bake(
     out
 }
 
-/// Запись `BODY` головы (часть 0) или причёски (1) и её происхождение: ключ меша — `@` + путь, как
-/// у мешей на теле.
+/// `BODY` record of the head (part 0) or hair (1) and its origin: the mesh key is `@` + path, as
+/// for body meshes.
 fn body(
     id: &str,
     rel: &str,
@@ -381,7 +383,7 @@ fn body(
     )
 }
 
-/// Одна голова (`hair` = `None`) или причёска: путь меша или причина.
+/// One head (`hair` = `None`) or hair: the mesh path or the reason.
 fn bake_one(
     sources: &mut Sources<'_>,
     face: &FaceSource,
@@ -400,7 +402,7 @@ fn bake_one(
     let Some(head_model) = face.parts.first() else {
         return Err(lang::tr("у расы нет частей головы", "the race has no head parts").into());
     };
-    // Система координат — по голове расы (её форма и кость `Bip01 Head`).
+    // The coordinate system follows the race head (its shape and the `Bip01 Head` bone).
     let frame = {
         let head = sources.nif(head_model)?;
         HeadFrame::from_skeleton(head, &rig.skeleton, &rig.hierarchy).map_err(|e| e.to_string())?
@@ -417,16 +419,16 @@ fn bake_one(
             .map(|mean| hair_tint(h.color, mean)),
         None => None,
     };
-    // Сначала прочитать всё (кеш заполняется), потом собрать ссылки на прочитанное.
+    // First read everything (the cache fills up), then collect references to what was read.
     for m in &models {
         sources.nif(m)?;
         sources.egm(m);
         sources.tri(m);
     }
-    // Текстуры частей головы: кожа запекается (T8.8), у прочих — текстура расы или `EYES`.
-    // Причёска — текстура записи `HAIR` (`ICON`), а не своего NIF: так делает Oblivion, и у
-    // гривы текстуры из NIF (`grey_mane.dds`) в его архивах нет вовсе — «tex not found» в игре
-    // (2026-09-30). Без `ICON` остаётся текстура NIF.
+    // Head part textures: skin is baked (T8.8), the others get the race texture or `EYES`. Hair
+    // takes the texture of the `HAIR` record (`ICON`), not of its own NIF: Oblivion does the same,
+    // and for the mane the NIF texture (`grey_mane.dds`) is not in its archives at all — "tex not
+    // found" in the game (2026-09-30). Without `ICON` the NIF texture stays.
     let mut generated: Vec<(String, Vec<u8>)> = Vec::new();
     let mut textures: Vec<Option<(bool, String)>> = Vec::with_capacity(models.len());
     for (k, m) in models.iter().enumerate() {
@@ -449,7 +451,7 @@ fn bake_one(
         .map(|(k, m)| {
             let key = format!("meshes\\{}", m.to_ascii_lowercase());
             HeadPart {
-                nif: sources.nifs[&key].as_ref().expect("прочитано выше"),
+                nif: sources.nifs[&key].as_ref().expect("read above"),
                 egm: sources.egms[&with_ext(&key, "egm")].as_ref(),
                 tri: if hair.is_some() {
                     None
@@ -502,7 +504,7 @@ fn bake_one(
     ok.map(|()| rel)
 }
 
-/// Скелеты обоих полов (T9.2) и их `base_anim` из установки Morrowind игрока.
+/// Skeletons of both sexes (T9.2) and their `base_anim` from the player's Morrowind install.
 pub(crate) fn load_rigs(target_data: &Path) -> Result<Rigs, String> {
     let skeletons = crate::bodies::load(target_data)?;
     let read = |p: &str| tes3_out::vanilla::read_file(target_data, p).map_err(|e| e.to_string());
@@ -563,7 +565,7 @@ mod tests {
         assert_eq!(
             files.len(),
             14,
-            "3 части × 4 файла (NIF, .egm, .tri, .egt) + текстура головы + текстура причёски"
+            "3 parts × 4 files (NIF, .egm, .tri, .egt) + head texture + hair texture"
         );
     }
 

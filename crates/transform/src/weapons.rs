@@ -1,20 +1,22 @@
-//! Характеристики оружия: `DATA` Oblivion → `WPDT` Morrowind.
+//! Weapon stats: Oblivion `DATA` → Morrowind `WPDT`.
 //!
-//! Правила выведены из измерения, а не придуманы: 49 одноимённых пар оружия из
-//! `Oblivion.esm` и `Morrowind.esm` + DLC («Iron Dagger», «Glass Claymore», «Goldbrand» …) и
-//! медианы по 548 ванильным `WEAP` Morrowind по типам (2026-09-24). Числа и способ измерения —
-//! `docs/ru/formats/tes4.md`, раздел «`WEAP` → `WEAP`». Цена переносится как есть, урон — этими
-//! коэффициентами: поштучной подгонки не будет (решение владельца 2026-09-27, T9.5).
+//! The rules are derived from a measurement, not invented: 49 same-name weapon pairs from
+//! `Oblivion.esm` and `Morrowind.esm` + DLC ("Iron Dagger", "Glass Claymore", "Goldbrand" …) and
+//! medians over 548 vanilla Morrowind `WEAP` by type (2026-09-24). The numbers and the measurement
+//! method are in `docs/en/formats/tes4.md`, section "`WEAP` → `WEAP`". The value is carried over as
+//! is, damage by these coefficients: there will be no per-item tuning (owner's decision 2026-09-27,
+//! T9.5).
 
 use tes3_out::{WeaponKind, WeaponStats};
 use tes4_read::{WEAP_IGNORES_RESISTANCE, WeapData};
 
-/// Как тип Oblivion делится на типы Morrowind. На 49 парах правило совпало с ванилью 49 раз.
+/// How an Oblivion type splits into Morrowind types. On 49 pairs the rule matched vanilla 49 times.
 ///
-/// * Клинок 1H: `reach < 1.0` — короткий (кинжалы 0.6, короткие мечи 0.8), иначе длинный.
-///   Oblivion сам кодирует это различие дальностью; 20 из 20 пар.
-/// * Топор и копьё Oblivion не выделяет: топоры — дробящее, копий в ванили нет. Различаем по
-///   слову в `EDID` или имени файла модели. Референс делает так же, по пути меша.
+/// * Blade 1H: `reach < 1.0` is short (daggers 0.6, short swords 0.8), otherwise long. Oblivion
+///   itself encodes this distinction by reach; 20 of 20 pairs.
+/// * Oblivion does not distinguish axes and spears: axes are blunt, there are no spears in vanilla.
+///   They are told apart by a word in the `EDID` or the model file name. The reference does the
+///   same, by the mesh path.
 pub fn weapon_kind(data: &WeapData, editor_id: &str, model: &str) -> Option<WeaponKind> {
     let file = model.rsplit(['\\', '/']).next().unwrap_or(model);
     let words = format!("{editor_id} {file}").to_ascii_lowercase();
@@ -38,28 +40,28 @@ pub fn weapon_kind(data: &WeapData, editor_id: &str, model: &str) -> Option<Weap
     })
 }
 
-/// Медианы ванили Morrowind по типу плюс коэффициенты по парам.
+/// Vanilla Morrowind medians by type plus coefficients from the pairs.
 struct Profile {
-    /// Медиана `reach` ванили: у Morrowind дальность почти целиком определяется типом.
+    /// Median vanilla `reach`: in Morrowind reach is determined almost entirely by type.
     reach: f32,
-    /// Медиана отношения скорости Morrowind/Oblivion по парам этого типа.
+    /// Median Morrowind/Oblivion speed ratio over the pairs of this type.
     speed_ratio: f32,
-    /// Медиана отношения «наибольший из шести уронов Morrowind / урон Oblivion» по парам.
+    /// Median ratio "the largest of six Morrowind damages / Oblivion damage" over the pairs.
     damage_ratio: f32,
-    /// Медиана ёмкости зачарования ванили. `ANAM` Oblivion — заряд готового зачарования, а не
-    /// ёмкость, поэтому его не берём.
+    /// Median vanilla enchantment capacity. Oblivion's `ANAM` is the charge of a ready enchantment,
+    /// not a capacity, so it is not used.
     enchant: u16,
-    /// Медианы долей: chop min/max, slash min/max, thrust min/max от наибольшего из шести.
+    /// Median fractions: chop min/max, slash min/max, thrust min/max of the largest of the six.
     shape: [f32; 6],
 }
 
-/// Для типов без пар (посох, копьё, лук) — общие медианы по всем 49 парам: скорость ×1.44,
-/// урон ×1.69.
+/// For types without pairs (staff, spear, bow) — the overall medians over all 49 pairs: speed
+/// ×1.44, damage ×1.69.
 const SPEED_RATIO_ANY: f32 = 1.44;
 const DAMAGE_RATIO_ANY: f32 = 1.69;
 
-/// Прочность: медиана отношения Morrowind/Oblivion по 46 парам без призванного оружия (у него
-/// особые числа).
+/// Health: the median Morrowind/Oblivion ratio over 46 pairs excluding bound weapons (they have
+/// special numbers).
 const HEALTH_RATIO: f32 = 5.71;
 
 fn profile(kind: WeaponKind) -> Profile {
@@ -94,7 +96,7 @@ fn profile(kind: WeaponKind) -> Profile {
         ),
         WeaponKind::AxeOneHand => p(1.0, 1.14, 1.85, 50, [0.05, 1.0, 0.05, 0.55, 0.05, 0.15]),
         WeaponKind::AxeTwoHand => p(1.0, 1.25, 2.62, 55, [0.03, 1.0, 0.03, 0.75, 0.03, 0.11]),
-        // Лук: скорость в обеих играх 1.0, урон лука в Morrowind — chop.
+        // Bow: speed is 1.0 in both games, a Morrowind bow's damage is chop.
         WeaponKind::MarksmanBow => p(
             1.0,
             1.0,
@@ -115,20 +117,20 @@ fn profile(kind: WeaponKind) -> Profile {
     }
 }
 
-/// Округление и приведение в `u8` с насыщением: урон больше 255 в `WPDT` не записать.
+/// Rounding and casting to `u8` with saturation: damage above 255 cannot be written in `WPDT`.
 fn to_u8(value: f32) -> u8 {
     let rounded = value.round().clamp(0.0, f32::from(u8::MAX));
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "значение округлено и зажато в 0..=255"
+        reason = "the value is rounded and clamped to 0..=255"
     )]
     let out = rounded as u8;
     out
 }
 
-/// Характеристики `WPDT` из `DATA` Oblivion. Второе значение — замечания о потерях (урон или
-/// прочность упёрлись в предел поля).
+/// `WPDT` stats from Oblivion `DATA`. The second value is notes about losses (damage or health hit
+/// the field's limit).
 pub fn weapon_stats(data: &WeapData, kind: WeaponKind) -> (WeaponStats, Vec<String>) {
     let p = profile(kind);
     let mut notes = Vec::new();
@@ -152,7 +154,7 @@ pub fn weapon_stats(data: &WeapData, kind: WeaponKind) -> (WeaponStats, Vec<Stri
         [part(lo).min(max), max]
     };
 
-    // Прочность считается в `f64`: `u32` источника в `f32` точно не помещается.
+    // Health is computed in `f64`: the source `u32` does not fit exactly into `f32`.
     let health = (f64::from(data.health) * f64::from(HEALTH_RATIO)).round();
     let health = if health > f64::from(u16::MAX) {
         notes.push(lang::tr!(
@@ -164,7 +166,7 @@ pub fn weapon_stats(data: &WeapData, kind: WeaponKind) -> (WeaponStats, Vec<Stri
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "значение неотрицательно, округлено и не больше u16::MAX"
+            reason = "the value is non-negative, rounded and not above u16::MAX"
         )]
         let h = health as u16;
         h
@@ -186,8 +188,8 @@ pub fn weapon_stats(data: &WeapData, kind: WeaponKind) -> (WeaponStats, Vec<Stri
     (stats, notes)
 }
 
-/// Имя для `FNAM`: не длиннее `max_len` знаков. Строки обеих игр — однобайтовая cp1252, так что
-/// знак `String` — это байт в файле. Возвращает имя и признак обрезки.
+/// The name for `FNAM`: no longer than `max_len` characters. Strings in both games are single-byte
+/// cp1252, so a `String` character is a byte in the file. Returns the name and a truncation flag.
 pub fn display_name(name: &str, max_len: usize) -> (String, bool) {
     if name.chars().count() <= max_len {
         return (name.to_owned(), false);
@@ -262,8 +264,8 @@ mod tests {
             ),
             Some(WeaponKind::SpearTwoWide)
         );
-        // Слово в каталоге, а не в имени файла, не считается: иначе «Axes\Mace.nif» стал бы
-        // топором.
+        // A word in the directory rather than in the file name does not count: otherwise
+        // "Axes\Mace.nif" would become an axe.
         assert_eq!(
             weapon_kind(&data(2, 1.0, 10), "WeapMace", "Weapons\\Axes\\Mace.nif"),
             Some(WeaponKind::BluntOneHand)
@@ -283,9 +285,9 @@ mod tests {
         assert_eq!(weapon_kind(&data(6, 1.0, 8), "Odd", ""), None);
     }
 
-    /// Iron Longsword Oblivion (урон 10) против ванильного Morrowind: chop 2–13, slash 1–18,
-    /// thrust 4–16. Профиль медианный, поэтому точного совпадения не ждём — ждём ту же форму:
-    /// slash — сильнейший, chop и slash начинаются почти с нуля.
+    /// Oblivion Iron Longsword (damage 10) against vanilla Morrowind: chop 2–13, slash 1–18, thrust
+    /// 4–16. The profile is a median, so we do not expect an exact match — we expect the same
+    /// shape: slash is the strongest, chop and slash start almost from zero.
     #[test]
     fn iron_longsword_lands_near_the_vanilla_one() {
         let (s, notes) = weapon_stats(&data(0, 1.0, 10), WeaponKind::LongBladeOneHand);

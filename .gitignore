@@ -1,16 +1,16 @@
 /target
-# Отдельный каталог для сборки Windows-тулчейном: в WSL нет компилятора C и
-# заголовков glibc, поэтому линковка идёт через MSVC. Каталоги нельзя смешивать.
+# A separate directory for builds with the Windows toolchain: WSL has no C compiler and
+# no glibc headers, so linking goes through MSVC. The directories must not be mixed.
 /target-msvc
 Cargo.lock.bak
 
-# Рабочие каталоги пользователя — создаются рядом с бинарём, см. docs/pipeline.md
+# The user's work directories — created next to the binary, see docs/en/pipeline.md
 /sources/
 /work/
 /output/
 /config.toml
 
-# Ассеты Bethesda не попадают в репозиторий ни при каких условиях
+# Bethesda assets never get into the repository under any circumstances
 *.esm
 *.esp
 *.bsa
@@ -18,18 +18,18 @@ Cargo.lock.bak
 *.kf
 *.dds
 
-# Сборка релиза локально
+# Local release build
 /dist/
 
-# Локальные заметки: исследования, карточки задач, план, проверки в игре, отчёты
+# Local notes: research, task cards, the plan, in-game checks, reports
 /_analisys/
-# Локальная часть инструкций для Claude Code: машина, план, текущее состояние
+# The local part of the instructions for Claude Code: the machine, the plan, the current state
 CLAUDE.local.md
 
-# Собранный сайт документации (zensical build)
+# The built documentation site (zensical build)
 /site/
 /docs/_generated/
 
-# Локальное состояние Claude Code: личные хуки и маркеры напоминаний
+# Local Claude Code state: personal hooks and reminder markers
 /.claude/settings.local.json
 /.claude/.exe-stale-seen

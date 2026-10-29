@@ -7,27 +7,25 @@ use crate::model::{self, Object};
 use crate::records;
 use crate::world;
 
-/// Предел длины строковых полей `MODL`, `ITEX`, `FNAM`: 31 знак плюс нуль.
+/// Length limit of the string fields `MODL`, `ITEX`, `FNAM`: 31 characters plus a zero.
 ///
-/// Для `MODL` предел показал сам Construction Set: длиннее он обрезает с предупреждением
-/// `Chunk size … too big in chunk MODL_ID … Max size is 32` (2026-09-24). В ванили максимум по
-/// всем трём полям — 31 знак (`docs/ru/formats/tes3.md`). Для `ITEX` и `FNAM` предел CS не
-/// измерялся; 31 — нижняя граница, которую ваниль заведомо держит.
+/// For `MODL` the limit was shown by the Construction Set itself: it truncates longer ones with the
+/// warning `Chunk size … too big in chunk MODL_ID … Max size is 32` (2026-09-24). In vanilla the
+/// maximum over all three fields is 31 characters (`docs/en/formats/tes3.md`). For `ITEX` and
+/// `FNAM` the CS limit was not measured; 31 is a lower bound that vanilla certainly respects.
 pub const MAX_FIELD_LEN: usize = 31;
 
-/// Собирает плагин Morrowind.
+/// Builds a Morrowind plugin.
 ///
-/// Мастером остаётся `Morrowind.esm`: мы только добавляем записи и ни одной
-/// ванильной не переопределяем.
+/// `Morrowind.esm` remains the master: we only add records and override no vanilla ones.
 ///
-/// # Кодировка
+/// # Encoding
 ///
-/// Все строки в плагине TES3 — **Windows-1252**, и кириллицы в них не бывает.
-/// Библиотека отказывает на записи, а не портит данные молча, поэтому любой
-/// текст, который мы туда кладём (автор, описание, ID, пути), обязан быть
-/// представим в cp1252. Проверено тестом [`tests::rejects_text_outside_cp1252`].
-/// На фазе 1 это касается нашей собственной метаинформации; когда пойдёт
-/// настоящий контент, непредставимые символы придётся обрабатывать осознанно.
+/// All strings in a TES3 plugin are **Windows-1252**, and Cyrillic never occurs in them. The
+/// library refuses on write rather than silently corrupting data, so any text we put there (author,
+/// description, IDs, paths) must be representable in cp1252. Checked by the test
+/// [`tests::rejects_text_outside_cp1252`]. In phase 1 this concerns our own metadata; once real
+/// content comes in, unrepresentable characters will have to be handled deliberately.
 #[derive(Debug, Clone)]
 pub struct PluginBuilder {
     header: Header,
@@ -36,8 +34,8 @@ pub struct PluginBuilder {
 
 impl PluginBuilder {
     pub fn new(author: &str, description: &str) -> Self {
-        // FixedString принимает String, а не &str: это фиксированные буферы
-        // 32 и 256 байт, обрезка до размера — забота библиотеки.
+        // FixedString takes a String, not a &str: these are fixed 32- and 256-byte buffers,
+        // truncating to size is the library's job.
         let header = Header {
             author: author.to_owned().into(),
             description: description.to_owned().into(),
@@ -49,16 +47,17 @@ impl PluginBuilder {
         }
     }
 
-    /// Мастер-файл, на который опирается плагин. Размер нужен движку для
-    /// проверки, что подложили тот же файл.
+    /// The master file the plugin relies on. The engine needs the size to check that the same file
+    /// is in place.
     #[must_use]
     pub fn with_master(mut self, name: &str, size: u64) -> Self {
         self.header.masters.push((name.to_owned(), size));
         self
     }
 
-    /// Пометить файл мастером (`HEDR` тип 1). Нужен, когда источник — `.esm`: у Morrowind
-    /// расширение и тип в заголовке должны совпадать, иначе CS и лаунчер видят не то.
+    /// Mark the file as a master (`HEDR` type 1). Needed when the source is an `.esm`: in Morrowind
+    /// the extension and the header type must agree, otherwise the CS and the launcher see the
+    /// wrong thing.
     #[must_use]
     pub fn as_master(mut self) -> Self {
         self.header.file_type = FileType::Esm;
@@ -80,14 +79,14 @@ impl PluginBuilder {
         self.objects.push(records::leveled_item(list));
     }
 
-    /// Список существ (T11.4). Кладётся после существ и NPC и раньше ячеек, как в
+    /// A creature list (T11.4). Placed after creatures and NPCs and before cells, as in
     /// `Morrowind.esm`.
     pub fn add_leveled_creature(&mut self, list: model::LeveledCreature) {
         self.objects.push(records::leveled_creature(list));
     }
 
-    /// Глобальная переменная (T11.1). `Long`, который `f32` не держит точно, — ошибка при записи
-    /// (проверка `tes3`), поэтому значения готовит `transform`.
+    /// A global variable (T11.1). A `Long` that `f32` cannot hold exactly is an error on write (the
+    /// `tes3` check), so `transform` prepares the values.
     pub fn add_global(&mut self, global: model::Global) {
         self.objects.push(records::global(global));
     }
@@ -96,18 +95,20 @@ impl PluginBuilder {
         self.objects.push(records::enchantment(enchantment));
     }
 
-    /// Звук. Кладётся раньше объектов, которые на него ссылаются, — как в `Morrowind.esm`.
+    /// A sound. Placed before the objects that reference it — as in `Morrowind.esm`.
     pub fn add_sound(&mut self, sound: model::Sound) {
         self.objects.push(records::sound(sound));
     }
 
-    /// Звук существа (T11.6). Кладётся после `SOUN`, на который ссылается. Вид вне 0…7 не пишется.
+    /// A creature sound (T11.6). Placed after the `SOUN` it references. A kind outside 0…7 is not
+    /// written.
     pub fn add_sound_gen(&mut self, gen_: model::SoundGen) {
         self.objects.extend(records::sound_gen(gen_));
     }
 
-    /// Скрипт по шаблону (T10.3). Кладётся после `SOUN` и раньше объектов, как в `Morrowind.esm`.
-    /// Ошибка — ID или имя не ложится в шаблон (`crate::scripts`).
+    /// A script from a template (T10.3). Placed after `SOUN` and before objects, as in
+    /// `Morrowind.esm`. The error means the ID or name does not fit the template
+    /// (`crate::scripts`).
     pub fn add_script(&mut self, script: &crate::scripts::Script) -> io::Result<()> {
         self.objects.push(crate::scripts::script(script)?);
         Ok(())
@@ -125,13 +126,13 @@ impl PluginBuilder {
         self.objects.push(world::region(region));
     }
 
-    /// Ячейка со ссылками. Записи ложатся в порядке вызовов: `LTEX` и `REGN` — раньше ячеек,
-    /// `LAND` — после, как в `Morrowind.esm`.
+    /// A cell with references. Records go in call order: `LTEX` and `REGN` before cells, `LAND`
+    /// after, as in `Morrowind.esm`.
     pub fn add_cell(&mut self, cell: world::ExteriorCell) {
         self.objects.push(world::cell(cell));
     }
 
-    /// Внутренняя ячейка со ссылками.
+    /// An interior cell with references.
     pub fn add_interior(&mut self, cell: world::InteriorCell) {
         self.objects.push(world::interior_cell(cell));
     }
@@ -156,8 +157,8 @@ impl PluginBuilder {
         self.objects.push(crate::actors::race(race));
     }
 
-    /// Тема и её реплики (T10.6). Темы кладутся последними, как в `Morrowind.esm`. Ошибка — реплика
-    /// не ложится в пределы формата (`crate::dialogue`).
+    /// A topic and its responses (T10.6). Topics go last, as in `Morrowind.esm`. The error means a
+    /// response does not fit the format's limits (`crate::dialogue`).
     pub fn add_topic(&mut self, topic: crate::dialogue::Topic) -> io::Result<()> {
         self.objects.extend(crate::dialogue::topic(topic)?);
         Ok(())
@@ -167,9 +168,9 @@ impl PluginBuilder {
         self.objects.push(world::land(land));
     }
 
-    /// Сетка путей — после своей ячейки: OpenMW узнаёт интерьер по уже загруженной ячейке с тем же
-    /// именем (`docs/ru/formats/tes3.md`, «Сетки путей»). В `Morrowind.esm` `PGRD` идёт сразу за своими
-    /// `CELL`/`LAND`; ванильному движку, возможно, важно и это — не проверено.
+    /// A path grid — after its cell: OpenMW identifies an interior by an already loaded cell with
+    /// the same name (`docs/en/formats/tes3.md`, "Path grids"). In `Morrowind.esm` a `PGRD` comes
+    /// right after its `CELL`/`LAND`; the vanilla engine may care about that too — not verified.
     pub fn add_path_grid(&mut self, grid: world::PathGrid) {
         self.objects.push(world::path_grid(grid));
     }
@@ -178,10 +179,10 @@ impl PluginBuilder {
         self.objects.len()
     }
 
-    /// `num_objects` в заголовке считается без самого заголовка.
+    /// `num_objects` in the header is counted without the header itself.
     pub fn into_plugin(mut self) -> Plugin {
         self.header.num_objects =
-            u32::try_from(self.objects.len()).expect("число записей не превышает u32");
+            u32::try_from(self.objects.len()).expect("the number of records does not exceed u32");
 
         let mut objects = Vec::with_capacity(self.objects.len() + 1);
         objects.push(TES3Object::Header(self.header));
@@ -189,8 +190,8 @@ impl PluginBuilder {
         Plugin { objects }
     }
 
-    /// Байты плагина. Поле длиннее [`MAX_FIELD_LEN`] — ошибка `InvalidData`, а не обрезка:
-    /// обрезанный путь указывает на несуществующий файл.
+    /// Plugin bytes. A field longer than [`MAX_FIELD_LEN`] is an `InvalidData` error, not a
+    /// truncation: a truncated path points to a nonexistent file.
     pub fn to_bytes(self) -> io::Result<Vec<u8>> {
         self.check_limits()?;
         self.into_plugin().save_bytes()
@@ -204,7 +205,7 @@ impl PluginBuilder {
     fn check_limits(&self) -> io::Result<()> {
         for object in &self.objects {
             for (tag, id, value) in records::limited_fields(object) {
-                // Считаем знаки, а не байты UTF-8: в файле cp1252, один знак — один байт.
+                // Count characters, not UTF-8 bytes: the file is cp1252, one character is one byte.
                 let len = value.chars().count();
                 if len > MAX_FIELD_LEN {
                     return Err(io::Error::new(
@@ -230,7 +231,7 @@ mod tests {
         BodypartType, EffectId, EffectId2, SkillId, SkillId2, Static, WeaponFlags, WeaponType,
     };
 
-    /// Броня и её часть тела: слот, `BODY`, тип, флаг «женская» доходят до файла.
+    /// Armor and its body part: slot, `BODY`, type, the "female" flag reach the file.
     #[test]
     fn armor_with_its_body_part_reads_back() {
         let mut builder = PluginBuilder::new("back2mw", "");
@@ -292,7 +293,8 @@ mod tests {
         assert!(body.data.flags.contains(BodypartFlags::FEMALE));
     }
 
-    /// Эффекты (T2.1b): у зелья — `ENAM` целиком, у ингредиента — номер, навык и атрибут в `IRDT`.
+    /// Effects (T2.1b): for a potion the whole `ENAM`, for an ingredient the number, skill and
+    /// attribute in `IRDT`.
     #[test]
     fn potion_and_ingredient_effects_read_back() {
         let fortify_blade = model::Effect {
@@ -374,9 +376,9 @@ mod tests {
         assert_eq!(seen, 2);
     }
 
-    /// Уровневый список (T2.5): флаги, шанс и строки доходят до файла. Флаги разные, чтобы
-    /// перепутанные биты 0x1/0x2 не прошли.
-    /// `GLOB`: тип и значение доходят до файла; `Long`, который `f32` не держит, не пишется.
+    /// A leveled list (T2.5): flags, chance and rows reach the file. The flags differ, so mixed-up
+    /// bits 0x1/0x2 would not pass.
+    /// `GLOB`: the type and value reach the file; a `Long` that `f32` cannot hold is not written.
     #[test]
     fn globals_read_back_and_imprecise_long_is_an_error() {
         let mut builder = PluginBuilder::new("back2mw", "");
@@ -415,10 +417,13 @@ mod tests {
             id: "ob_Big_1".to_owned(),
             value: model::GlobalValue::Long(16_777_217),
         });
-        assert!(builder.to_bytes().is_err(), "2^24 + 1 в f32 не помещается");
+        assert!(
+            builder.to_bytes().is_err(),
+            "2^24 + 1 does not fit into f32"
+        );
     }
 
-    /// `CREA`: флаги по битам Morrowind, кровь, статы, три атаки и `CNAM` доходят до файла.
+    /// `CREA`: flags in Morrowind bits, blood, stats, three attacks and `CNAM` reach the file.
     #[test]
     fn creature_reads_back() {
         use tes3::esp::{Creature as EspCreature, CreatureFlags, CreatureType};
@@ -529,7 +534,7 @@ mod tests {
         assert_eq!(
             l.leveled_item_flags.bits(),
             0x2,
-            "0x2 — все уровни ≤ игрока"
+            "0x2 — all levels ≤ the player's"
         );
         assert_eq!(l.chance_none, 25);
         assert_eq!(
@@ -564,7 +569,7 @@ mod tests {
         assert_eq!(
             lists[0].leveled_creature_flags.bits(),
             0x1,
-            "у LEVC «все уровни» — 0x1, а не 0x2, как у LEVI"
+            "for LEVC \"all levels\" is 0x1, not 0x2 as for LEVI"
         );
         assert_eq!(lists[0].chance_none, 10);
         assert_eq!(
@@ -575,8 +580,8 @@ mod tests {
         assert_eq!(lists[1].creatures, [("ob_LL1Rat_a".to_owned(), 3)]);
     }
 
-    /// Объекты мира (T2.2): флаги контейнера, содержимое, свет без меша, звуки (T10.1) доходят до
-    /// файла.
+    /// World objects (T2.2): container flags, contents, a light without a mesh, sounds (T10.1)
+    /// reach the file.
     #[test]
     fn world_objects_read_back() {
         let mut builder = PluginBuilder::new("back2mw", "");
@@ -658,11 +663,7 @@ mod tests {
                     kinds.push(("SOUN", s.id.clone()));
                 }
                 TES3Object::Container(c) => {
-                    assert_eq!(
-                        c.container_flags.bits(),
-                        0x0B,
-                        "органический, пополняется, 0x8"
-                    );
+                    assert_eq!(c.container_flags.bits(), 0x0B, "organic, restocks, 0x8");
                     let items: Vec<(i32, &str)> = c
                         .inventory
                         .iter()
@@ -703,7 +704,7 @@ mod tests {
         builder.add_static("ob_Bowl01_0000002", "ob\\Bowl01.nif");
 
         let bytes = builder.to_bytes().unwrap();
-        assert_eq!(&bytes[..4], b"TES3", "плагин начинается записью TES3");
+        assert_eq!(&bytes[..4], b"TES3", "the plugin starts with a TES3 record");
 
         let mut parsed = Plugin::new();
         parsed.load_bytes(&bytes).unwrap();
@@ -735,18 +736,18 @@ mod tests {
                 TES3Object::Header(h) => Some(h),
                 _ => None,
             })
-            .expect("заголовок на месте");
+            .expect("the header is in place");
         assert_eq!(header.num_objects, 2);
-        assert_eq!(plugin.objects.len(), 3, "заголовок плюс две записи");
+        assert_eq!(plugin.objects.len(), 3, "the header plus two records");
     }
 
-    /// Документирует ограничение кодировки: строки TES3 — cp1252, и попытка
-    /// записать то, что в неё не влезает, должна падать, а не портить файл.
+    /// Documents the encoding limitation: TES3 strings are cp1252, and an attempt to write
+    /// something that does not fit must fail rather than corrupt the file.
     #[test]
     fn rejects_text_outside_cp1252() {
-        let err = PluginBuilder::new("back2mw", "описание")
+        let err = PluginBuilder::new("back2mw", "περιγραφή")
             .to_bytes()
-            .expect_err("кириллица не представима в cp1252");
+            .expect_err("Greek is not representable in cp1252");
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
@@ -788,7 +789,7 @@ mod tests {
                 TES3Object::Weapon(w) => Some(w),
                 _ => None,
             })
-            .expect("WEAP на месте");
+            .expect("WEAP is in place");
         assert_eq!(w.id, "ob_WeapIronDagger_0000abc");
         assert_eq!(w.name, "Iron Dagger");
         assert_eq!(w.mesh, "ob\\dagger_0123456789.nif");
@@ -804,17 +805,17 @@ mod tests {
         );
     }
 
-    /// Ровно предел проходит, на знак больше — отказ. Без первой половины тест прошёл бы и
-    /// на проверке, которая отвергает всё.
+    /// Exactly the limit passes, one character more is refused. Without the first half the test
+    /// would pass on a check that rejects everything too.
     #[test]
     fn a_path_longer_than_the_cs_buffer_is_rejected_not_truncated() {
         let mut ok = PluginBuilder::new("back2mw", "");
         ok.add_static("a", "x".repeat(MAX_FIELD_LEN));
-        ok.to_bytes().expect("31 знак влезает");
+        ok.to_bytes().expect("31 characters fit");
 
         let mut long = PluginBuilder::new("back2mw", "");
         long.add_static("a", "x".repeat(MAX_FIELD_LEN + 1));
-        let err = long.to_bytes().expect_err("32 знака не влезают");
+        let err = long.to_bytes().expect_err("32 characters do not fit");
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         let mut icon = PluginBuilder::new("back2mw", "");
@@ -822,7 +823,7 @@ mod tests {
             icon: "i".repeat(MAX_FIELD_LEN + 1),
             ..iron_dagger()
         });
-        assert!(icon.to_bytes().is_err(), "ITEX проверяется тоже");
+        assert!(icon.to_bytes().is_err(), "ITEX is checked too");
     }
 
     #[test]
@@ -834,7 +835,7 @@ mod tests {
                     TES3Object::Header(h) => Some(h.file_type),
                     _ => None,
                 })
-                .expect("заголовок на месте")
+                .expect("the header is in place")
         };
         let esm = PluginBuilder::new("back2mw", "")
             .as_master()
@@ -859,7 +860,7 @@ mod tests {
                 TES3Object::Header(h) => Some(h),
                 _ => None,
             })
-            .expect("заголовок на месте");
+            .expect("the header is in place");
         assert_eq!(header.masters, [("Morrowind.esm".to_owned(), 79_764_287)]);
     }
 }
@@ -868,7 +869,8 @@ mod tests {
 mod sound_gen_tests {
     use super::*;
 
-    /// `SNDG` (T11.6) доходит до файла с видом, существом и звуком; вид вне 0…7 не пишется.
+    /// `SNDG` (T11.6) reaches the file with the kind, the creature and the sound; a kind outside
+    /// 0…7 is not written.
     #[test]
     fn sound_gens_read_back() {
         let mut builder = PluginBuilder::new("back2mw", "");

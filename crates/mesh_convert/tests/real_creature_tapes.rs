@@ -1,8 +1,9 @@
-//! T11.5d: ленты анимации существ `Oblivion.esm` — клипы папки собираются в ленту Morrowind
-//! (`mesh_convert::creature::tape`), лента вешается на тело, из полного меша получается пара
-//! `x<имя>.nif` + `x<имя>.kf`. Проверки: `niftest` принимает все три файла; тело, поставленное в
-//! первый кадр `Idle`, стоит на земле и размером с габариты `BSBound`; после `Death1` лежит.
-//! Контроль способа проверки — ванильный гуар, поставленный в кадр тем же кодом.
+//! T11.5d: animation tapes of `Oblivion.esm` creatures — a folder's clips are assembled into a
+//! Morrowind tape (`mesh_convert::creature::tape`), the tape is hung on the body, and the full mesh
+//! yields the pair `x<name>.nif` + `x<name>.kf`. Checks: `niftest` accepts all three files; the
+//! body put into the first `Idle` frame stands on the ground and is the size of the `BSBound`
+//! bounds; after `Death1` it lies down. The control for the checking method is the vanilla guar,
+//! put into a frame by the same code.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -10,8 +11,9 @@
 //!   cargo test -p mesh_convert --test real_creature_tapes -- --ignored --nocapture
 //! ```
 //!
-//! Без `BACK2MW_NIFTEST` проверка `niftest` пропускается. `BACK2MW_KEEP_OUTPUT=1` — оставить
-//! файлы во временной папке. Числа отсюда — в `docs/ru/formats/nif-oblivion.md`, «Лента».
+//! Without `BACK2MW_NIFTEST` the `niftest` check is skipped. `BACK2MW_KEEP_OUTPUT=1` keeps the
+//! files in the temporary folder. The numbers from here are in `docs/en/formats/nif-oblivion.md`,
+//! "Tape".
 
 mod common;
 
@@ -53,7 +55,7 @@ fn niftest_failures(tool: &PathBuf, target: &PathBuf) -> Vec<String> {
         .arg("-q")
         .arg(target)
         .output()
-        .unwrap_or_else(|e| panic!("не запустить niftest: {e}"));
+        .unwrap_or_else(|e| panic!("cannot start niftest: {e}"));
     String::from_utf8_lossy(&out.stderr)
         .lines()
         .chain(String::from_utf8_lossy(&out.stdout).lines())
@@ -62,7 +64,7 @@ fn niftest_failures(tool: &PathBuf, target: &PathBuf) -> Vec<String> {
         .collect()
 }
 
-/// Ключи поворота и сдвига дорожки как пары «время — значение», какого бы вида они ни были.
+/// A track's rotation and translation keys as "time — value" pairs, whatever their kind.
 fn rotation_keys(data: &NiKeyframeData) -> Vec<(f32, Quat)> {
     match &data.rotations.keys {
         NiRotKey::LinKey(k) => k.iter().map(|k| (k.time, k.value)).collect(),
@@ -80,7 +82,7 @@ fn translation_keys(data: &NiKeyframeData) -> Vec<(f32, Vec3)> {
     }
 }
 
-/// Значение между соседними ключами.
+/// The value between neighboring keys.
 fn between<T: Copy>(keys: &[(f32, T)], time: f32, mix: impl Fn(T, T, f32) -> T) -> Option<T> {
     let first = keys.first()?;
     if time <= first.0 {
@@ -97,7 +99,8 @@ fn between<T: Copy>(keys: &[(f32, T)], time: f32, mix: impl Fn(T, T, f32) -> T) 
     keys.last().map(|k| k.1)
 }
 
-/// Ставит узлы меша в кадр `time` его ленты: то, что делает движок с `NiKeyframeController`.
+/// Puts the mesh nodes into frame `time` of its tape: what the engine does with
+/// `NiKeyframeController`.
 fn pose_at(stream: &mut NiStream, time: f32) {
     let tracks: Vec<(NiKey, NiKeyframeData)> = stream
         .objects_of_type::<NiKeyframeController>()
@@ -118,7 +121,7 @@ fn pose_at(stream: &mut NiStream, time: f32) {
     }
 }
 
-/// Коробка всех вершин меша в мире после деформации кожей.
+/// The box of all mesh vertices in the world after skin deformation.
 fn deformed_box(stream: &mut NiStream) -> Option<(Vec3, Vec3)> {
     stream.apply_skin_deforms();
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
@@ -137,7 +140,7 @@ fn deformed_box(stream: &mut NiStream) -> Option<(Vec3, Vec3)> {
     any.then_some((lo, hi))
 }
 
-/// Время метки `group: mark` (без учёта регистра) на ленте меша.
+/// Time of the text key `group: mark` (case-insensitive) on the mesh's tape.
 fn mark_time(stream: &NiStream, group: &str, mark: &str) -> Option<f32> {
     let wanted = format!("{group}: {mark}").to_ascii_lowercase();
     stream
@@ -151,11 +154,12 @@ fn mark_time(stream: &NiStream, group: &str, mark: &str) -> Option<f32> {
         .map(|k| k.time)
 }
 
-/// Контроль способа проверки: ванильный гуар, поставленный в первый кадр `Idle` своей ленты тем
-/// же кодом, помещается в свой `Bounding Box`. Если бы `pose_at` путал порядок чисел кватерниона
-/// или сторону матрицы, гуар бы развалился — и проверке наших существ нельзя было бы верить.
+/// Control for the checking method: the vanilla guar, put into the first `Idle` frame of its tape
+/// by the same code, fits into its `Bounding Box`. If `pose_at` mixed up the quaternion number
+/// order or the matrix side, the guar would fall apart — and the check of our creatures could not
+/// be trusted.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn vanilla_guar_posed_by_its_tape_fits_its_bounding_box() {
     let archive = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
     let entry = archive
@@ -176,30 +180,35 @@ fn vanilla_guar_posed_by_its_tape_fits_its_bounding_box() {
                 _ => None,
             },
         )
-        .expect("Bounding Box гуара");
+        .expect("the guar's Bounding Box");
     let idle = mark_time(&stream, "Idle", "Start").expect("Idle: Start");
     pose_at(&mut stream, idle);
-    let (lo, hi) = deformed_box(&mut stream).expect("формы");
+    let (lo, hi) = deformed_box(&mut stream).expect("shapes");
     let size = (hi - lo) * 0.5;
     println!(
-        "гуар в кадре Idle: меш {:?}…{:?}, габариты центр {:?} половины {:?}",
+        "guar in the Idle frame: mesh {:?}…{:?}, bounds center {:?} half-extents {:?}",
         lo, hi, bound.0, bound.1
     );
-    assert!(lo.z.abs() < 10.0, "гуар стоит на земле: низ {}", lo.z);
-    // Высота — точный размер; по ширине и длине коробка ванили теснее меша (хвост, тень).
+    assert!(
+        lo.z.abs() < 10.0,
+        "the guar stands on the ground: bottom {}",
+        lo.z
+    );
+    // Height is the exact size; in width and length the vanilla box is tighter than the mesh (tail,
+    // shadow).
     let ratio = [0, 1, 2].map(|axis| size[axis] / bound.1[axis]);
-    assert!((0.9..=1.1).contains(&ratio[2]), "высота: {ratio:?}");
+    assert!((0.9..=1.1).contains(&ratio[2]), "height: {ratio:?}");
     assert!(
         (0.8..=1.5).contains(&ratio[0]) && (0.8..=1.5).contains(&ratio[1]),
-        "ширина и длина: {ratio:?}"
+        "width and length: {ratio:?}"
     );
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA; BACK2MW_NIFTEST — по желанию"]
+#[ignore = "real data: BACK2MW_GAME_DATA; BACK2MW_NIFTEST optional"]
 #[expect(
     clippy::too_many_lines,
-    reason = "перепись: одна длинная печать, делить её на части — только мешать чтению"
+    reason = "a census: one long printout, splitting it would only hurt readability"
 )]
 fn tapes_of_all_creature_folders_are_built() {
     let bytes = fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
@@ -211,7 +220,7 @@ fn tapes_of_all_creature_folders_are_built() {
         archives.push((r, idx));
     }
 
-    // На папку — самое частое тело (скелет + набор частей).
+    // Per folder — the most common body (skeleton + set of parts).
     let mut bodies: BTreeMap<String, BTreeMap<(String, Vec<String>), usize>> = BTreeMap::new();
     for record in plugin.records() {
         if &record.header.tag != b"CREA" {
@@ -240,7 +249,7 @@ fn tapes_of_all_creature_folders_are_built() {
             .or_default() += 1;
     }
 
-    // Клипы папок: файлы `.kf` прямо в папке.
+    // Folder clips: `.kf` files directly in the folder.
     let mut kf_files: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (_, idx) in &archives {
         for e in idx.entries() {
@@ -265,7 +274,7 @@ fn tapes_of_all_creature_folders_are_built() {
 
     let out_dir = std::env::temp_dir().join("back2mw_creature_tapes");
     let _ = fs::remove_dir_all(&out_dir);
-    fs::create_dir_all(&out_dir).expect("временная папка");
+    fs::create_dir_all(&out_dir).expect("temporary folder");
 
     let mut registry = TextureRegistry::new();
     let mut facts: BTreeMap<String, usize> = BTreeMap::new();
@@ -281,9 +290,9 @@ fn tapes_of_all_creature_folders_are_built() {
         let ((model, parts), _) = variants
             .iter()
             .max_by_key(|(_, records)| **records)
-            .expect("у папки есть тело");
+            .expect("the folder has a body");
         let Some(skeleton) = read(&format!("meshes\\{model}")).and_then(|d| parse(&d).ok()) else {
-            bump(&mut facts, "скелет не читается");
+            bump(&mut facts, "the skeleton cannot be read");
             continue;
         };
         let part_sources: Vec<(String, SourceNif)> = parts
@@ -298,7 +307,7 @@ fn tapes_of_all_creature_folders_are_built() {
             .map(|(name, source)| BodyPart { name, source })
             .collect();
 
-        // Клипы папки.
+        // Folder clips.
         let mut folder_clips: Vec<(String, Clip)> = Vec::new();
         for path in kf_files.get(folder).map_or(&[][..], Vec::as_slice) {
             let Some(data) = read(path) else { continue };
@@ -320,7 +329,7 @@ fn tapes_of_all_creature_folders_are_built() {
             .map(|(file, clip)| FolderClip { file, clip })
             .collect();
 
-        // Порядок углов Эйлера: первый кадр `idle` против позы скелета.
+        // Euler angle order: the first `idle` frame against the skeleton pose.
         let rest: BTreeMap<String, Quat> = skeleton
             .blocks
             .iter()
@@ -356,10 +365,10 @@ fn tapes_of_all_creature_folders_are_built() {
                 bump(
                     &mut euler_order,
                     match (near(zyx), near(xyz)) {
-                        (true, true) => "оба порядка совпали с позой",
-                        (true, false) => "совпал Rz·Ry·Rx (сначала X) — как в коде",
-                        (false, true) => "совпал Rx·Ry·Rz (сначала Z)",
-                        (false, false) => "ни один не совпал (idle не в позе привязки)",
+                        (true, true) => "both orders matched the pose",
+                        (true, false) => "Rz·Ry·Rx matched (X first) — as in the code",
+                        (false, true) => "Rx·Ry·Rz matched (Z first)",
+                        (false, false) => "neither matched (idle is not in the bind pose)",
                     },
                 );
             }
@@ -368,14 +377,14 @@ fn tapes_of_all_creature_folders_are_built() {
         let mut body = match build_body(&short, &skeleton, &body_parts, &mut registry) {
             Ok(body) => body,
             Err(e) => {
-                bump(&mut facts, format!("тело: {e}"));
+                bump(&mut facts, format!("body: {e}"));
                 continue;
             }
         };
         let tape = match animate(&mut body, &skeleton, &borrowed, rules(), KEY_STEP) {
             Ok(tape) => tape,
             Err(e) => {
-                bump(&mut facts, format!("лента: {e}"));
+                bump(&mut facts, format!("tape: {e}"));
                 continue;
             }
         };
@@ -387,22 +396,22 @@ fn tapes_of_all_creature_folders_are_built() {
         bump(
             &mut facts,
             format!(
-                "все дорожки ленты нашли свою кость: {}",
+                "all tape tracks found their bone: {}",
                 applied == tape.tracks.len()
             ),
         );
-        let full = body.converted.save_bytes().expect("запись NIF");
+        let full = body.converted.save_bytes().expect("writing the NIF");
         let mut pair = split_pair(&body.converted.stream, &tape);
-        let x_nif = pair.skeleton.save_bytes().expect("запись x-nif");
-        let x_kf = pair.keys.save_bytes().expect("запись kf");
-        fs::write(out_dir.join(format!("{short}.nif")), &full).expect("запись");
-        fs::write(out_dir.join(format!("x{short}.nif")), &x_nif).expect("запись");
-        fs::write(out_dir.join(format!("x{short}.kf")), &x_kf).expect("запись");
+        let x_nif = pair.skeleton.save_bytes().expect("writing the x-nif");
+        let x_kf = pair.keys.save_bytes().expect("writing the kf");
+        fs::write(out_dir.join(format!("{short}.nif")), &full).expect("writing");
+        fs::write(out_dir.join(format!("x{short}.nif")), &x_nif).expect("writing");
+        fs::write(out_dir.join(format!("x{short}.kf")), &x_kf).expect("writing");
         built += 1;
         total_bytes += full.len() + x_nif.len() + x_kf.len();
 
-        // Пара устроена как ванильная.
-        let kf = NiStream::from_bytes(&x_kf).expect("kf читается обратно");
+        // The pair is structured like the vanilla one.
+        let kf = NiStream::from_bytes(&x_kf).expect("the kf reads back");
         let controllers = kf.objects_of_type::<NiKeyframeController>().count();
         let strings = kf
             .objects
@@ -414,25 +423,25 @@ fn tapes_of_all_creature_folders_are_built() {
             .first()
             .and_then(|r| kf.objects.get(r.key))
             .is_some_and(|o| matches!(o, NiType::NiSequenceStreamHelper(_)));
-        let x = NiStream::from_bytes(&x_nif).expect("x-nif читается обратно");
+        let x = NiStream::from_bytes(&x_nif).expect("the x-nif reads back");
         for (what, yes) in [
-            ("kf: корень — NiSequenceStreamHelper", root_is_helper),
+            ("kf: the root is a NiSequenceStreamHelper", root_is_helper),
             (
-                "kf: строк столько же, сколько контроллеров и дорожек",
+                "kf: as many strings as controllers and tracks",
                 strings == controllers && controllers == tape.tracks.len(),
             ),
             (
-                "kf: цель у всех контроллеров пуста",
+                "kf: all controllers have an empty target",
                 kf.objects_of_type::<NiKeyframeController>()
                     .all(|c| c.base.target.is_null()),
             ),
             (
-                "x-nif: нет контроллеров ключей и меток",
+                "x-nif: no keyframe controllers and text keys",
                 x.objects_of_type::<NiKeyframeController>().count() == 0
                     && x.objects_of_type::<NiTextKeyExtraData>().count() == 0,
             ),
             (
-                "x-nif: узлов и форм столько же, сколько в полном меше",
+                "x-nif: as many nodes and shapes as in the full mesh",
                 x.objects_of_type::<NiNode>().count()
                     == body.converted.stream.objects_of_type::<NiNode>().count()
                     && x.objects_of_type::<NiTriShape>().count()
@@ -452,12 +461,12 @@ fn tapes_of_all_creature_folders_are_built() {
         for group in &tape.missing {
             bump(&mut missing, group.clone());
         }
-        // Открытых разом групп — не больше, чем держит движок («Too many shared anim groups»).
+        // No more groups open at once than the engine holds ("Too many shared anim groups").
         let peak = mesh_convert::creature::tape::peak_open_groups(&tape);
-        bump(&mut facts, format!("открытых разом групп: {peak}"));
+        bump(&mut facts, format!("groups open at once: {peak}"));
         assert!(
             peak <= mesh_convert::creature::tape::MAX_OPEN_GROUPS && tape.crowded.is_empty(),
-            "{short}: открыто разом {peak}, не записаны {:?}",
+            "{short}: open at once {peak}, not written {:?}",
             tape.crowded
         );
         let keys: usize = tape
@@ -467,7 +476,7 @@ fn tapes_of_all_creature_folders_are_built() {
             .sum();
         total_keys += keys;
 
-        // Скорость: путь корня накопления за петлю ходьбы и бега.
+        // Speed: the accumulation root's path over the walk and run loops.
         let mut speeds = Vec::new();
         let root_track = tape.tracks.iter().find(|t| t.bone == tape.accum_root);
         for group in ["WalkForward", "RunForward"] {
@@ -483,18 +492,18 @@ fn tapes_of_all_creature_folders_are_built() {
             if let (Some(pa), Some(pb)) = (at(a), at(b)) {
                 let d = pb - pa;
                 speeds.push(format!(
-                    "{group} {:.0} ед/с по ({:.0}, {:.0})",
+                    "{group} {:.0} u/s along ({:.0}, {:.0})",
                     d.truncate().length() / (b - a).max(1e-3),
                     d.x,
                     d.y
                 ));
                 bump(
                     &mut facts,
-                    format!("{group}: путь по +Y: {}", d.y > d.x.abs() && d.y > 5.0),
+                    format!("{group}: path along +Y: {}", d.y > d.x.abs() && d.y > 5.0),
                 );
             }
         }
-        // Поворот: корень накопления за петлю не поворачивается.
+        // Turn: the accumulation root does not rotate over the loop.
         if let (Some(a), Some(b), Some(track)) = (
             mark_time(&body.converted.stream, "TurnLeft", "Loop Start"),
             mark_time(&body.converted.stream, "TurnLeft", "Loop Stop"),
@@ -505,14 +514,14 @@ fn tapes_of_all_creature_folders_are_built() {
                 bump(
                     &mut facts,
                     format!(
-                        "TurnLeft: корень накопления не поворачивается: {}",
+                        "TurnLeft: the accumulation root does not rotate: {}",
                         qa.angle_between(qb).to_degrees() < 1.0
                     ),
                 );
             }
         }
 
-        // Стойка и падение: меш в кадре против габаритов.
+        // Stance and fall: the mesh in a frame against the bounds.
         let bound = skeleton.blocks.iter().find_map(|b| match b {
             Block::BsBound(b) => Some(b),
             _ => None,
@@ -524,9 +533,9 @@ fn tapes_of_all_creature_folders_are_built() {
             for (label, group, mark) in [
                 ("Idle", "Idle", "Start"),
                 ("Walk", "WalkForward", "Loop Start"),
-                ("лежит", "Death1", "Stop"),
+                ("lying", "Death1", "Stop"),
             ] {
-                let mut posed = NiStream::from_bytes(&full).expect("полный меш читается обратно");
+                let mut posed = NiStream::from_bytes(&full).expect("the full mesh reads back");
                 let Some(time) = mark_time(&posed, group, mark) else {
                     continue;
                 };
@@ -536,12 +545,12 @@ fn tapes_of_all_creature_folders_are_built() {
                 };
                 let size = hi - lo;
                 row.push_str(&format!(
-                    " {label}: {:.0}×{:.0}×{:.0} низ {:.0};",
+                    " {label}: {:.0}×{:.0}×{:.0} bottom {:.0};",
                     size.x, size.y, size.z, lo.z
                 ));
-                if label == "лежит" {
-                    // Падение — поворот на 90° вокруг продольной оси: ширина и высота стоящего
-                    // тела меняются местами.
+                if label == "lying" {
+                    // The fall is a 90° rotation around the longitudinal axis: the width and height
+                    // of the standing body swap places.
                     let lying = standing.is_some_and(|up: Vec3| {
                         (size.z - up.x).abs() < 0.1 * up.x.max(up.z)
                             && (size.x - up.z).abs() < 0.1 * up.x.max(up.z)
@@ -549,14 +558,16 @@ fn tapes_of_all_creature_folders_are_built() {
                     let on_ground = lo.z.abs() < 0.1 * height;
                     bump(
                         &mut facts,
-                        format!("после Death1 тело лежит на боку: {lying}"),
+                        format!("after Death1 the body lies on its side: {lying}"),
                     );
                     bump(
                         &mut facts,
-                        format!("после Death1 тело на земле (|низ| < 10 % высоты): {on_ground}"),
+                        format!(
+                            "after Death1 the body is on the ground (|bottom| < 10% of height): {on_ground}"
+                        ),
                     );
                     if !(lying && on_ground) {
-                        odd.push(format!("{short}: лежит —{row}"));
+                        odd.push(format!("{short}: lying —{row}"));
                     }
                 } else {
                     if label == "Idle" {
@@ -566,15 +577,17 @@ fn tapes_of_all_creature_folders_are_built() {
                     let grounded = lo.z.abs() < 0.2 * height;
                     bump(
                         &mut facts,
-                        format!("{label}: высота 0.75…1.35 габаритов: {tall}"),
+                        format!("{label}: height 0.75…1.35 of the bounds: {tall}"),
                     );
                     bump(
                         &mut facts,
-                        format!("{label}: стоит на земле (|низ| < 20 % высоты): {grounded}"),
+                        format!(
+                            "{label}: stands on the ground (|bottom| < 20% of height): {grounded}"
+                        ),
                     );
                     if !(tall && grounded) {
                         odd.push(format!(
-                            "{short}: {label} —{row} габариты {:.0}×{:.0}×{height:.0}",
+                            "{short}: {label} —{row} bounds {:.0}×{:.0}×{height:.0}",
                             bound.half_extents[0] * 2.0,
                             bound.half_extents[1] * 2.0
                         ));
@@ -584,7 +597,7 @@ fn tapes_of_all_creature_folders_are_built() {
         }
 
         table.push(format!(
-            "{short}: клипов в папке {}, в ленте {}; лента {:.1} с, дорожек {}, ключей {keys}, меток {}; групп {} (нет: {}); дорожек вне скелета {}, меток Sound {}; {}; байт nif {} / x-nif {} / kf {};{row}",
+            "{short}: clips in the folder {}, in the tape {}; tape {:.1} s, tracks {}, keys {keys}, text keys {}; groups {} (missing: {}); tracks outside the skeleton {}, Sound keys {}; {}; bytes nif {} / x-nif {} / kf {};{row}",
             folder_clips.len(),
             tape.clips.len(),
             tape.length,
@@ -605,16 +618,16 @@ fn tapes_of_all_creature_folders_are_built() {
         ));
     }
 
-    println!("папки ({}):", table.len());
+    println!("folders ({}):", table.len());
     for row in &table {
         println!("  {row}");
     }
-    println!("собрано лент {built}; ключей {total_keys}; байт на все три файла {total_bytes}");
-    print_map("факты", &facts);
-    print_map("группы (в скольких лентах)", &groups);
-    print_map("групп нет (в скольких лентах)", &missing);
-    print_map("порядок углов Эйлера", &euler_order);
-    println!("не по габаритам ({}):", odd.len());
+    println!("tapes built {built}; keys {total_keys}; bytes for all three files {total_bytes}");
+    print_map("facts", &facts);
+    print_map("groups (in how many tapes)", &groups);
+    print_map("missing groups (in how many tapes)", &missing);
+    print_map("Euler angle order", &euler_order);
+    println!("off the bounds ({}):", odd.len());
     for row in &odd {
         println!("  {row}");
     }
@@ -622,37 +635,37 @@ fn tapes_of_all_creature_folders_are_built() {
     match std::env::var_os("BACK2MW_NIFTEST").map(PathBuf::from) {
         Some(tool) => {
             let failures = niftest_failures(&tool, &out_dir);
-            println!("niftest: файлов {}, брака {}", built * 3, failures.len());
+            println!("niftest: files {}, defects {}", built * 3, failures.len());
             for f in failures.iter().take(10) {
                 println!("  {f}");
             }
             let broken = out_dir.join("broken");
-            fs::create_dir_all(&broken).expect("папка контроля");
+            fs::create_dir_all(&broken).expect("control folder");
             fs::write(
                 broken.join("broken.kf"),
                 b"NetImmerse File Format, Version 4.0.0.2\n\x02\0\0\x04",
             )
-            .expect("битый файл");
+            .expect("broken file");
             assert!(
                 !niftest_failures(&tool, &broken).is_empty(),
-                "niftest не заметил битый .kf — он их не читает или вывод разбирается неверно"
+                "niftest did not notice the broken .kf — it does not read them or its output is parsed wrongly"
             );
-            assert!(failures.is_empty(), "niftest читает все файлы");
+            assert!(failures.is_empty(), "niftest reads all files");
         }
-        None => println!("niftest: пропущен, BACK2MW_NIFTEST не задана"),
+        None => println!("niftest: skipped, BACK2MW_NIFTEST is not set"),
     }
     if std::env::var_os("BACK2MW_KEEP_OUTPUT").is_some() {
-        println!("файлы оставлены в {}", out_dir.display());
+        println!("files kept in {}", out_dir.display());
     } else {
         let _ = fs::remove_dir_all(&out_dir);
     }
     assert!(built > 0);
 }
 
-/// Файлы клипов одной папки и имена их последовательностей — посмотреть, как названы действия и
-/// стойки. Папка — в `BACK2MW_FOLDER` (по умолчанию `goblin`).
+/// The clip files of one folder and the names of their sequences — to see how actions and stances
+/// are named. The folder is in `BACK2MW_FOLDER` (by default `goblin`).
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn list_folder_clips() {
     let folder = std::env::var("BACK2MW_FOLDER").unwrap_or_else(|_| "goblin".to_owned());
     let prefix = format!(r"meshes\creatures\{}\", folder.to_ascii_lowercase());
@@ -675,7 +688,7 @@ fn list_folder_clips() {
             };
             for clip in clips(&data, &source, &offsets).unwrap_or_default() {
                 rows.push(format!(
-                    "{} → {} [{:.2} с, цикл {}]",
+                    "{} → {} [{:.2} s, cycle {}]",
                     &entry.path[prefix.len()..],
                     clip.name,
                     clip.stop - clip.start,

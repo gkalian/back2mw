@@ -1,34 +1,35 @@
-//! Коллизия: Havok Oblivion → `RootCollisionNode` Morrowind, T1.7 и T1.3w.
+//! Collision: Oblivion Havok → Morrowind `RootCollisionNode`, T1.7 and T1.3w.
 //!
-//! У статики Oblivion коллизия — цепочка `bhkCollisionObject` → `bhkRigidBody(T)` → дерево
-//! форм. Morrowind ищет коллизию по-другому: под корнем лежит узел `RootCollisionNode`, а в нём
-//! обычные `NiTriShape`. Здесь дерево форм разворачивается в треугольники; сборку выходных
-//! блоков делает [`crate::geometry`].
+//! An Oblivion static's collision is the chain `bhkCollisionObject` → `bhkRigidBody(T)` → a tree of
+//! shapes. Morrowind looks for collision differently: under the root there is a `RootCollisionNode`
+//! node, and inside it ordinary `NiTriShape`s. Here the shape tree is unrolled into triangles; the
+//! output blocks are assembled by [`crate::geometry`].
 //!
-//! **Формы и во что они превращаются:**
+//! **Shapes and what they become:**
 //!
-//! | Форма | Треугольники |
+//! | Shape | Triangles |
 //! |---|---|
-//! | `bhkNiTriStripsShape` | полосы `NiTriStripsData` → список (как у видимой геометрии) |
-//! | `bhkPackedNiTriStripsShape` | готовые треугольники и вершины `hkPackedNiTriStripsData` |
-//! | `bhkBoxShape` | 8 вершин, 12 треугольников |
-//! | `bhkConvexVerticesShape` | грани выпуклой оболочки: для каждой плоскости — вершины на ней, по кругу |
-//! | `bhkSphereShape`, `bhkCapsuleShape` | **приближение** сеткой (12 сегментов, по 3 кольца на полусферу): у Morrowind нет примитивов, а сетка вписана в форму |
-//! | `bhkMoppBvTreeShape` | прозрачная обёртка |
-//! | `bhkListShape` | каждый элемент — отдельная форма выхода |
-//! | `bhkTransformShape`, `bhkConvexTransformShape` | матрица накладывается на всё поддерево |
+//! | `bhkNiTriStripsShape` | `NiTriStripsData` strips → a list (as for visible geometry) |
+//! | `bhkPackedNiTriStripsShape` | the ready triangles and vertices of `hkPackedNiTriStripsData` |
+//! | `bhkBoxShape` | 8 vertices, 12 triangles |
+//! | `bhkConvexVerticesShape` | faces of the convex hull: for each plane, the vertices on it, in a loop |
+//! | `bhkSphereShape`, `bhkCapsuleShape` | an **approximation** by a mesh (12 segments, 3 rings per hemisphere): Morrowind has no primitives, and the mesh is inscribed in the shape |
+//! | `bhkMoppBvTreeShape` | a transparent wrapper |
+//! | `bhkListShape` | each element is a separate output shape |
+//! | `bhkTransformShape`, `bhkConvexTransformShape` | the matrix is applied to the whole subtree |
 //!
-//! **Единицы.** Всё, что лежит в форме, — в havok-юнитах; итоговая вершина умножается на
-//! [`crate::HAVOK_UNITS_TO_GAME`]. Множитель проверен на данных: `tests/real_collision.rs`
-//! сравнивает габарит коллизии с габаритом видимой геометрии.
+//! **Units.** Everything stored in a shape is in havok units; the final vertex is multiplied by
+//! [`crate::HAVOK_UNITS_TO_GAME`]. The factor is checked on data: `tests/real_collision.rs`
+//! compares the size of the collision with the size of the visible geometry.
 //!
-//! **Порядок.** Матрицы поддеревьев накладываются от корня к листу, самой внешней — поворот и
-//! сдвиг `bhkRigidBodyT` (у обычного `bhkRigidBody` они не применяются: там лежит положение тела
-//! в мире из редактора). Матрица 4×4 читается как 16 `f32` по столбцам, сдвиг — в четвёртом
-//! столбце; **смысл матрицы не проверен** на объекте с известным преобразованием.
+//! **Order.** Subtree matrices are applied from the root to the leaf; the outermost is the rotation
+//! and translation of `bhkRigidBodyT` (for a plain `bhkRigidBody` they are not applied: it holds
+//! the body's position in the editor's world). A 4×4 matrix is read as 16 `f32` in columns, the
+//! translation is in the fourth column; **the meaning of the matrix has not been verified** on an
+//! object with a known transform.
 //!
-//! Что не переносится: `bhkRigidBody` вне корня, материалы Havok, слои и фильтры, радиус
-//! скругления выпуклых форм, параметры `bhkMoppBvTreeShape`.
+//! Not carried over: `bhkRigidBody` outside the root, Havok materials, layers and filters, the
+//! rounding radius of convex shapes, the parameters of `bhkMoppBvTreeShape`.
 
 use tes3::nif::glam::{Affine3A, Mat4, Quat, Vec3};
 
@@ -36,27 +37,28 @@ use crate::HAVOK_UNITS_TO_GAME;
 use crate::geometry::{ConvertError, strips_to_triangles};
 use crate::read::{Block, BlockRef, SourceNif};
 
-/// Глубина вложенности форм, глубже которой дерево считается циклом.
+/// Shape nesting depth beyond which the tree is considered a cycle.
 const MAX_DEPTH: usize = 32;
 
-/// Сегментов по окружности у сферы и капсулы.
+/// Segments around the circumference of a sphere and a capsule.
 const SEGMENTS: usize = 12;
-/// Колец на каждую полусферу (без полюса и экватора).
+/// Rings per hemisphere (without the pole and the equator).
 const CAP_RINGS: usize = 2;
 
-/// Одна форма коллизии в игровых юнитах.
+/// One collision shape in game units.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
-    /// Индекс блока источника, из которого форма получена.
+    /// Index of the source block the shape came from.
     pub source_block: usize,
     pub vertices: Vec<Vec3>,
     pub triangles: Vec<[u16; 3]>,
-    /// Вырожденные треугольники полос, выброшенные при разворачивании.
+    /// Degenerate strip triangles dropped while unrolling.
     pub degenerate: usize,
 }
 
 impl Shape {
-    /// Ограничивающая сфера: центр — середина габарита, радиус — до самой дальней вершины.
+    /// Bounding sphere: the center is the middle of the bounding box, the radius reaches the
+    /// farthest vertex.
     pub fn bound(&self) -> (Vec3, f32) {
         let Some(first) = self.vertices.first().copied() else {
             return (Vec3::ZERO, 0.0);
@@ -82,7 +84,7 @@ fn block(source: &SourceNif, from: usize, r: BlockRef) -> Result<(usize, &Block)
     Ok((index, block))
 }
 
-/// Формы коллизии узла `owner`, чей `bhkCollisionObject` — `collision_object`.
+/// Collision shapes of node `owner` whose `bhkCollisionObject` is `collision_object`.
 pub fn extract(
     source: &SourceNif,
     owner: usize,
@@ -129,7 +131,8 @@ pub fn extract(
     Ok(out)
 }
 
-/// Кладёт в `out` формы поддерева `r`; `transform` — накопленное преобразование в havok-юнитах.
+/// Puts the shapes of subtree `r` into `out`; `transform` is the accumulated transform in havok
+/// units.
 fn collect(
     source: &SourceNif,
     from: usize,
@@ -168,7 +171,7 @@ fn collect(
             let matrix = Affine3A::from_mat4(Mat4::from_cols_array(&ts.matrix));
             return collect(source, index, ts.shape, transform * matrix, depth + 1, out);
         }
-        // Протяжка не переносится: коллизия — сама выпуклая форма.
+        // Extrusion is not carried over: the collision is the convex shape itself.
         Block::ConvexSweepShape(s) => {
             return collect(source, index, s.shape, transform, depth + 1, out);
         }
@@ -274,7 +277,7 @@ fn check_triangle_count(shape: usize, triangles: usize) -> Result<(), ConvertErr
     }
 }
 
-/// Параллелепипед с центром в нуле; грани обращены наружу (обход против часовой стрелки).
+/// A box centered at zero; faces point outward (counterclockwise winding).
 pub fn box_mesh(half: Vec3) -> (Vec<Vec3>, Vec<[u16; 3]>) {
     let mut vertices = Vec::with_capacity(8);
     for i in 0..8u8 {
@@ -285,7 +288,7 @@ pub fn box_mesh(half: Vec3) -> (Vec<Vec3>, Vec<[u16; 3]>) {
             sign(4) * half.z,
         ));
     }
-    // Индекс вершины: бит 0 — x, бит 1 — y, бит 2 — z.
+    // Vertex index: bit 0 is x, bit 1 is y, bit 2 is z.
     let quads: [[u16; 4]; 6] = [
         [1, 3, 7, 5], // +x
         [0, 4, 6, 2], // −x
@@ -301,8 +304,8 @@ pub fn box_mesh(half: Vec3) -> (Vec<Vec3>, Vec<[u16; 3]>) {
     (vertices, triangles)
 }
 
-/// Выпуклая оболочка по плоскостям: каждая плоскость даёт многоугольник из вершин, лежащих на
-/// ней. Вершины возвращаются как есть (лишние остаются неиспользованными).
+/// Convex hull from planes: each plane gives a polygon of the vertices lying on it. Vertices are
+/// returned as is (the extra ones stay unused).
 pub fn convex_mesh(points: &[[f32; 3]], planes: &[[f32; 4]]) -> (Vec<Vec3>, Vec<[u16; 3]>) {
     let vertices: Vec<Vec3> = points.iter().map(|&p| Vec3::from_array(p)).collect();
     let extent = vertices
@@ -347,8 +350,9 @@ pub fn convex_mesh(points: &[[f32; 3]], planes: &[[f32; 4]]) -> (Vec<Vec3>, Vec<
     (vertices, triangles)
 }
 
-/// Капсула вокруг отрезка `a`–`b` с радиусом `r`; при `a == b` — сфера. Сетка вписана в
-/// форму: `SEGMENTS` по окружности, `CAP_RINGS` колец на полусферу плюс полюса.
+/// A capsule around segment `a`–`b` with radius `r`; with `a == b`, a sphere. The mesh is inscribed
+/// in the shape: `SEGMENTS` around the circumference, `CAP_RINGS` rings per hemisphere plus the
+/// poles.
 pub fn capsule_mesh(a: Vec3, b: Vec3, r: f32) -> (Vec<Vec3>, Vec<[u16; 3]>) {
     let axis = if (b - a).length() > 1e-6 {
         (b - a).normalize()
@@ -359,16 +363,16 @@ pub fn capsule_mesh(a: Vec3, b: Vec3, r: f32) -> (Vec<Vec3>, Vec<[u16; 3]>) {
     let u = axis.cross(helper).normalize();
     let v = axis.cross(u);
 
-    // Кольца от полюса у `a` до полюса у `b`: (смещение вдоль оси от центра полусферы,
-    // радиус кольца).
+    // Rings from the pole at `a` to the pole at `b`: (offset along the axis from the hemisphere's
+    // center, ring radius).
     let mut rings: Vec<(Vec3, f32)> = Vec::new();
     let steps = CAP_RINGS + 1;
-    // Полусфера у `a`: от полюса (−axis) к экватору.
+    // The hemisphere at `a`: from the pole (−axis) to the equator.
     for k in 1..=steps {
-        let phi = std::f32::consts::FRAC_PI_2 * k as f32 / steps as f32; // 0..π/2 от полюса
+        let phi = std::f32::consts::FRAC_PI_2 * k as f32 / steps as f32; // 0..π/2 from the pole
         rings.push((a - axis * (r * phi.cos()), r * phi.sin()));
     }
-    // Полусфера у `b`: от экватора к полюсу.
+    // The hemisphere at `b`: from the equator to the pole.
     for k in 0..steps {
         let phi = std::f32::consts::FRAC_PI_2 * (1.0 - k as f32 / steps as f32); // π/2..0
         rings.push((b + axis * (r * phi.cos()), r * phi.sin()));
@@ -383,13 +387,13 @@ pub fn capsule_mesh(a: Vec3, b: Vec3, r: f32) -> (Vec<Vec3>, Vec<[u16; 3]>) {
     }
     let south = 0u16;
     vertices.push(b + axis * r);
-    let north = u16::try_from(vertices.len() - 1).expect("вершин капсулы меньше 65536");
+    let north = u16::try_from(vertices.len() - 1).expect("a capsule has fewer than 65536 vertices");
 
-    let ring_start = |i: usize| u16::try_from(1 + i * SEGMENTS).expect("индекс кольца влезает");
-    let seg = |s: usize| u16::try_from(s % SEGMENTS).expect("сегмент влезает");
+    let ring_start = |i: usize| u16::try_from(1 + i * SEGMENTS).expect("the ring index fits");
+    let seg = |s: usize| u16::try_from(s % SEGMENTS).expect("the segment fits");
     let mut triangles = Vec::new();
-    // Кольца идут против часовой стрелки при взгляде с конца оси (u → v), поэтому наружу
-    // смотрят треугольники с обратным порядком; проверено знаком объёма в тестах.
+    // Rings go counterclockwise when looking from the end of the axis (u → v), so the
+    // outward-facing triangles have the reverse order; verified by the sign of the volume in tests.
     for s in 0..SEGMENTS {
         triangles.push([south, ring_start(0) + seg(s + 1), ring_start(0) + seg(s)]);
     }

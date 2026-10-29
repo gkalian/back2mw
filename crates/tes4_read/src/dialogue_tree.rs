@@ -1,9 +1,10 @@
-//! Темы диалога и их реплики в дереве групп (T10.5).
+//! Dialogue topics and their responses in the group tree (T10.5).
 //!
-//! Порядок, измеренный на `Oblivion.esm` (2026-09-28): группа `DIAL` верхнего уровня → запись
-//! `DIAL` → сразу за ней группа её реплик (тип 7, метка — `FormID` темы) с записями `INFO`. Групп
-//! реплик 3 053 на 3 817 тем: у части тем реплик нет. Как и у ячеек (`world_tree`), реплики
-//! связываем с темой по метке группы, а не по соседству.
+//! The order measured on `Oblivion.esm` (2026-09-28): a top-level `DIAL` group → a `DIAL` record →
+//! right after it, the group of its responses (type 7, the label is the topic's `FormID`) with
+//! `INFO` records. There are 3,053 response groups for 3,817 topics: some topics have no responses.
+//! As with cells (`world_tree`), responses are tied to the topic by the group label, not by
+//! adjacency.
 
 use std::collections::HashMap;
 
@@ -12,10 +13,10 @@ use crate::error::Result;
 use crate::records::{Info, Topic};
 use crate::schema::FromFields;
 
-/// Группа реплик темы.
+/// A topic's response group.
 const GROUP_TOPIC_CHILDREN: i32 = 7;
 
-/// Тема и её реплики в порядке файла.
+/// A topic and its responses in file order.
 #[derive(Debug)]
 pub struct TopicTree<'a> {
     pub record: &'a Record,
@@ -23,8 +24,8 @@ pub struct TopicTree<'a> {
     pub infos: Vec<(&'a Record, Info)>,
 }
 
-/// Все темы плагина в порядке файла. Реплики без записи темы в этом плагине (моды дописывают
-/// реплики к темам мастера) сюда не попадают — их тема разбирается из мастера.
+/// All topics of the plugin in file order. Responses without a topic record in this plugin (mods
+/// add responses to master topics) do not get here — their topic is parsed from the master.
 pub fn topics(plugin: &Plugin) -> Result<Vec<TopicTree<'_>>> {
     let mut children: HashMap<u32, Vec<&Record>> = HashMap::new();
     let mut records = Vec::new();
@@ -88,7 +89,8 @@ mod tests {
 
     #[test]
     fn infos_are_bound_by_group_label_not_by_position() {
-        // Группа реплик темы 0x20 стоит после чужой темы 0x30 — связать надо всё равно с 0x20.
+        // The response group of topic 0x20 comes after another topic 0x30 — it must still be tied
+        // to 0x20.
         let content = [
             dial(0x20, b"A\0"),
             dial(0x30, b"B\0"),

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Список изменений релиза: коммиты от предыдущего тега до указанного, сгруппированные по
-# семантическому префиксу (`feat:`, `fix(gui):`, `refactor!:` …). Версию задаёт сам тег —
-# коммиты на неё не влияют, префиксы нужны только для группировки.
+# Release changelog: commits from the previous tag to the given one, grouped by
+# semantic prefix (`feat:`, `fix(gui):`, `refactor!:` …). The version is set by the tag itself —
+# commits do not affect it, the prefixes are only for grouping.
 #
 #   .github/scripts/changelog.sh v0.3.0 > notes.md
 #
-# Предыдущий тег — ближайший достижимый от родителя указанного; его нет (первый релиз) — берутся
-# все коммиты. Слияния пропускаются. Коммиты без префикса попадают в «Other».
-# Ссылки на коммиты ставятся, если задан GITHUB_REPOSITORY (так на GitHub Actions).
+# The previous tag is the nearest one reachable from the given tag's parent; if there is none (the first release),
+# all commits are taken. Merges are skipped. Commits without a prefix go to "Other".
+# Commit links are added if GITHUB_REPOSITORY is set (as on GitHub Actions).
 set -euo pipefail
 
-tag="${1:?укажите тег, например v0.3.0}"
+tag="${1:?give a tag, for example v0.3.0}"
 
 if prev=$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null); then
   range="${prev}..${tag}"
@@ -22,7 +22,7 @@ fi
 server="${GITHUB_SERVER_URL:-https://github.com}"
 repo="${GITHUB_REPOSITORY:-}"
 
-# Порядок разделов в заметках; тип → заголовок (заметки — на английском). Неизвестный тип — «Other».
+# Section order in the notes; type → heading (the notes are in English). An unknown type goes to "Other".
 types=(feat fix perf refactor docs test build ci chore revert other)
 declare -A title=(
   [feat]="Features"
@@ -40,7 +40,7 @@ declare -A title=(
 declare -A section=()
 breaking=""
 
-# %x1f — разделитель полей, которого не бывает в теме коммита.
+# %x1f is a field separator that never occurs in a commit subject.
 while IFS=$'\x1f' read -r hash short subject; do
   [[ -z "$hash" ]] && continue
   if [[ "$subject" =~ ^([a-zA-Z]+)(\(([^\)]*)\))?(!)?:[[:space:]]*(.*)$ ]]; then

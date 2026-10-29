@@ -1,6 +1,6 @@
-//! Какие внешние ячейки занимают ванильные мастера Morrowind: от этого считается смещение
-//! worldspace по умолчанию (`transform::exterior`). Измерение, синтетики нет; числа — в
-//! `docs/ru/formats/tes3.md`, «Внешние ячейки ванили».
+//! Which exterior cells the vanilla Morrowind masters occupy: the default worldspace offset is
+//! computed from this (`transform::exterior`). A measurement, no synthetic test; the numbers are in
+//! `docs/en/formats/tes3.md`, "Exterior: one grid, practically infinite".
 //!
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
@@ -12,7 +12,7 @@ mod common;
 use tes3::esp::{CellFlags, Plugin, TES3Object};
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn vanilla_exterior_bounds() {
     let mut all = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
     for master in ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"] {
@@ -43,7 +43,7 @@ fn vanilla_exterior_bounds() {
             );
         }
         println!(
-            "{master}: внешних CELL {cells}, LAND {lands}, LTEX до индекса {ltex}, x {}..{}, y {}..{}",
+            "{master}: exterior CELL {cells}, LAND {lands}, LTEX up to index {ltex}, x {}..{}, y {}..{}",
             b.0, b.2, b.1, b.3
         );
         all = (
@@ -54,7 +54,7 @@ fn vanilla_exterior_bounds() {
         );
     }
     println!(
-        "ваниль целиком: x {}..{}, y {}..{}",
+        "all of vanilla: x {}..{}, y {}..{}",
         all.0, all.2, all.1, all.3
     );
 }

@@ -1,11 +1,11 @@
-//! T2.5: уровневые списки `LVLI` `Oblivion.esm` через спеку. Требует `BACK2MW_GAME_DATA`.
+//! T2.5: `Oblivion.esm` leveled lists `LVLI` through the spec. Needs `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
 //!   cargo test -p tes4_read --test real_leveled -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Уровневые списки».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Leveled lists".
 
 mod common;
 
@@ -15,9 +15,9 @@ use tes4_read::schema::{Fields, FromFields};
 use tes4_read::{LEVELED_USE_ALL, LeveledList, Plugin};
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_leveled_item_list_reads_through_the_spec() {
-    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("read Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
     let tag_of: BTreeMap<u32, [u8; 4]> = plugin
         .records()
@@ -36,8 +36,8 @@ fn every_leveled_item_list_reads_through_the_spec() {
     let mut targets: BTreeMap<String, usize> = BTreeMap::new();
     let mut levels = (i16::MAX, i16::MIN);
     for record in plugin.records_of(*b"LVLI") {
-        let list = LeveledList::from_record(record).expect("спека читает каждый LVLI");
-        let fields = Fields::parse(&record.data, "LVLI").expect("поля");
+        let list = LeveledList::from_record(record).expect("the spec reads every LVLI");
+        let fields = Fields::parse(&record.data, "LVLI").expect("fields");
         lists += 1;
         empty += usize::from(list.entries.is_empty());
         old_layout += usize::from(fields.first(*b"LVLF").is_none());
@@ -57,20 +57,23 @@ fn every_leveled_item_list_reads_through_the_spec() {
     }
 
     println!("=== LVLI Oblivion.esm ===");
-    println!("  списков:             {lists}, пустых {empty}, старого формата {old_layout}");
-    println!("  строк:               {entries}, коротких (8 байт) {short_entries}");
-    println!("  с числом > 1:        {counted}");
-    println!("  уровни:              {}…{}", levels.0, levels.1);
-    println!("  флаги:               {flags:?}");
-    println!("  шанс > 100:          {chance_over_100}");
-    println!("  «брать все»:         {use_all}");
-    println!("  строки по типу цели: {targets:?}");
-    // Контрольный опыт: числа из переписи 2026-09-27 — спека, потерявшая строки или формат,
-    // их не повторит.
+    println!("  lists:               {lists}, empty {empty}, old format {old_layout}");
+    println!("  rows:                {entries}, short (8 bytes) {short_entries}");
+    println!("  with a count > 1:    {counted}");
+    println!("  levels:              {}…{}", levels.0, levels.1);
+    println!("  flags:               {flags:?}");
+    println!("  chance > 100:        {chance_over_100}");
+    println!("  \"use all\":           {use_all}");
+    println!("  rows by target type: {targets:?}");
+    // Control: the numbers from the 2026-09-27 census — a spec that lost rows or the format would
+    // not repeat them.
     assert_eq!(lists, 1398);
     assert_eq!(entries, 16_274);
     assert_eq!((old_layout, short_entries), (22, 93));
     assert_eq!(counted, 1344);
     assert_eq!(chance_over_100, 5);
-    assert!(!targets.contains_key("?"), "строка ссылается мимо плагина");
+    assert!(
+        !targets.contains_key("?"),
+        "a row points outside the plugin"
+    );
 }

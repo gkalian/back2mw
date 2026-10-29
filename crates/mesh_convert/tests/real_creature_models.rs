@@ -1,13 +1,14 @@
-//! T11.5b: перепись моделей существ Oblivion — скелеты, части тела и клипы `.kf` в
-//! `meshes\creatures\`: что читает наш ридер, чем записаны дорожки, какие метки у клипов, где
-//! стоит дорожка движения. Требует `BACK2MW_GAME_DATA` с `Oblivion.esm` и архивами мешей.
+//! T11.5b: a census of Oblivion creature models — skeletons, body parts and `.kf` clips in
+//! `meshes\creatures\`: what our reader reads, what the tracks are written with, what text keys the
+//! clips have, where the motion track is. Needs `BACK2MW_GAME_DATA` with `Oblivion.esm` and the
+//! mesh archives.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
 //!   cargo test -p mesh_convert --test real_creature_models -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/nif-oblivion.md`, «Существа: скелет и клипы».
+//! The numbers from here are in `docs/en/formats/nif-oblivion.md`, "Creatures: skeleton and clips".
 
 mod common;
 
@@ -33,18 +34,18 @@ fn print_map(title: &str, map: &BTreeMap<String, usize>, limit: usize) {
     }
 }
 
-/// Причина, по которой файл не читается: тип неподдержанного блока или вид ошибки.
+/// Why a file cannot be read: the type of the unsupported block or the kind of error.
 fn reason(error: &Error) -> String {
     match error {
-        Error::UnsupportedBlock { type_name, .. } => format!("блок {type_name}"),
-        Error::UnsupportedVersion { version } => format!("версия {version:#010x}"),
-        Error::InBlock { type_name, .. } => format!("ошибка в блоке {type_name}"),
-        Error::TrailingData { last_type, .. } => format!("хвост после {last_type}"),
+        Error::UnsupportedBlock { type_name, .. } => format!("block {type_name}"),
+        Error::UnsupportedVersion { version } => format!("version {version:#010x}"),
+        Error::InBlock { type_name, .. } => format!("error in block {type_name}"),
+        Error::TrailingData { last_type, .. } => format!("trailing data after {last_type}"),
         other => format!("{other:?}").chars().take(40).collect(),
     }
 }
 
-/// Узел скелета: родитель и поза в файле.
+/// A skeleton node: parent and pose in the file.
 struct Bone {
     parent: String,
     translation: [f32; 3],
@@ -71,7 +72,7 @@ fn bones_of(source: &SourceNif) -> BTreeMap<String, Bone> {
     out
 }
 
-/// Первый поворот дорожки, кватернион `w, x, y, z` как в файле.
+/// The track's first rotation, quaternion `w, x, y, z` as in the file.
 fn first_rotation(motion: &BoneMotion, start: f32) -> Option<[f32; 4]> {
     match &motion.rotation {
         Rotation::Quat(keys) => keys.first().map(|k| k.1),
@@ -81,7 +82,7 @@ fn first_rotation(motion: &BoneMotion, start: f32) -> Option<[f32; 4]> {
     }
 }
 
-/// Сдвиг дорожки в момент `time`; ключи — ближайший слева.
+/// The track's translation at time `time`; for keys, the nearest one on the left.
 fn translation_at(motion: &BoneMotion, time: f32) -> Option<[f32; 3]> {
     match &motion.translation {
         Channel::Keys(keys) => keys
@@ -95,7 +96,7 @@ fn translation_at(motion: &BoneMotion, time: f32) -> Option<[f32; 3]> {
     }
 }
 
-/// Текст метки без своего значения: `Sound: NPCHorseFoot` → `sound: *`.
+/// Text key text without its value: `Sound: NPCHorseFoot` → `sound: *`.
 fn mark_kind(text: &str) -> String {
     let text = text.trim().to_ascii_lowercase();
     match text.split_once(':') {
@@ -105,10 +106,10 @@ fn mark_kind(text: &str) -> String {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 #[expect(
     clippy::too_many_lines,
-    reason = "перепись: одна длинная печать, делить её на части — только мешать чтению"
+    reason = "a census: one long printout, splitting it would only hurt readability"
 )]
 fn census_of_oblivion_creature_models() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
@@ -120,7 +121,7 @@ fn census_of_oblivion_creature_models() {
         archives.push((r, idx));
     }
 
-    // Записи: папка модели, части тела, свои клипы.
+    // Records: model folder, body parts, their own clips.
     let mut folders: BTreeMap<String, usize> = BTreeMap::new();
     let mut parts: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut own_clips: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -153,13 +154,13 @@ fn census_of_oblivion_creature_models() {
         }
     }
     println!(
-        "CREA с моделью: папок {}, записей {}",
+        "CREA with a model: folders {}, records {}",
         folders.len(),
         folders.values().sum::<usize>()
     );
-    print_map("имя файла скелета в MODL", &skeleton_names, 10);
+    print_map("skeleton file name in MODL", &skeleton_names, 10);
 
-    // Файлы папок существ в архивах.
+    // Creature folder files in the archives.
     let mut files: BTreeMap<String, usize> = BTreeMap::new();
     for (i, (_, idx)) in archives.iter().enumerate() {
         for e in idx.entries() {
@@ -207,8 +208,8 @@ fn census_of_oblivion_creature_models() {
         let nifs = own.iter().filter(|p| p.ends_with(".nif")).count();
         let kfs: Vec<&String> = own.iter().filter(|p| p.ends_with(".kf")).collect();
 
-        // Скелет.
-        let mut skeleton_row = "скелета нет".to_owned();
+        // Skeleton.
+        let mut skeleton_row = "no skeleton".to_owned();
         let mut bones: BTreeMap<String, Bone> = BTreeMap::new();
         if let Some(data) = read(&format!("{prefix}skeleton.nif")) {
             match parse_with_offsets(&data) {
@@ -220,26 +221,26 @@ fn census_of_oblivion_creature_models() {
                         .and_then(|r| source.block(*r))
                         .map(|b| match b {
                             Block::Node(n) => n.av.net.name.clone(),
-                            _ => "не узел".to_owned(),
+                            _ => "not a node".to_owned(),
                         })
                         .unwrap_or_default();
                     let parent = |name: &str| bones.get(name).map(|b| b.parent.as_str());
                     for (what, yes) in [
-                        ("скелет: есть Bip01", bones.contains_key("Bip01")),
+                        ("skeleton: has Bip01", bones.contains_key("Bip01")),
                         (
-                            "скелет: есть Bip01 NonAccum",
+                            "skeleton: has Bip01 NonAccum",
                             bones.contains_key("Bip01 NonAccum"),
                         ),
                         (
-                            "скелет: Bip01 NonAccum — ребёнок Bip01",
+                            "skeleton: Bip01 NonAccum is a child of Bip01",
                             parent("Bip01 NonAccum") == Some("Bip01"),
                         ),
                         (
-                            "скелет: Bip01 — ребёнок корня",
+                            "skeleton: Bip01 is a child of the root",
                             parent("Bip01") == Some(root.as_str()),
                         ),
                         (
-                            "скелет: Bip01 стоит в нуле без поворота",
+                            "skeleton: Bip01 stands at zero without rotation",
                             bones.get("Bip01").is_some_and(|b| {
                                 b.translation.iter().all(|v| v.abs() < 0.01)
                                     && Mat3::from_cols_array(&b.rotation)
@@ -256,7 +257,7 @@ fn census_of_oblivion_creature_models() {
                         .count();
                     bump(
                         &mut facts,
-                        format!("скелет: есть геометрия: {}", shapes > 0),
+                        format!("skeleton: has geometry: {}", shapes > 0),
                     );
                     let bound = source.blocks.iter().find_map(|b| match b {
                         Block::BsBound(b) => Some(b),
@@ -264,18 +265,18 @@ fn census_of_oblivion_creature_models() {
                     });
                     bump(
                         &mut facts,
-                        format!("скелет: есть BSBound: {}", bound.is_some()),
+                        format!("skeleton: has BSBound: {}", bound.is_some()),
                     );
                     let non_accum = bones
                         .get("Bip01 NonAccum")
                         .map(|b| b.translation.map(|v| (v * 10.0).round() / 10.0));
                     skeleton_row = format!(
-                        "корень «{root}», узлов {}, форм {shapes}, BSBound {}, NonAccum T={non_accum:?}",
+                        "root \"{root}\", nodes {}, shapes {shapes}, BSBound {}, NonAccum T={non_accum:?}",
                         bones.len() + 1,
                         bound.map_or_else(
-                            || "нет".to_owned(),
+                            || "none".to_owned(),
                             |b| format!(
-                                "центр {:?} половины {:?}",
+                                "center {:?} half-extents {:?}",
                                 b.center.map(f32::round),
                                 b.half_extents.map(f32::round)
                             )
@@ -283,15 +284,15 @@ fn census_of_oblivion_creature_models() {
                     );
                 }
                 Err(e) => {
-                    bump(&mut nif_refused, format!("скелет: {}", reason(&e)));
-                    skeleton_row = format!("скелет не читается ({})", reason(&e));
+                    bump(&mut nif_refused, format!("skeleton: {}", reason(&e)));
+                    skeleton_row = format!("skeleton cannot be read ({})", reason(&e));
                 }
             }
         } else {
-            bump(&mut facts, "скелета skeleton.nif в архиве нет");
+            bump(&mut facts, "no skeleton.nif in the archive");
         }
 
-        // Части тела из записей.
+        // Body parts from the records.
         let wanted = parts.get(folder).cloned().unwrap_or_default();
         let (mut parts_ok, mut parts_skinned, mut parts_missing) = (0usize, 0usize, 0usize);
         for part in &wanted {
@@ -310,11 +311,11 @@ fn census_of_oblivion_creature_models() {
                         parts_skinned += 1;
                     }
                 }
-                Err(e) => bump(&mut nif_refused, format!("часть тела: {}", reason(&e))),
+                Err(e) => bump(&mut nif_refused, format!("body part: {}", reason(&e))),
             }
         }
 
-        // Клипы.
+        // Clips.
         let (mut kf_ok, mut kf_bad) = (0usize, 0usize);
         let mut folder_clips: BTreeMap<String, String> = BTreeMap::new();
         for path in &kfs {
@@ -335,26 +336,23 @@ fn census_of_oblivion_creature_models() {
                 Ok(v) => v,
                 Err(e) => {
                     kf_bad += 1;
-                    bump(&mut kf_refused, format!("второй проход: {}", reason(&e)));
+                    bump(&mut kf_refused, format!("second pass: {}", reason(&e)));
                     continue;
                 }
             };
             kf_ok += 1;
-            bump(
-                &mut facts,
-                format!("kf: последовательностей {}", found.len()),
-            );
+            bump(&mut facts, format!("kf: sequences {}", found.len()));
             let file = path.rsplit('\\').next().unwrap_or_default();
             for clip in &found {
                 total_clips += 1;
                 let name = clip.name.to_ascii_lowercase();
                 bump(&mut clip_names, name.clone());
-                bump(&mut cycles, format!("цикл {}", clip.cycle));
+                bump(&mut cycles, format!("cycle {}", clip.cycle));
                 bump(&mut accum_roots, clip.accum_root.clone());
                 bump(
                     &mut facts,
                     format!(
-                        "клип: имя = имя файла: {}",
+                        "clip: name = file name: {}",
                         file.strip_suffix(".kf") == Some(name.as_str())
                     ),
                 );
@@ -364,7 +362,7 @@ fn census_of_oblivion_creature_models() {
                 bump(
                     &mut facts,
                     format!(
-                        "клип: частота 1, начало 0: {}",
+                        "clip: frequency 1, start 0: {}",
                         clip.frequency == 1.0 && clip.start == 0.0
                     ),
                 );
@@ -379,14 +377,14 @@ fn census_of_oblivion_creature_models() {
                 bump(
                     &mut facts,
                     format!(
-                        "клип: первая метка start, последняя end: {}",
+                        "clip: first text key start, last end: {}",
                         first.as_deref() == Some("start") && last.as_deref() == Some("end")
                     ),
                 );
                 bump(
                     &mut facts,
                     format!(
-                        "клип: время последней метки = конец клипа: {}",
+                        "clip: time of the last text key = clip end: {}",
                         clip.text_keys
                             .last()
                             .is_some_and(|k| (k.0 - clip.stop).abs() < 1e-3)
@@ -404,26 +402,26 @@ fn census_of_oblivion_creature_models() {
                     bump(
                         &mut channels,
                         match &motion.rotation {
-                            Rotation::None => "поворот: из позы",
-                            Rotation::Quat(_) => "поворот: ключи-кватернионы",
-                            Rotation::Euler(_) => "поворот: ключи Эйлера",
-                            Rotation::Spline(_) => "поворот: сплайн",
+                            Rotation::None => "rotation: from the pose",
+                            Rotation::Quat(_) => "rotation: quaternion keys",
+                            Rotation::Euler(_) => "rotation: Euler keys",
+                            Rotation::Spline(_) => "rotation: spline",
                         },
                     );
                     bump(
                         &mut channels,
                         match &motion.translation {
-                            Channel::None => "сдвиг: из позы",
-                            Channel::Keys(_) => "сдвиг: ключи",
-                            Channel::Spline(_) => "сдвиг: сплайн",
+                            Channel::None => "translation: from the pose",
+                            Channel::Keys(_) => "translation: keys",
+                            Channel::Spline(_) => "translation: spline",
                         },
                     );
                     bump(
                         &mut channels,
                         match &motion.scale {
-                            Channel::None => "масштаб: из позы",
-                            Channel::Keys(_) => "масштаб: ключи",
-                            Channel::Spline(_) => "масштаб: сплайн",
+                            Channel::None => "scale: from the pose",
+                            Channel::Keys(_) => "scale: keys",
+                            Channel::Spline(_) => "scale: spline",
                         },
                     );
                     if let Rotation::Spline(spline) = &motion.rotation {
@@ -433,23 +431,23 @@ fn census_of_oblivion_creature_models() {
                             bump(
                                 &mut density,
                                 format!(
-                                    "{:3.0} опорных точек в секунду",
+                                    "{:3.0} control points per second",
                                     (per_second / 5.0).round() * 5.0
                                 ),
                             );
                         }
-                        // Значения сплайна — единичные кватернионы: иначе раскладка съехала.
+                        // Spline values are unit quaternions: otherwise the layout drifted.
                         let unit = spline.points.iter().all(|p| {
                             let len = p.iter().map(|v| v * v).sum::<f32>().sqrt();
                             (len - 1.0).abs() < 0.05
                         });
                         bump(
                             &mut facts,
-                            format!("сплайн поворота: все опорные точки единичной длины: {unit}"),
+                            format!("rotation spline: all control points have unit length: {unit}"),
                         );
                     }
-                    // Поза: первый кадр `idle` против позы скелета — проверка порядка чисел
-                    // кватерниона и того, как лежит матрица узла.
+                    // Pose: the first `idle` frame against the skeleton pose — a check of the
+                    // quaternion number order and of how the node matrix is laid out.
                     if name == "idle"
                         && let Some(bone) = bones.get(&track.node)
                     {
@@ -463,15 +461,15 @@ fn census_of_oblivion_creature_models() {
                             bump(
                                 &mut pose,
                                 if near(wxyz, as_is) && near(wxyz, transposed) {
-                                    "поворот idle = поза скелета (поворот почти единичный)"
+                                    "idle rotation = skeleton pose (rotation almost identity)"
                                 } else if near(wxyz, as_is) {
-                                    "поворот idle = поза скелета: w,x,y,z, матрица как есть"
+                                    "idle rotation = skeleton pose: w,x,y,z, matrix as is"
                                 } else if near(wxyz, transposed) {
-                                    "поворот idle = поза скелета: w,x,y,z, матрица транспонирована"
+                                    "idle rotation = skeleton pose: w,x,y,z, matrix transposed"
                                 } else if near(xyzw, as_is) || near(xyzw, transposed) {
-                                    "поворот idle = поза скелета: x,y,z,w"
+                                    "idle rotation = skeleton pose: x,y,z,w"
                                 } else {
-                                    "поворот idle ≠ поза скелета"
+                                    "idle rotation ≠ skeleton pose"
                                 },
                             );
                         }
@@ -482,11 +480,14 @@ fn census_of_oblivion_creature_models() {
                                 .sqrt();
                             bump(
                                 &mut pose,
-                                format!("сдвиг idle = сдвиг скелета (±1): {}", far < 1.0),
+                                format!(
+                                    "idle translation = skeleton translation (±1): {}",
+                                    far < 1.0
+                                ),
                             );
                         }
                     }
-                    // Дорожка движения: у какого узла сдвиг уходит за клип ходьбы.
+                    // Motion track: which node's translation moves away over the walk clip.
                     if matches!(
                         name.as_str(),
                         "forward" | "fastforward" | "backward" | "left" | "right"
@@ -505,12 +506,12 @@ fn census_of_oblivion_creature_models() {
                             };
                             bump(
                                 &mut moving,
-                                format!("{name}: «{}» уходит по {sign}{axis}", track.node),
+                                format!("{name}: \"{}\" moves along {sign}{axis}", track.node),
                             );
                         }
                     }
                 }
-                // Ходьба одной строкой: путь корня накопления и скорость.
+                // The walk in one line: the accumulation root's path and the speed.
                 let travel = clip
                     .tracks
                     .iter()
@@ -525,7 +526,7 @@ fn census_of_oblivion_creature_models() {
                     .map(|(a, b)| {
                         let d = [0, 1, 2].map(|i| b[i] - a[i]);
                         format!(
-                            "путь ({:.0}, {:.0}, {:.0}), {:.0} ед/с",
+                            "path ({:.0}, {:.0}, {:.0}), {:.0} u/s",
                             d[0],
                             d[1],
                             d[2],
@@ -536,7 +537,7 @@ fn census_of_oblivion_creature_models() {
                 folder_clips.insert(
                     name.clone(),
                     format!(
-                        "{name} [{:.2} с, цикл {}, дорожек {}; {travel}; {}]",
+                        "{name} [{:.2} s, cycle {}, tracks {}; {travel}; {}]",
                         clip.stop - clip.start,
                         clip.cycle,
                         clip.tracks.len(),
@@ -546,8 +547,8 @@ fn census_of_oblivion_creature_models() {
             }
         }
         table.push(format!(
-            "{folder}: записей {records}, {skeleton_row}; файлов nif {nifs} / kf {}; частей в записях {} (читается {parts_ok}, с кожей {parts_skinned}, нет в архиве {parts_missing}); \
-             kf читается {kf_ok}, нет {kf_bad}; свои клипы записей {}; клипов {}",
+            "{folder}: records {records}, {skeleton_row}; files nif {nifs} / kf {}; parts in records {} (readable {parts_ok}, skinned {parts_skinned}, missing from archive {parts_missing}); \
+             kf readable {kf_ok}, not {kf_bad}; records' own clips {}; clips {}",
             kfs.len(),
             wanted.len(),
             own_clips.get(folder).map_or(0, BTreeSet::len),
@@ -560,36 +561,43 @@ fn census_of_oblivion_creature_models() {
         }
     }
 
-    println!("папки ({}):", table.len());
+    println!("folders ({}):", table.len());
     for row in &table {
         println!("  {row}");
     }
-    println!("файлов kf {total_kf}, клипов {total_clips}, дорожек {total_tracks}");
-    print_map("факты", &facts, 100);
-    print_map("версии", &versions, 20);
-    print_map("nif не читается", &nif_refused, 40);
-    print_map("kf не читается", &kf_refused, 40);
-    print_map("интерполяторы дорожек", &interpolators, 40);
-    print_map("каналы дорожек-преобразований", &channels, 20);
-    print_map("плотность сплайнов поворота", &density, 20);
-    print_map("циклы", &cycles, 10);
-    print_map("корень накопления", &accum_roots, 20);
-    print_map("поза первого кадра idle против скелета", &pose, 20);
-    print_map("кто движется в клипах ходьбы", &moving, 40);
-    print_map("цели дорожек, которых нет в скелете", &not_bones, 40);
-    print_map("метки клипов", &marks, 80);
-    print_map("имена клипов (в скольких файлах)", &clip_names, 400);
-    println!("имя клипа не равно имени файла (первые {}):", renamed.len());
+    println!("kf files {total_kf}, clips {total_clips}, tracks {total_tracks}");
+    print_map("facts", &facts, 100);
+    print_map("versions", &versions, 20);
+    print_map("nif cannot be read", &nif_refused, 40);
+    print_map("kf cannot be read", &kf_refused, 40);
+    print_map("track interpolators", &interpolators, 40);
+    print_map("channels of transform tracks", &channels, 20);
+    print_map("rotation spline density", &density, 20);
+    print_map("cycles", &cycles, 10);
+    print_map("accumulation root", &accum_roots, 20);
+    print_map(
+        "pose of the first idle frame against the skeleton",
+        &pose,
+        20,
+    );
+    print_map("what moves in walk clips", &moving, 40);
+    print_map("track targets missing from the skeleton", &not_bones, 40);
+    print_map("clip text keys", &marks, 80);
+    print_map("clip names (in how many files)", &clip_names, 400);
+    println!(
+        "clip name differs from the file name (first {}):",
+        renamed.len()
+    );
     for row in &renamed {
         println!("  {row}");
     }
-    println!("клипы двух папок целиком:");
+    println!("clips of two folders in full:");
     for row in &clip_table {
         println!("  {row}");
     }
-    assert!(!table.is_empty(), "в Oblivion.esm есть существа с моделью");
+    assert!(!table.is_empty(), "Oblivion.esm has creatures with a model");
     assert!(
         nif_refused.is_empty() && kf_refused.is_empty(),
-        "все скелеты, части тела и клипы существ читаются"
+        "all creature skeletons, body parts and clips are readable"
     );
 }

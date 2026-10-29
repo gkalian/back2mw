@@ -1,26 +1,26 @@
-//! Worldspace в плагинах Oblivion — для выбора в интерфейсе.
+//! Worldspaces in Oblivion plugins — for choosing in the interface.
 //!
-//! Показываются только worldspace без родителя (`WNAM`): дочерние — города, они вливаются в
-//! родителя сами (`transform::exterior::merge_children`) и отдельно не переносятся. Список
-//! читается без разбора ячеек (`tes4_read::list_worldspaces`), поэтому `Oblivion.esm` на 250 МБ
-//! занимает доли секунды на чтение файла.
+//! Only worldspaces without a parent (`WNAM`) are shown: child ones are cities, they merge into the
+//! parent by themselves (`transform::exterior::merge_children`) and are not carried over
+//! separately. The list is read without parsing cells (`tes4_read::list_worldspaces`), so the 250
+//! MB `Oblivion.esm` takes a fraction of a second to read.
 
 use std::path::Path;
 
-/// Worldspace, который можно перенести.
+/// A worldspace that can be carried over.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldInfo {
-    /// Плагин, где он лежит.
+    /// The plugin it lives in.
     pub plugin: String,
     pub editor_id: String,
-    /// `FULL`, если есть.
+    /// `FULL`, if present.
     pub name: Option<String>,
-    /// `EDID` дочерних worldspace (городов), которые вольются в него.
+    /// `EDID`s of child worldspaces (cities) that will merge into it.
     pub cities: Vec<String>,
 }
 
 impl WorldInfo {
-    /// Подпись в списке: «SEWorld — Shivering Isles (Oblivion.esm), городов: 5».
+    /// Label in the list: "SEWorld — Shivering Isles (Oblivion.esm), cities: 5".
     pub fn label(&self) -> String {
         let mut out = self.editor_id.clone();
         if let Some(name) = &self.name {
@@ -39,7 +39,7 @@ impl WorldInfo {
     }
 }
 
-/// Worldspace плагина `plugin` из папки `data_dir` без родителя, в порядке файла.
+/// Worldspaces without a parent of plugin `plugin` from folder `data_dir`, in file order.
 pub fn list(data_dir: &Path, plugin: &str) -> Result<Vec<WorldInfo>, String> {
     let path = data_dir.join(plugin);
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -75,7 +75,7 @@ mod tests {
         }
         [
             synth::record(F, b"WRLD", id, 0, &fields),
-            // Дети worldspace — их обход пропускает, не заглядывая внутрь.
+            // Worldspace children — the traversal skips them without looking inside.
             synth::group(
                 F,
                 &id.to_le_bytes(),

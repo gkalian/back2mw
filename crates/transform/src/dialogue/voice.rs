@@ -1,25 +1,26 @@
-//! Голосовые и служебные темы Oblivion → ванильные темы голоса и убеждения Morrowind (T10.7).
+//! Oblivion voice and service topics → vanilla Morrowind voice and persuasion topics (T10.7).
 //!
-//! У Oblivion боевые, служебные и прочие фразы — свои темы (`Attack`, `Steal`, `InfoRefusal`,
-//! реакции мини-игры убеждения `ADMIRELOVE`…), у Morrowind — фиксированный набор тем типов Voice
-//! (`Attack`, `Hit`, `Thief`, …) и Persuasion (`Admire Success`, `Info Refusal`, …), которые движок
-//! спрашивает по имени. Какая тема куда — контент, он в `data/voice_topics.tsv`; тема без строки
-//! пары не имеет и не переносится.
+//! In Oblivion combat, service and other phrases are topics of their own (`Attack`, `Steal`,
+//! `InfoRefusal`, the persuasion minigame reactions `ADMIRELOVE`…), while Morrowind has a fixed set
+//! of topics of the Voice type (`Attack`, `Hit`, `Thief`, …) and Persuasion type (`Admire Success`,
+//! `Info Refusal`, …) that the engine asks for by name. Which topic goes where is content, it lives
+//! in `data/voice_topics.tsv`; a topic without a row has no pair and is not carried over.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use tes3_out::dialogue::TopicKind;
 
-/// `data/voice_topics.tsv`, встроенный в сборку.
+/// `data/voice_topics.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../../data/voice_topics.tsv");
 
-/// Встроенная таблица, разобранная один раз на прогон.
+/// The built-in table, parsed once per run.
 pub static VOICE_TOPICS: LazyLock<VoiceTable> = LazyLock::new(|| {
-    VoiceTable::parse(TABLE).expect("data/voice_topics.tsv встроена в сборку и проверена тестом")
+    VoiceTable::parse(TABLE)
+        .expect("data/voice_topics.tsv is built into the binary and checked by a test")
 });
 
-/// `EDID` темы Oblivion (без учёта регистра) → имя и тип ванильной темы Morrowind.
+/// Oblivion topic `EDID` (case-insensitive) → name and type of the vanilla Morrowind topic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceTable {
     rows: HashMap<String, (String, TopicKind)>,
@@ -70,14 +71,14 @@ impl VoiceTable {
         Ok(Self { rows })
     }
 
-    /// `EDID` строк таблицы (в нижнем регистре), по алфавиту.
+    /// `EDID`s of the table rows (lower case), alphabetically.
     pub fn edids(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self.rows.keys().map(String::as_str).collect();
         out.sort_unstable();
         out
     }
 
-    /// Тема Morrowind для темы Oblivion; `None` — пары нет.
+    /// The Morrowind topic for an Oblivion topic; `None` means there is no pair.
     pub fn target(&self, edid: &str) -> Option<(&str, TopicKind)> {
         self.rows
             .get(&edid.to_ascii_lowercase())
@@ -103,7 +104,7 @@ mod tests {
             t.target("COERCEHATE"),
             Some(("Intimidate Fail", TopicKind::Persuasion))
         );
-        // Решения владельца: у шутки и хвастовства пары нет; обнаружения у Morrowind нет.
+        // Owner's decisions: jokes and boasting have no pair; Morrowind has no detection.
         for none in ["JOKELOVE", "BOASTHATE", "Seen", "Barter", "Yield"] {
             assert_eq!(t.target(none), None, "{none}");
         }
@@ -115,6 +116,6 @@ mod tests {
         assert!(VoiceTable::parse("Attack\tAttack\ttopic").is_err());
         assert!(VoiceTable::parse("Attack\t\tvoice").is_err());
         assert!(VoiceTable::parse("Attack\tAttack\tvoice\nattack\tHit\tvoice").is_err());
-        assert!(VoiceTable::parse("# x\n\nHit\tHit\tvoice\tпояснение").is_ok());
+        assert!(VoiceTable::parse("# x\n\nHit\tHit\tvoice\tnote").is_ok());
     }
 }

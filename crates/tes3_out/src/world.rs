@@ -1,7 +1,7 @@
-//! Внешний мир: `LTEX`, `REGN`, внешние `CELL` со ссылками, `LAND`, `PGRD`.
+//! The exterior world: `LTEX`, `REGN`, exterior `CELL`s with references, `LAND`, `PGRD`.
 //!
-//! Модель — простые структуры; решения о значениях (что куда, какой погоде сколько) принимает
-//! `transform`. Здесь только перевод в типы `tes3::esp`.
+//! The model is simple structures; decisions about the values (what goes where, how much of which
+//! weather) are made by `transform`. Here there is only the conversion into `tes3::esp` types.
 
 use tes3::esp::{
     AtmosphereData, Cell, CellData, CellFlags, FixedString, Landscape, LandscapeFlags,
@@ -10,19 +10,19 @@ use tes3::esp::{
     VertexColors, VertexHeights, VertexNormals, WeatherChances as EspWeather, WorldMapData,
 };
 
-/// Вершин на сторону `LAND`.
+/// Vertices per side of a `LAND`.
 pub const LAND_SIDE: usize = 65;
 
-/// Текстура земли. `index` — номер в `VTEX` минус один (0 в `VTEX` — текстура по умолчанию).
+/// A land texture. `index` is the number in `VTEX` minus one (0 in `VTEX` is the default texture).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LandTexture {
     pub id: String,
     pub index: u32,
-    /// Путь относительно `Textures\`.
+    /// Path relative to `Textures\`.
     pub texture: String,
 }
 
-/// Шансы погоды Morrowind в порядке `WEAT`.
+/// Morrowind weather chances in `WEAT` order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct WeatherChances {
     pub clear: u8,
@@ -44,110 +44,113 @@ pub struct Region {
     pub weather: WeatherChances,
     /// RGB.
     pub map_color: [u8; 3],
-    /// `SNAM`: ID звука и шанс, % (T10.2). Движок раз в несколько секунд выбирает один звук из
-    /// max(сумма, 100).
+    /// `SNAM`: sound ID and chance, % (T10.2). Every few seconds the engine picks one sound out of
+    /// max(sum, 100).
     pub sounds: Vec<(String, u8)>,
 }
 
-/// Ссылка на объект в ячейке.
+/// A reference to an object in a cell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reference {
-    /// Номер ссылки в плагине (`FRMR`), уникальный на весь плагин: по нему сохранения узнают
-    /// ссылку.
+    /// Reference number in the plugin (`FRMR`), unique across the whole plugin: saves identify the
+    /// reference by it.
     pub index: u32,
     pub id: String,
     pub position: [f32; 3],
     pub rotation: [f32; 3],
-    /// `None` — 1.0. Движок держит 0.5…2.0; зажимать и сообщать о потере — дело `transform`.
+    /// `None` means 1.0. The engine keeps 0.5…2.0; clamping and reporting the loss is `transform`'s
+    /// job.
     pub scale: Option<f32>,
-    /// Назначение двери (`DODT` + `DNAM`); `None` — дверь не телепорт.
+    /// Door destination (`DODT` + `DNAM`); `None` means the door is not a teleport.
     pub destination: Option<DoorDestination>,
-    /// Замок двери или контейнера (`FLTV` + `KNAM`); `None` — не заперто.
+    /// The lock of a door or container (`FLTV` + `KNAM`); `None` means not locked.
     pub lock: Option<Lock>,
-    /// Постоянная ссылка: пишется до `NAM0`. Нужна актёрам: в `Morrowind.esm` все 3 043 ссылки
-    /// на `NPC_` и 863 на `CREA` постоянные, а NPC из временных ссылок движок ставит без
-    /// «живой» части (mobile actor) — они не ходят, и разговор с ними роняет игру в функции
-    /// активации, `Morrowind.exe+0xEAB3F` (игра, 2026-09-30, `SEWorld`). Прочее — временное.
+    /// A persistent reference: written before `NAM0`. Actors need it: in `Morrowind.esm` all 3,043
+    /// references to `NPC_` and 863 to `CREA` are persistent, while NPCs from temporary references
+    /// are placed by the engine without the "live" part (mobile actor) — they do not walk, and
+    /// talking to them crashes the game in the activation function, `Morrowind.exe+0xEAB3F` (game,
+    /// 2026-09-30, `SEWorld`). Everything else is temporary.
     pub persistent: bool,
 }
 
-/// Замок ссылки. В плагине ссылка заперта, если уровень больше 0 или есть ключ (OpenMW
-/// `components/esm3/cellref.cpp`); уровень 0 без ключа — замок открыт.
+/// A reference's lock. In a plugin a reference is locked if the level is above 0 or there is a key
+/// (OpenMW `components/esm3/cellref.cpp`); level 0 without a key means the lock is open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lock {
-    /// `FLTV`: 1…100 у ванили (`Morrowind.esm`, 2026-09-27).
+    /// `FLTV`: 1…100 in vanilla (`Morrowind.esm`, 2026-09-27).
     pub level: i32,
-    /// `KNAM`: ID предмета-ключа.
+    /// `KNAM`: the ID of the key item.
     pub key: Option<String>,
 }
 
-/// Куда ведёт дверь.
+/// Where a door leads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoorDestination {
-    /// Где появится игрок и куда он смотрит.
+    /// Where the player appears and which way they face.
     pub position: [f32; 3],
     pub rotation: [f32; 3],
-    /// Имя внутренней ячейки; `None` — внешний мир (ячейка — по позиции).
+    /// Interior cell name; `None` means the exterior world (the cell is taken from the position).
     pub cell: Option<String>,
 }
 
-/// Внутренняя ячейка. Имя — её ID: по нему ищут двери и `COC`, поэтому оно уникально.
+/// An interior cell. The name is its ID: doors and `COC` look it up by name, so it is unique.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InteriorCell {
     pub name: String,
-    /// `AMBI`: цвета — R, G, B, 0.
+    /// `AMBI`: colors — R, G, B, 0.
     pub ambient: [u8; 4],
     pub sunlight: [u8; 4],
     pub fog_color: [u8; 4],
     pub fog_density: f32,
-    /// Уровень воды; `None` — воды нет.
+    /// Water level; `None` means no water.
     pub water_height: Option<f32>,
     pub references: Vec<Reference>,
 }
 
-/// Внешняя ячейка.
+/// An exterior cell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExteriorCell {
     pub grid: (i32, i32),
-    /// Пусто — безымянная ячейка (на карте имя региона).
+    /// Empty means an unnamed cell (the map shows the region name).
     pub name: String,
     pub region: Option<String>,
     pub references: Vec<Reference>,
 }
 
-/// Ландшафт ячейки. Сетки — `[y][x]`, `y` растёт на север.
+/// The cell's landscape. Grids are `[y][x]`, `y` grows northward.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Land {
     pub grid: (i32, i32),
-    /// `VHGT`: высота первой вершины / 8 и дельты.
+    /// `VHGT`: the first vertex height / 8 and the deltas.
     pub height_offset: f32,
     pub height_deltas: Box<[[i8; LAND_SIDE]; LAND_SIDE]>,
     pub normals: Box<[[[i8; 3]; LAND_SIDE]; LAND_SIDE]>,
-    /// `None` — без `VCLR`.
+    /// `None` means no `VCLR`.
     pub colors: Option<Box<[[[u8; 3]; LAND_SIDE]; LAND_SIDE]>>,
-    /// `VTEX` **в дисковом порядке** (после `transform::land::transpose_texture_data`).
+    /// `VTEX` **in disk order** (after `transform::land::transpose_texture_data`).
     pub textures: Box<[[u16; 16]; 16]>,
     pub world_map: [[i8; 9]; 9],
 }
 
-/// Сетка путей ячейки.
+/// The cell's path grid.
 ///
-/// Точек не больше `u16::MAX`, соседей у точки не больше 255 — это держит `transform`
-/// (`transform::pathgrid`), здесь поля формата уже такой ширины.
+/// No more than `u16::MAX` points, no more than 255 neighbors per point — `transform` keeps to that
+/// (`transform::pathgrid`); here the format fields already have that width.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathGrid {
-    /// Сетка внешней ячейки; у внутренней — (0, 0), как в ванили.
+    /// Grid of an exterior cell; (0, 0) for an interior, as in vanilla.
     pub grid: (i32, i32),
-    /// `NAME`: имя ячейки; у безымянной внешней — имя региона, как в `Morrowind.esm`.
+    /// `NAME`: the cell name; for an unnamed exterior, the region name, as in `Morrowind.esm`.
     pub cell: String,
-    /// У внешней ячейки — от её юго-западного угла, у внутренней — как есть.
+    /// For an exterior cell — from its south-western corner, for an interior — as is.
     pub points: Vec<[i32; 3]>,
-    /// `edges[i]` — соседи точки `i`. Ребро записывается у обоих концов, как в ванили.
+    /// `edges[i]` are the neighbors of point `i`. An edge is written at both ends, as in vanilla.
     pub edges: Vec<Vec<u16>>,
 }
 
-/// `Granularity` — шаг автогенерации сетки в CS; движку не нужен. 1024 — у 737 из 1 194
-/// `PGRD` `Morrowind.esm` (2026-09-27, `docs/ru/formats/tes3.md`, «Сетки путей»).
+/// `Granularity` is the CS's grid auto-generation step; the engine does not need it. 1024 is used
+/// by 737 of 1,194 `PGRD` records of `Morrowind.esm` (2026-09-27, `docs/en/formats/tes3.md`, "Path
+/// grids").
 const PATH_GRID_GRANULARITY: u16 = 1024;
 
 pub(crate) fn land_texture(t: LandTexture) -> TES3Object {
@@ -188,8 +191,8 @@ pub(crate) fn region(r: Region) -> TES3Object {
     })
 }
 
-/// Ссылки ячейки с ключами словаря. Тип словаря — библиотечный (`hashbrown`), поэтому
-/// собирают его прямо в поле.
+/// The cell's references with map keys. The map type belongs to the library (`hashbrown`), so it is
+/// built right in the field.
 fn references(list: Vec<Reference>) -> impl Iterator<Item = ((u32, u32), EspReference)> {
     list.into_iter().map(|r| {
         (
@@ -205,7 +208,7 @@ fn references(list: Vec<Reference>) -> impl Iterator<Item = ((u32, u32), EspRefe
                 destination: r.destination.map(|d| TravelDestination {
                     translation: d.position,
                     rotation: d.rotation,
-                    // Пустое имя библиотека не пишет: `DNAM` нет — внешний мир.
+                    // The library does not write an empty name: no `DNAM` means the exterior world.
                     cell: d.cell.unwrap_or_default(),
                 }),
                 lock_level: r.lock.as_ref().map(|l| l.level),
@@ -240,7 +243,7 @@ pub(crate) fn interior_cell(c: InteriorCell) -> TES3Object {
     TES3Object::Cell(Cell {
         flags: ObjectFlags::default(),
         name: c.name,
-        // Сетка у внутренней ячейки не используется; ваниль пишет туда что попало.
+        // The grid of an interior cell is not used; vanilla writes anything there.
         data: CellData {
             flags,
             grid: (0, 0),
@@ -265,10 +268,10 @@ pub(crate) fn path_grid(g: PathGrid) -> TES3Object {
         .zip(&g.points)
         .map(|(edges, &location)| PathGridPoint {
             location,
-            // Решение владельца 2026-09-27: как у 89 % точек ванили.
+            // Owner's decision 2026-09-27: as for 89% of vanilla points.
             auto_generated: 1,
             connection_count: u8::try_from(edges.len())
-                .expect("transform::pathgrid режет число соседей до 255"),
+                .expect("transform::pathgrid caps the number of neighbors at 255"),
         })
         .collect();
     TES3Object::PathGrid(EspPathGrid {
@@ -278,7 +281,7 @@ pub(crate) fn path_grid(g: PathGrid) -> TES3Object {
             grid: g.grid,
             granularity: PATH_GRID_GRANULARITY,
             point_count: u16::try_from(g.points.len())
-                .expect("transform::pathgrid отказывает сетке больше u16::MAX точек"),
+                .expect("transform::pathgrid refuses a grid with more than u16::MAX points"),
         },
         points,
         connections: g.edges.into_iter().flatten().map(u32::from).collect(),
@@ -420,10 +423,11 @@ mod tests {
                         (Some(55), Some("ob_SEKey_1f"))
                     );
                     assert_eq!(c.references[&(0, 8)].lock_level, None);
-                    // Дверь-телепорт (7) библиотека пишет постоянной сама; 8 — по нашему флагу.
+                    // The library writes a teleport door (7) as persistent by itself; 8 — by our
+                    // flag.
                     assert!(
                         c.references[&(0, 8)].persistent(),
-                        "ссылка актёра — до NAM0"
+                        "an actor reference goes before NAM0"
                     );
                     assert!(c.references.contains_key(&(0, 8)));
                     seen += 1;
@@ -534,7 +538,7 @@ mod tests {
             ),
             ([10, 20, 30, 0], [40, 50, 60, 0], [1, 2, 3, 0], 0.75)
         );
-        // Во внешний мир — без DNAM, в интерьер — с именем ячейки.
+        // To the exterior world — without DNAM, to an interior — with the cell name.
         let outside = c.references[&(0, 1)].destination.as_ref().unwrap();
         assert_eq!(
             (outside.translation, outside.cell.as_str()),

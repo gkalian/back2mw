@@ -1,25 +1,33 @@
-//! Записи внешнего мира кроме `LAND`: `WRLD`, `CELL`, `REFR`, `LTEX`, `REGN`, `WTHR`, `CLMT`.
+//! Exterior world records except `LAND`: `WRLD`, `CELL`, `REFR`, `LTEX`, `REGN`, `WTHR`, `CLMT`.
 //!
-//! Раскладки — OpenMW `components/esm4/load{wrld,cell,refr,regn,ltex}.cpp`; `WTHR`, `CLMT` и
-//! `RDWT` OpenMW не разбирает, их раскладка измерена на `Oblivion.esm` (2026-09-25,
-//! `docs/ru/formats/tes4.md`, «Внешний мир»).
+//! The layouts come from OpenMW `components/esm4/load{wrld,cell,refr,regn,ltex}.cpp`; OpenMW does
+//! not parse `WTHR`, `CLMT` and `RDWT`, so their layout was measured on `Oblivion.esm` (2026-09-25,
+//! `docs/en/formats/tes4.md`, "Exterior world").
 
 use crate::container::{Record, Tag};
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Флаг заголовка записи-ссылки: изначально выключена.
+/// A reference record header flag: initially disabled.
 pub const REF_INITIALLY_DISABLED: u32 = 0x0000_0800;
 
 fn u32_at(raw: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
 fn f32_at(raw: &[u8], at: usize) -> f32 {
-    f32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    f32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
-/// Массив записей фиксированной длины в одном поле.
+/// An array of fixed-length entries in one field.
 fn chunks<'a>(
     record: &'static str,
     field: Tag,
@@ -46,27 +54,28 @@ fn text(fields: &Fields<'_>, tag: Tag) -> Option<String> {
 pub struct Worldspace {
     pub editor_id: String,
     pub name: Option<String>,
-    /// `WNAM`: родитель, чей ландшафт worldspace использует (города внутри `Tamriel`).
+    /// `WNAM`: the parent whose landscape the worldspace uses (cities inside `Tamriel`).
     pub parent: Option<u32>,
-    /// `CNAM`: климат — погода там, где регион её не задаёт.
+    /// `CNAM`: the climate — the weather where a region does not set it.
     pub climate: Option<u32>,
-    /// `ICON`: рисованный лист карты мира, путь относительно `Textures\`
-    /// (`Menus\Map\world\TES4SEmap.dds`). В `Oblivion.esm` он есть у пяти миров: `Tamriel`,
-    /// `SEWorld` и ещё трёх миров Дрожащих островов с тем же листом (2026-10-02).
+    /// `ICON`: the painted world map sheet, a path relative to `Textures\`
+    /// (`Menus\Map\world\TES4SEmap.dds`). In `Oblivion.esm` five worlds have it: `Tamriel`,
+    /// `SEWorld` and three more Shivering Isles worlds with the same sheet (2026-10-02).
     pub map_texture: Option<String>,
-    /// `MNAM`: какие ячейки покрывает лист. У тестовых миров поле из одних нулей — это `None`.
+    /// `MNAM`: which cells the sheet covers. Test worlds have a field of only zeros — that is
+    /// `None`.
     pub map_size: Option<MapSize>,
 }
 
-/// `WRLD` `MNAM`, 16 байт: размер листа карты в пикселях и ячейки его углов. Как лист лежит на
-/// этих ячейках — `docs/ru/formats/tes4.md`, «Карта мира».
+/// `WRLD` `MNAM`, 16 bytes: the map sheet size in pixels and the cells of its corners. How the
+/// sheet lies on these cells — `docs/en/formats/tes4.md`, "World map".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MapSize {
     pub width: u32,
     pub height: u32,
-    /// Северо-западная ячейка: (x, y).
+    /// The north-western cell: (x, y).
     pub north_west: (i16, i16),
-    /// Юго-восточная ячейка: (x, y).
+    /// The south-eastern cell: (x, y).
     pub south_east: (i16, i16),
 }
 
@@ -96,30 +105,31 @@ impl FromFields for Worldspace {
     }
 }
 
-/// Ячейка. Внешняя — с `XCLC`.
+/// A cell. An exterior one has `XCLC`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cell {
     pub editor_id: Option<String>,
     pub name: Option<String>,
-    /// `XCLC`: координаты ячейки (4096 юнитов); у внутренних и у постоянной ячейки worldspace нет.
+    /// `XCLC`: cell coordinates (4096 units); interiors and the worldspace's persistent cell do not
+    /// have it.
     pub grid: Option<(i32, i32)>,
-    /// `XCLR`: регионы, к которым ячейка принадлежит.
+    /// `XCLR`: the regions the cell belongs to.
     pub regions: Vec<u32>,
-    /// `XCLW`: свой уровень воды; без него — уровень worldspace.
+    /// `XCLW`: its own water level; without it — the worldspace level.
     pub water_height: Option<f32>,
-    /// `DATA`: 0x01 внутренняя, 0x02 есть вода, 0x20 общественное место, 0x80 ведёт себя как
-    /// внешняя (UESP, `CELL`; OpenMW `loadcell.cpp`).
+    /// `DATA`: 0x01 interior, 0x02 has water, 0x20 public place, 0x80 behaves like an exterior
+    /// (UESP, `CELL`; OpenMW `loadcell.cpp`).
     pub flags: u8,
-    /// `XCLL`: свет внутренней ячейки.
+    /// `XCLL`: interior cell lighting.
     pub lighting: Option<CellLighting>,
 }
 
-/// Флаг `DATA` ячейки: есть вода.
+/// Cell `DATA` flag: has water.
 pub const CELL_HAS_WATER: u8 = 0x02;
 
-/// Свет внутренней ячейки (`XCLL`, 36 байт у всех 162 интерьеров `SEWorld`, 2026-09-26). Цвета —
-/// R, G, B и неиспользуемый байт. Хвост — поворот и затухание направленного света, дальность
-/// отсечения тумана — Morrowind не выражает.
+/// Interior cell lighting (`XCLL`, 36 bytes in all 162 interiors of `SEWorld`, 2026-09-26). Colors
+/// are R, G, B and an unused byte. The tail — the directional light's rotation and fade, the fog
+/// clip distance — Morrowind cannot express.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CellLighting {
     pub ambient: [u8; 4],
@@ -136,10 +146,10 @@ impl FromFields for Cell {
     fn from_fields(fields: &Fields<'_>) -> Result<Self> {
         let grid = match fields.first(*b"XCLC") {
             None => None,
-            // 12 байт — ещё флаги скрытия квадрантов, нам не нужны.
+            // 12 bytes — plus quadrant hiding flags, we do not need them.
             Some(raw) if raw.len() == 8 || raw.len() == 12 => Some((
-                i32::from_le_bytes(raw[0..4].try_into().expect("4 байта")),
-                i32::from_le_bytes(raw[4..8].try_into().expect("4 байта")),
+                i32::from_le_bytes(raw[0..4].try_into().expect("4 bytes")),
+                i32::from_le_bytes(raw[4..8].try_into().expect("4 bytes")),
             )),
             Some(raw) => {
                 return Err(Error::FieldSize {
@@ -169,9 +179,9 @@ impl FromFields for Cell {
             lighting: match fields.first(*b"XCLL") {
                 None => None,
                 Some(raw) if raw.len() >= 20 => Some(CellLighting {
-                    ambient: raw[0..4].try_into().expect("4 байта"),
-                    directional: raw[4..8].try_into().expect("4 байта"),
-                    fog_color: raw[8..12].try_into().expect("4 байта"),
+                    ambient: raw[0..4].try_into().expect("4 bytes"),
+                    directional: raw[4..8].try_into().expect("4 bytes"),
+                    fog_color: raw[8..12].try_into().expect("4 bytes"),
                     fog_near: f32_at(raw, 12),
                     fog_far: f32_at(raw, 16),
                 }),
@@ -188,16 +198,16 @@ impl FromFields for Cell {
     }
 }
 
-/// Родитель включения (`XESP`).
+/// The enable parent (`XESP`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EnableParent {
     pub parent: u32,
-    /// Состояние противоположно родителю.
+    /// The state is opposite to the parent.
     pub inverted: bool,
 }
 
-/// Назначение двери (`XTEL`, 28 байт: `FormID` двери на том конце, позиция и углы, где
-/// появится игрок — OpenMW `loadrefr.cpp`).
+/// Door destination (`XTEL`, 28 bytes: the `FormID` of the door at the other end, the position and
+/// angles where the player appears — OpenMW `loadrefr.cpp`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Teleport {
     pub door: u32,
@@ -205,46 +215,46 @@ pub struct Teleport {
     pub rotation: [f32; 3],
 }
 
-/// Замок (`XLOC`, 12 или 16 байт): уровень (u8), 3 байта мусора, `FormID` ключа, флаги — последние
-/// 4 байта (UESP, «Mod File Format/REFR»; OpenMW `loadrefr.cpp` читает те же уровень и ключ). В
-/// `Oblivion.esm` 2 866 замков: 2 841 по 12 байт, 25 по 16 — у всех 16-байтных байты 8 и 12
-/// нулевые, так что где у них флаги, данные не различают (2026-09-27, скрипт по файлу).
+/// A lock (`XLOC`, 12 or 16 bytes): level (u8), 3 junk bytes, key `FormID`, flags — the last 4
+/// bytes (UESP, "Mod File Format/REFR"; OpenMW `loadrefr.cpp` reads the same level and key).
+/// `Oblivion.esm` has 2,866 locks: 2,841 of 12 bytes, 25 of 16 — in all 16-byte ones bytes 8 and 12
+/// are zero, so the data cannot tell where their flags are (2026-09-27, a script over the file).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock {
-    /// 0…100; 100 — открывается только ключом.
+    /// 0…100; 100 means it opens only with a key.
     pub level: u8,
-    /// `KEYM`; `None` — ключа нет.
+    /// `KEYM`; `None` means no key.
     pub key: Option<u32>,
-    /// Флаг 0x4: сложность растёт с уровнем игрока.
+    /// Flag 0x4: the difficulty scales with the player's level.
     pub leveled: bool,
 }
 
-/// Флаг `XLOC`: сложность замка растёт с уровнем игрока.
+/// `XLOC` flag: the lock difficulty scales with the player's level.
 pub const LOCK_LEVELED: u32 = 0x4;
 
-/// Размещение объекта (`REFR`), NPC (`ACHR`) или существа (`ACRE`).
+/// A placement of an object (`REFR`), an NPC (`ACHR`) or a creature (`ACRE`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Placement {
-    /// `FormID` самой ссылки (из заголовка).
+    /// `FormID` of the reference itself (from the header).
     pub form_id: u32,
-    /// `NAME`: базовый объект.
+    /// `NAME`: the base object.
     pub base: u32,
-    /// `DATA`: позиция, юниты мира.
+    /// `DATA`: position, world units.
     pub position: [f32; 3],
-    /// `DATA`: углы, радианы. Та же структура `ESM::Position`, что у TES3.
+    /// `DATA`: angles, radians. The same `ESM::Position` structure as in TES3.
     pub rotation: [f32; 3],
     pub scale: Option<f32>,
-    /// Флаг заголовка 0x800.
+    /// Header flag 0x800.
     pub initially_disabled: bool,
     pub enable_parent: Option<EnableParent>,
-    /// `XTEL`: дверь-телепорт.
+    /// `XTEL`: a teleport door.
     pub teleport: Option<Teleport>,
-    /// `XMRK`: маркер карты.
+    /// `XMRK`: a map marker.
     pub map_marker: bool,
-    /// `XSED`, первый байт: номер семени дерева в `SNAM` его `TREE` (берётся по модулю числа
-    /// семян).
+    /// `XSED`, the first byte: the tree seed number in the `SNAM` of its `TREE` (taken modulo the
+    /// number of seeds).
     pub tree_seed: Option<u8>,
-    /// `XLOC`: замок двери или контейнера.
+    /// `XLOC`: the lock of a door or container.
     pub lock: Option<Lock>,
 }
 
@@ -306,11 +316,11 @@ impl FromFields for Placement {
         })
     }
 
-    /// Флаг выключенности и `FormID` лежат в заголовке записи, а не в полях.
-    /// `ACHR` (размещение NPC, T7.6) читается той же спекой: `NAME`, `DATA`, `XESP`, `XSCL` у него
-    /// те же, а полей, которых нет у `REFR` (`XHRS`, `XMRC`, `XRGD`), перенос не использует.
-    /// `ACRE` (размещение существа, T11.4) — так же: `NAME`, `DATA` 24 байта, `XSCL`, `XESP`
-    /// (все 1 473 `ACRE` `Oblivion.esm` читаются, 2026-10-01, `real_creatures`).
+    /// The disabled flag and the `FormID` are in the record header, not in the fields. `ACHR` (NPC
+    /// placement, T7.6) is read with the same spec: its `NAME`, `DATA`, `XESP`, `XSCL` are the
+    /// same, and the fields `REFR` lacks (`XHRS`, `XMRC`, `XRGD`) are not used by the conversion.
+    /// `ACRE` (creature placement, T11.4) likewise: `NAME`, a 24-byte `DATA`, `XSCL`, `XESP` (all
+    /// 1,473 `ACRE` of `Oblivion.esm` are read, 2026-10-01, `real_creatures`).
     fn from_record(record: &Record) -> Result<Self> {
         if record.header.tag != Self::SIG && !matches!(&record.header.tag, b"ACHR" | b"ACRE") {
             return Err(Error::WrongRecord {
@@ -325,11 +335,11 @@ impl FromFields for Placement {
     }
 }
 
-/// Текстура земли.
+/// A land texture.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LandTexture {
     pub editor_id: String,
-    /// `ICON`: путь относительно `Textures\Landscape\`.
+    /// `ICON`: a path relative to `Textures\Landscape\`.
     pub texture: Option<String>,
 }
 
@@ -345,54 +355,55 @@ impl FromFields for LandTexture {
     }
 }
 
-/// Погода региона: `RDAT` типа 3 и следующий за ним `RDWT`.
+/// Region weather: an `RDAT` of type 3 and the `RDWT` following it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionWeather {
-    /// Флаг `RDAT` 0x01 — «перекрывает» (override).
+    /// `RDAT` flag 0x01 — "override".
     pub overrides: bool,
     pub priority: u8,
-    /// `WTHR` и шанс.
+    /// `WTHR` and a chance.
     pub weathers: Vec<(u32, u32)>,
 }
 
-/// Звук региона: элемент `RDSD` (12 байт) после `RDAT` типа 7 (T10.2).
+/// A region sound: an `RDSD` element (12 bytes) after an `RDAT` of type 7 (T10.2).
 ///
-/// Измерено по `Oblivion.esm` (2026-09-28, `docs/ru/formats/tes4.md`, «Звуки регионов»): длина
-/// `RDSD` кратна 12 у всех 127, звуков 2 395. Шанс — в стотысячных долях процента: 10 000 000
-/// (100 %) стоит у всех 520 петель (`SOUN` с флагом 0x10), у случайных звуков 0…4 500 000, и их
-/// сумма по региону около 100 % — это веса выбора, а не вероятность.
+/// Measured on `Oblivion.esm` (2026-09-28, `docs/en/formats/tes4.md`, "Region sounds"): the `RDSD`
+/// length is a multiple of 12 in all 127, there are 2,395 sounds. The chance is in
+/// hundred-thousandths of a percent: 10,000,000 (100%) is set on all 520 loops (`SOUN` with flag
+/// 0x10), random sounds have 0…4,500,000, and their sum per region is about 100% — these are
+/// selection weights, not probabilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegionSound {
-    /// `SOUN`, `FormID` как в файле.
+    /// `SOUN`, `FormID` as in the file.
     pub sound: u32,
-    /// 0x01 ясно, 0x02 облачно, 0x04 дождь, 0x08 снег — при какой погоде звучит.
+    /// 0x01 clear, 0x02 cloudy, 0x04 rain, 0x08 snow — in which weather it plays.
     pub flags: u32,
-    /// Шанс, стотысячные доли процента.
+    /// Chance, hundred-thousandths of a percent.
     pub chance: u32,
 }
 
-/// Шанс `RDSD`, равный 100 %.
+/// An `RDSD` chance equal to 100%.
 pub const REGION_SOUND_CHANCE_FULL: u32 = 10_000_000;
 
-/// Тип `RDAT`: погода.
+/// `RDAT` type: weather.
 const RDAT_WEATHER: u32 = 3;
-/// Тип `RDAT`: имя на карте.
+/// `RDAT` type: map name.
 const RDAT_MAP: u32 = 4;
-/// Тип `RDAT`: звуки.
+/// `RDAT` type: sounds.
 const RDAT_SOUNDS: u32 = 7;
 
-/// Регион.
+/// A region.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Region {
     pub editor_id: String,
-    /// `RCLR`: цвет на карте, RGBA.
+    /// `RCLR`: map color, RGBA.
     pub color: [u8; 4],
     /// `WNAM`: worldspace.
     pub world: Option<u32>,
-    /// `RDMP`: имя на карте.
+    /// `RDMP`: map name.
     pub map_name: Option<String>,
     pub weather: Option<RegionWeather>,
-    /// `RDSD`: звуки региона.
+    /// `RDSD`: region sounds.
     pub sounds: Vec<RegionSound>,
 }
 
@@ -404,7 +415,7 @@ impl FromFields for Region {
         let mut map_name = None;
         let mut weather = None;
         let mut sounds = Vec::new();
-        // Смысл поля данных задаёт ближайший `RDAT` перед ним.
+        // The meaning of a data field is set by the nearest `RDAT` before it.
         let mut current: Option<(u32, u8, u8)> = None;
         for (tag, raw) in fields.iter() {
             match &tag {
@@ -474,18 +485,18 @@ impl FromFields for Region {
     }
 }
 
-/// Классы погоды в `WTHR` `DATA`[11].
+/// Weather classes in `WTHR` `DATA`[11].
 pub const WEATHER_PLEASANT: u8 = 0x01;
 pub const WEATHER_CLOUDY: u8 = 0x02;
 pub const WEATHER_RAINY: u8 = 0x04;
 pub const WEATHER_SNOW: u8 = 0x08;
 
-/// Погода. Из 15 байт `DATA` нужен только класс.
+/// Weather. Of the 15 `DATA` bytes only the class is needed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Weather {
     pub editor_id: String,
-    /// `DATA`[11]: 0x01 ясно, 0x02 облачно, 0x04 дождь, 0x08 снег; у погоды планов Обливиона 0,
-    /// у `CamoranWeather` старшие биты мусорные (0xC1).
+    /// `DATA`[11]: 0x01 clear, 0x02 cloudy, 0x04 rain, 0x08 snow; the weather of Oblivion's planes
+    /// has 0, and `CamoranWeather` has junk in the high bits (0xC1).
     pub classification: u8,
 }
 
@@ -501,11 +512,11 @@ impl FromFields for Weather {
     }
 }
 
-/// Климат: список погоды с шансами.
+/// A climate: a list of weathers with chances.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Climate {
     pub editor_id: String,
-    /// `WLST`: `WTHR` и шанс.
+    /// `WLST`: `WTHR` and a chance.
     pub weathers: Vec<(u32, i32)>,
 }
 
@@ -590,7 +601,7 @@ mod tests {
         assert_eq!((light.fog_near, light.fog_far), (64.0, 2250.0));
         assert!(
             fields_of::<Cell>(&[synth::field(b"XCLL", &[0; 12])]).is_err(),
-            "короткий XCLL — ошибка"
+            "a short XCLL is an error"
         );
     }
 
@@ -603,7 +614,7 @@ mod tests {
                 synth::field(b"XLOC", xloc),
             ])
         };
-        // 16 байт: флаги — последние четыре.
+        // 16 bytes: the flags are the last four.
         let mut long = vec![100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         long.extend(4u32.to_le_bytes());
         assert_eq!(
@@ -684,7 +695,7 @@ mod tests {
                 synth::field(b"DATA", &data),
                 synth::field(b"XSCL", &2.5f32.to_le_bytes()),
                 synth::field(b"XSED", &[3]),
-                // Уровень 40, мусор, ключ 0x99, флаги с «растущим».
+                // Level 40, junk, key 0x99, flags with "scaling".
                 synth::field(b"XLOC", &[40, 0x1C, 0x40, 0, 0x99, 0, 0, 0, 4, 0, 0, 0]),
             ]
             .concat(),
@@ -783,9 +794,9 @@ mod tests {
                 synth::field(b"RDSD", &sound(1, 0, 0)),
             ])
             .is_err(),
-            "RDSD после RDAT погоды"
+            "RDSD after a weather RDAT"
         );
-        // RDWT после RDAT не погоды — ошибка, а не молчаливая погода.
+        // RDWT after a non-weather RDAT is an error, not silently weather.
         assert!(
             fields_of::<Region>(&[
                 synth::field(b"EDID", b"R\0"),
@@ -839,7 +850,7 @@ mod tests {
         assert_eq!(t.texture.as_deref(), Some("Dementia\\Moss.dds"));
     }
 
-    /// `MNAM` как у `SEWorld`: 1024×1024, углы (−32, 33) и (31, −29).
+    /// `MNAM` as in `SEWorld`: 1024×1024, corners (−32, 33) and (31, −29).
     fn mnam(width: u32, height: u32, corners: [i16; 4]) -> Vec<u8> {
         let mut raw = width.to_le_bytes().to_vec();
         raw.extend(height.to_le_bytes());
@@ -870,7 +881,7 @@ mod tests {
                 south_east: (31, -29),
             })
         );
-        // Тестовые миры Oblivion держат `MNAM` из нулей: карты у них нет.
+        // Oblivion's test worlds keep an all-zero `MNAM`: they have no map.
         assert_eq!(world(&[0; 16]).unwrap().map_size, None);
         assert!(matches!(
             world(&[0; 12]),

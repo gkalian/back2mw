@@ -38,7 +38,7 @@ fn a_flag_overrides_the_file() {
     let c = resolve(Some((cfg_path(), FULL)), flags, &no_env).unwrap();
     assert_eq!(c.source_data, Path::new("/flag/src"));
     assert_eq!(c.output_dir, Path::new("/flag/out"));
-    // остальное осталось из файла
+    // the rest stayed from the file
     assert_eq!(c.target_data, Path::new("/games/morrowind/Data Files"));
 }
 
@@ -54,7 +54,7 @@ fn flags_alone_are_enough_without_a_file() {
     assert_eq!(
         c.work_dir,
         Path::new("work"),
-        "умолчание — рядом с конфигом"
+        "default is next to the config"
     );
     assert_eq!(c.output_dir, Path::new("output"));
 }
@@ -70,7 +70,7 @@ fn defaults_live_in_the_game_folders() {
     assert_eq!(
         c.work_dir,
         Path::new("/games/Oblivion/_back2mw-output"),
-        "распакованное Oblivion — в папке с Oblivion"
+        "unpacked Oblivion goes into the Oblivion folder"
     );
     assert_eq!(
         c.output_dir,
@@ -92,7 +92,7 @@ fn relative_paths_in_the_file_are_relative_to_the_file() {
     assert_eq!(
         c.output_dir,
         Path::new("/app/../_back2mw-output/output"),
-        "умолчание — в папке с Morrowind"
+        "default is in the Morrowind folder"
     );
 }
 
@@ -159,17 +159,17 @@ fn tool_paths_come_from_flag_then_file_then_environment() {
     };
     let base = "source_data = \"s\"\ntarget_data = \"t\"\n";
 
-    // только окружение
+    // environment only
     let c = resolve(Some((cfg_path(), base)), Overrides::default(), &env).unwrap();
     assert_eq!(c.esmtool.as_deref(), Some(Path::new("/env/esmtool")));
 
-    // файл сильнее окружения
+    // the file beats the environment
     let text = format!("{base}esmtool = \"/file/esmtool\"\n");
     let c = resolve(Some((cfg_path(), &text)), Overrides::default(), &env).unwrap();
     assert_eq!(c.esmtool.as_deref(), Some(Path::new("/file/esmtool")));
     assert_eq!(c.niftest.as_deref(), Some(Path::new("/env/niftest")));
 
-    // флаг сильнее файла
+    // the flag beats the file
     let flags = Overrides {
         esmtool: Some(PathBuf::from("/flag/esmtool")),
         ..Overrides::default()
@@ -199,7 +199,7 @@ fn load_treats_a_missing_file_as_absent_and_reads_an_existing_one() {
 
     assert!(
         load(&path, flags.clone()).is_ok(),
-        "файла нет — всё из флагов"
+        "no file — everything from flags"
     );
 
     std::fs::write(&path, "source_data = \"from_file\"\ntarget_data = \"t\"\n").unwrap();
@@ -232,7 +232,7 @@ fn unneeded_paths_may_stay_unset() {
 fn the_offset_key_is_read_and_is_absent_by_default() {
     let base = "source_data = \"s\"\ntarget_data = \"t\"\n";
     let c = resolve(Some((cfg_path(), base)), Overrides::default(), &no_env).unwrap();
-    assert_eq!(c.offset, None, "ключа нет — смещение выбирает прогон");
+    assert_eq!(c.offset, None, "no key — the run picks the offset");
 
     let text = format!("{base}offset = [40, -12]\n");
     let c = resolve(Some((cfg_path(), &text)), Overrides::default(), &no_env).unwrap();
@@ -241,7 +241,8 @@ fn the_offset_key_is_read_and_is_absent_by_default() {
 
 #[test]
 fn a_malformed_offset_is_an_error_not_a_silent_default() {
-    // Молча взять умолчание нельзя: мир встал бы в другое место, чем в сохранениях игрока.
+    // Silently taking the default is not allowed: the world would land somewhere other than in the
+    // player's saves.
     let base = "source_data = \"s\"\ntarget_data = \"t\"\n";
     for bad in ["offset = [40]", "offset = \"40,-12\"", "offset = [1, 2, 3]"] {
         let text = format!("{base}{bad}\n");

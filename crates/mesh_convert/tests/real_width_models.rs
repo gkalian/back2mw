@@ -1,6 +1,6 @@
-//! T2.3: что мешает конвертироваться мешам **всех** записей с моделью `Oblivion.esm` (не только
-//! `STAT`, как `real_width.rs`). По заголовку каждого меша — полный набор типов блоков, которых не
-//! знает ридер, а не только первый. Только измерение, без проверок.
+//! T2.3: what stops the meshes of **all** `Oblivion.esm` records with a model from converting (not
+//! only `STAT`, as in `real_width.rs`). From each mesh's header — the full set of block types the
+//! reader does not know, not just the first. A measurement only, without checks.
 
 mod common;
 
@@ -13,14 +13,14 @@ use mesh_convert::read::{Error, SUPPORTED_TYPES, parse, parse_header};
 use mesh_convert::textures::TextureRegistry;
 use tes4_read::{BsaIndex, Fields, Plugin};
 
-/// Типы записей с мировой моделью, которые переносит конвертер (`transform::MODEL_RECORDS`).
+/// Record types with a world model that the converter carries over (`transform::MODEL_RECORDS`).
 const MODEL_TAGS: [&str; 20] = [
     "STAT", "ACTI", "ALCH", "AMMO", "APPA", "ARMO", "BOOK", "CLOT", "CONT", "DOOR", "FLOR", "FURN",
     "INGR", "KEYM", "LIGH", "MISC", "SGST", "SLGM", "WEAP", "GRAS",
 ];
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn what_blocks_conversion_of_all_model_meshes() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
@@ -31,7 +31,7 @@ fn what_blocks_conversion_of_all_model_meshes() {
         archives.push((r, idx));
     }
 
-    // Меш → типы записей, которые на него ссылаются.
+    // Mesh → record types that reference it.
     let mut models: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
     for record in plugin.records() {
         let Some(tag) = MODEL_TAGS
@@ -103,9 +103,9 @@ fn what_blocks_conversion_of_all_model_meshes() {
                 if unknown.is_empty() {
                     ok += 1;
                     ok_10_2 += usize::from(header.version == 0x0A02_0000);
-                    // Полный разбор: курсор обязан встать ровно в конец файла, иначе раскладка
-                    // какого-то блока неверна. Затем конвертация (кроме скиннинга — ему нужен
-                    // скелет Morrowind, он проверяется в `real_worn.rs`).
+                    // A full parse: the cursor must stop exactly at the end of the file, otherwise
+                    // some block's layout is wrong. Then the conversion (except skinning — it needs
+                    // the Morrowind skeleton and is checked in `real_worn.rs`).
                     match parse(&data) {
                         Err(e) => {
                             let key = e.to_string().split(':').next().unwrap_or("").to_owned();
@@ -118,8 +118,8 @@ fn what_blocks_conversion_of_all_model_meshes() {
                             Ok(c) => {
                                 parsed_and_converted += 1;
                                 skinned += usize::from(c.stats.baked_skins > 0);
-                                // Меш на теле (ARMO/CLOT) в пайплайне идёт через скелет
-                                // Morrowind, запекается только мировой.
+                                // A body mesh (ARMO/CLOT) goes through the Morrowind skeleton in
+                                // the pipeline; only a world one is baked.
                                 if c.stats.baked_skins > 0
                                     && tags.iter().any(|t| !matches!(*t, "ARMO" | "CLOT"))
                                 {
@@ -129,7 +129,7 @@ fn what_blocks_conversion_of_all_model_meshes() {
                                     if c.stats.baked_moved_vertices > 0 && moved_examples.len() < 8
                                     {
                                         moved_examples.push(format!(
-                                            "{path}: {} из {}",
+                                            "{path}: {} of {}",
                                             c.stats.baked_moved_vertices, c.stats.baked_vertices
                                         ));
                                     }
@@ -161,38 +161,38 @@ fn what_blocks_conversion_of_all_model_meshes() {
         }
     }
 
-    println!("=== меши всех записей с моделью, Oblivion.esm ===");
-    println!("  уникальных мешей: {}", models.len());
-    println!("  нет в архивах:    {missing}");
-    println!("  читаются по заголовку: {ok}");
-    println!("    из них 10.2.0.0: {ok_10_2}");
-    println!("    из них разобраны и сконвертированы: {parsed_and_converted}");
-    println!("    из них со скиннингом, запечённым в позу файла: {skinned}");
+    println!("=== meshes of all records with a model, Oblivion.esm ===");
+    println!("  unique meshes: {}", models.len());
+    println!("  missing from archives: {missing}");
+    println!("  readable by header: {ok}");
+    println!("    of them 10.2.0.0: {ok_10_2}");
+    println!("    of them parsed and converted: {parsed_and_converted}");
+    println!("    of them with skinning baked into the file's pose: {skinned}");
     println!(
-        "      у мировых объектов: {world_skinned} мешей, вершин {baked_vertices}, \
-         сдвинуто больше чем на 1: {moved_vertices}"
+        "      on world objects: {world_skinned} meshes, vertices {baked_vertices}, \
+         moved by more than 1: {moved_vertices}"
     );
     for e in &moved_examples {
         println!("        {e}");
     }
-    println!("    ошибки разбора: {parse_errors:?}");
+    println!("    parse errors: {parse_errors:?}");
     for e in &parse_examples {
         println!("      {e}");
     }
-    println!("    ошибки конвертации: {convert_errors:?}");
+    println!("    conversion errors: {convert_errors:?}");
     println!(
-        "    выброшено свойств: {dropped_properties}, фантомов: {phantoms}, систем частиц: {particles}"
+        "    dropped properties: {dropped_properties}, phantoms: {phantoms}, particle systems: {particles}"
     );
-    println!("  чужая версия:     {versions:?}");
-    println!("  по типу записи [читается, версия, блоки]: {by_record:?}");
+    println!("  foreign version:  {versions:?}");
+    println!("  by record type [readable, version, blocks]: {by_record:?}");
     let mut any: Vec<_> = by_type_any.into_iter().collect();
     any.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    println!("  неизвестные типы (в скольких мешах встречаются):");
+    println!("  unknown types (in how many meshes they occur):");
     for (t, n) in &any {
         println!("    {n:5} {t}");
     }
-    // Жадно: какой тип добавить следующим, чтобы открыть больше всего мешей целиком.
-    println!("  жадный порядок (тип → сколько мешей открылось, всего):");
+    // Greedy: which type to add next to open the most meshes completely.
+    println!("  greedy order (type → how many meshes opened, total):");
     let mut known: BTreeSet<String> = BTreeSet::new();
     let mut total = 0usize;
     for _ in 0..40 {
@@ -202,8 +202,8 @@ fn what_blocks_conversion_of_all_model_meshes() {
             if rest.is_empty() {
                 continue;
             }
-            // Меш откроется, когда будут известны все его типы: засчитываем его каждому типу
-            // из оставшихся, делённым на их число — грубо, но порядок разумный.
+            // A mesh opens when all its types are known: we credit it to each remaining type,
+            // divided by their count — crude, but the order is reasonable.
             for t in &rest {
                 *gain.entry(t).or_default() += 1_000 / rest.len();
             }

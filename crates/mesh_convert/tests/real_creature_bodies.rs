@@ -1,7 +1,7 @@
-//! T11.5c: тела существ `Oblivion.esm` — скелет и части `NIFZ` каждой записи собираются в один
-//! меш Morrowind (`mesh_convert::creature::build_body`). Проверки: сборка без ошибок, файл
-//! читается обратно и принимается `niftest`, деформированный кожей меш стоит на земле и размером
-//! с габариты `BSBound` (иначе кожа села не на те кости).
+//! T11.5c: creature bodies of `Oblivion.esm` — the skeleton and the `NIFZ` parts of each record are
+//! assembled into one Morrowind mesh (`mesh_convert::creature::build_body`). Checks: the build has
+//! no errors, the file reads back and is accepted by `niftest`, the skin-deformed mesh stands on
+//! the ground and is the size of the `BSBound` bounds (otherwise the skin sat on the wrong bones).
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -9,9 +9,9 @@
 //!   cargo test -p mesh_convert --test real_creature_bodies -- --ignored --nocapture
 //! ```
 //!
-//! Без `BACK2MW_NIFTEST` проверка `niftest` пропускается (об этом печатается строка).
-//! `BACK2MW_KEEP_OUTPUT=1` — оставить меши во временной папке, чтобы открыть в NifSkope.
-//! Числа отсюда — в `docs/ru/formats/nif-oblivion.md`, «Существа: тело».
+//! Without `BACK2MW_NIFTEST` the `niftest` check is skipped (a line says so).
+//! `BACK2MW_KEEP_OUTPUT=1` keeps the meshes in the temporary folder to open them in NifSkope. The
+//! numbers from here are in `docs/en/formats/nif-oblivion.md`, "Body".
 
 mod common;
 
@@ -41,13 +41,13 @@ fn print_map(title: &str, map: &BTreeMap<String, usize>) {
     }
 }
 
-/// Строки вывода `niftest` с ошибкой чтения (он всегда возвращает 0).
+/// Lines of `niftest` output with a read error (it always returns 0).
 fn niftest_failures(tool: &PathBuf, target: &PathBuf) -> Vec<String> {
     let out = Command::new(tool)
         .arg("-q")
         .arg(target)
         .output()
-        .unwrap_or_else(|e| panic!("не запустить niftest: {e}"));
+        .unwrap_or_else(|e| panic!("cannot start niftest: {e}"));
     String::from_utf8_lossy(&out.stderr)
         .lines()
         .chain(String::from_utf8_lossy(&out.stdout).lines())
@@ -56,7 +56,7 @@ fn niftest_failures(tool: &PathBuf, target: &PathBuf) -> Vec<String> {
         .collect()
 }
 
-/// Коробка всех вершин меша в мире после деформации кожей в позе файла.
+/// The box of all mesh vertices in the world after skin deformation in the file's pose.
 fn deformed_box(bytes: &[u8]) -> Option<(Vec3, Vec3)> {
     let mut stream = NiStream::from_bytes(bytes).ok()?;
     stream.apply_skin_deforms();
@@ -77,10 +77,10 @@ fn deformed_box(bytes: &[u8]) -> Option<(Vec3, Vec3)> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA; BACK2MW_NIFTEST — по желанию"]
+#[ignore = "real data: BACK2MW_GAME_DATA; BACK2MW_NIFTEST optional"]
 #[expect(
     clippy::too_many_lines,
-    reason = "перепись: одна длинная печать, делить её на части — только мешать чтению"
+    reason = "a census: one long printout, splitting it would only hurt readability"
 )]
 fn bodies_of_all_creatures_are_built() {
     let bytes = fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
@@ -98,7 +98,7 @@ fn bodies_of_all_creatures_are_built() {
         })
     };
 
-    // Разные тела: скелет и набор частей. Записи с одним набором делят один меш.
+    // Distinct bodies: a skeleton and a set of parts. Records with the same set share one mesh.
     let mut bodies: BTreeMap<(String, Vec<String>), usize> = BTreeMap::new();
     for record in plugin.records() {
         if &record.header.tag != b"CREA" {
@@ -119,16 +119,16 @@ fn bodies_of_all_creatures_are_built() {
         *bodies.entry((model, parts)).or_default() += 1;
     }
     println!(
-        "записей с моделью {}, разных тел (скелет + набор частей) {}",
+        "records with a model {}, distinct bodies (skeleton + set of parts) {}",
         bodies.values().sum::<usize>(),
         bodies.len()
     );
 
     let out_dir = std::env::temp_dir().join("back2mw_creature_bodies");
     let _ = fs::remove_dir_all(&out_dir);
-    fs::create_dir_all(&out_dir).expect("временная папка");
+    fs::create_dir_all(&out_dir).expect("temporary folder");
 
-    // Разобранные файлы по пути: скелеты и части повторяются между телами.
+    // Parsed files by path: skeletons and parts repeat between bodies.
     let mut parsed: BTreeMap<String, Option<SourceNif>> = BTreeMap::new();
     let mut load = |path: &str| -> bool {
         if !parsed.contains_key(path) {
@@ -166,7 +166,7 @@ fn bodies_of_all_creatures_are_built() {
 
     for (n, (folder, skeleton_path, part_paths, records)) in wanted.iter().enumerate() {
         let Some(skeleton) = parsed[skeleton_path].as_ref() else {
-            bump(&mut errors, "скелет не читается или его нет");
+            bump(&mut errors, "the skeleton cannot be read or is missing");
             continue;
         };
         let parts: Vec<BodyPart<'_>> = part_paths
@@ -174,7 +174,7 @@ fn bodies_of_all_creatures_are_built() {
             .filter_map(|p| {
                 let source = parsed[p].as_ref();
                 if source.is_none() {
-                    bump(&mut facts, "часть тела: нет в архивах или не читается");
+                    bump(&mut facts, "body part: missing from archives or unreadable");
                 }
                 Some(BodyPart {
                     name: p.rsplit('\\').next().unwrap_or(p),
@@ -193,7 +193,7 @@ fn bodies_of_all_creatures_are_built() {
                 continue;
             }
         };
-        let bytes = body.converted.save_bytes().expect("запись NIF");
+        let bytes = body.converted.save_bytes().expect("writing the NIF");
         built += 1;
         records_built += records;
         bones += body.bones;
@@ -207,15 +207,12 @@ fn bodies_of_all_creatures_are_built() {
         total_bytes += bytes.len();
         bump(
             &mut facts,
-            format!("корень накопления «{}»", body.accum_root),
+            format!("accumulation root \"{}\"", body.accum_root),
         );
-        bump(
-            &mut facts,
-            format!("есть Bounding Box: {}", body.has_bounds),
-        );
+        bump(&mut facts, format!("has Bounding Box: {}", body.has_bounds));
         if body.rigid_unbound > 0 {
             loose.insert(format!(
-                "{short}: {} форм без кости ({})",
+                "{short}: {} shapes without a bone ({})",
                 body.rigid_unbound,
                 part_paths
                     .iter()
@@ -224,9 +221,9 @@ fn bodies_of_all_creatures_are_built() {
                     .join(", ")
             ));
         }
-        fs::write(out_dir.join(format!("{short}_{n:03}.nif")), &bytes).expect("запись файла");
+        fs::write(out_dir.join(format!("{short}_{n:03}.nif")), &bytes).expect("writing the file");
 
-        // Размер и место: деформированный меш против `BSBound`.
+        // Size and placement: the deformed mesh against `BSBound`.
         let bound = skeleton.blocks.iter().find_map(|b| match b {
             Block::BsBound(b) => Some(b),
             _ => None,
@@ -238,25 +235,24 @@ fn bodies_of_all_creatures_are_built() {
                 let height = bound.half_extents[2] * 2.0;
                 let grounded = lo.z.abs() < 0.35 * height;
                 let sized = ratio.iter().all(|r| (0.4..=2.5).contains(r));
-                // Высота — единственный размер, который не зависит от разведённых рук позы
-                // привязки.
+                // Height is the only size that does not depend on the spread arms of the bind pose.
                 bump(
                     &mut facts,
                     format!(
-                        "высота меша 0.85…1.2 высоты габаритов: {}",
+                        "mesh height 0.85…1.2 of the bounds height: {}",
                         (0.85..=1.2).contains(&ratio[2])
                     ),
                 );
                 bump(
                     &mut facts,
-                    format!("стоит на земле (|низ| < 35 % высоты): {grounded}"),
+                    format!("stands on the ground (|bottom| < 35% of height): {grounded}"),
                 );
                 bump(
                     &mut facts,
-                    format!("размер 0.4…2.5 габаритов по каждой оси: {sized}"),
+                    format!("size 0.4…2.5 of the bounds on each axis: {sized}"),
                 );
                 let row = format!(
-                    "меш {:.0}×{:.0}×{:.0} (низ {:.0}), габариты {:.0}×{:.0}×{:.0}, отношение {:.2}/{:.2}/{:.2}",
+                    "mesh {:.0}×{:.0}×{:.0} (bottom {:.0}), bounds {:.0}×{:.0}×{:.0}, ratio {:.2}/{:.2}/{:.2}",
                     size.x * 2.0,
                     size.y * 2.0,
                     size.z * 2.0,
@@ -269,18 +265,18 @@ fn bodies_of_all_creatures_are_built() {
                     ratio[2],
                 );
                 if !(grounded && sized) {
-                    odd.push(format!("{short}_{n:03} ({} частей): {row}", parts.len()));
+                    odd.push(format!("{short}_{n:03} ({} parts): {row}", parts.len()));
                 }
                 row
             }
             (None, _) => {
-                bump(&mut facts, "форм нет");
-                "форм нет".to_owned()
+                bump(&mut facts, "no shapes");
+                "no shapes".to_owned()
             }
-            (_, None) => "габаритов нет".to_owned(),
+            (_, None) => "no bounds".to_owned(),
         };
         per_folder.entry(short.to_owned()).or_default().push(format!(
-            "записей {records}, частей {}, костей {}, кожа {} / жёстких {} / по Prn {} / без кости {}; {row}",
+            "records {records}, parts {}, bones {}, skin {} / rigid {} / by Prn {} / without a bone {}; {row}",
             parts.len(),
             body.bones,
             body.skinned,
@@ -290,23 +286,23 @@ fn bodies_of_all_creatures_are_built() {
         ));
     }
 
-    println!("по папкам (первое тело каждой и число тел):");
+    println!("by folder (the first body of each and the number of bodies):");
     for (folder, rows) in &per_folder {
         println!("  {folder} [{}]: {}", rows.len(), rows[0]);
     }
     println!(
-        "собрано тел {built} из {} (записей {records_built}); костей {bones}, форм с кожей {skinned}, жёстких под костью {rigid}, по строке Prn {attached}, без кости {unbound}; \
-         костей частей вне скелета {merged}, вершин без весов {unweighted}, треугольников {triangles}; байт {total_bytes}; текстур {}",
+        "bodies built {built} of {} (records {records_built}); bones {bones}, skinned shapes {skinned}, rigid under a bone {rigid}, by the Prn string {attached}, without a bone {unbound}; \
+         part bones outside the skeleton {merged}, vertices without weights {unweighted}, triangles {triangles}; bytes {total_bytes}; textures {}",
         wanted.len(),
         registry.len(),
     );
-    print_map("факты", &facts);
-    print_map("ошибки сборки", &errors);
-    println!("тела не по габаритам ({}):", odd.len());
+    print_map("facts", &facts);
+    print_map("build errors", &errors);
+    println!("bodies off the bounds ({}):", odd.len());
     for row in &odd {
         println!("  {row}");
     }
-    println!("формы без кости ({}):", loose.len());
+    println!("shapes without a bone ({}):", loose.len());
     for row in &loose {
         println!("  {row}");
     }
@@ -314,39 +310,39 @@ fn bodies_of_all_creatures_are_built() {
     match std::env::var_os("BACK2MW_NIFTEST").map(PathBuf::from) {
         Some(tool) => {
             let failures = niftest_failures(&tool, &out_dir);
-            println!("niftest: файлов {built}, брака {}", failures.len());
+            println!("niftest: files {built}, defects {}", failures.len());
             for f in failures.iter().take(10) {
                 println!("  {f}");
             }
-            // Контроль: заведомо битый файл `niftest` должен забраковать.
+            // Control: `niftest` must reject a deliberately broken file.
             let broken = out_dir.join("broken");
-            fs::create_dir_all(&broken).expect("папка контроля");
+            fs::create_dir_all(&broken).expect("control folder");
             fs::write(
                 broken.join("broken.nif"),
                 b"NetImmerse File Format, Version 4.0.0.2\n\x02\0\0\x04",
             )
-            .expect("битый файл");
+            .expect("broken file");
             assert!(
                 !niftest_failures(&tool, &broken).is_empty(),
-                "niftest не заметил битый файл — его вывод разбирается неверно"
+                "niftest did not notice the broken file — its output is parsed wrongly"
             );
-            assert!(failures.is_empty(), "niftest читает все тела");
+            assert!(failures.is_empty(), "niftest reads all bodies");
         }
-        None => println!("niftest: пропущен, BACK2MW_NIFTEST не задана"),
+        None => println!("niftest: skipped, BACK2MW_NIFTEST is not set"),
     }
     if std::env::var_os("BACK2MW_KEEP_OUTPUT").is_some() {
-        println!("меши оставлены в {}", out_dir.display());
+        println!("meshes kept in {}", out_dir.display());
     } else {
         let _ = fs::remove_dir_all(&out_dir);
     }
-    assert!(errors.is_empty(), "все тела собираются");
+    assert!(errors.is_empty(), "all bodies build");
     assert!(built > 0);
 }
 
-/// Узлы, формы и строки одной части тела — посмотреть глазами, к чему она крепится. Файл — в
-/// `BACK2MW_PART` (путь в архиве), по умолчанию голова медведя.
+/// Nodes, shapes and strings of one body part — to see with your own eyes what it is attached to.
+/// The file is in `BACK2MW_PART` (path in the archive), by default the bear's head.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn dump_one_part() {
     let wanted = std::env::var("BACK2MW_PART")
         .unwrap_or_else(|_| r"meshes\creatures\bear\bearhead.nif".to_owned())
@@ -360,17 +356,17 @@ fn dump_one_part() {
             break;
         }
     }
-    let data = found.unwrap_or_else(|| panic!("{wanted}: нет в архивах"));
-    let source = parse(&data).expect("разбор");
+    let data = found.unwrap_or_else(|| panic!("{wanted}: missing from archives"));
+    let source = parse(&data).expect("parsing");
     println!(
-        "{wanted}: блоков {}, корни {:?}",
+        "{wanted}: blocks {}, roots {:?}",
         source.blocks.len(),
         source.roots
     );
     for (i, block) in source.blocks.iter().enumerate() {
         match block {
             Block::Node(n) => println!(
-                "[{i}] NiNode «{}» T={:?} S={} дети {:?} extra {:?}",
+                "[{i}] NiNode \"{}\" T={:?} S={} children {:?} extra {:?}",
                 n.av.net.name,
                 n.av.translation,
                 n.av.scale,
@@ -378,7 +374,7 @@ fn dump_one_part() {
                 n.av.net.extra_data.iter().map(|c| c.0).collect::<Vec<_>>()
             ),
             Block::TriStrips(s) | Block::TriShape(s) => println!(
-                "[{i}] форма «{}» T={:?} S={} кожа {:?} extra {:?}",
+                "[{i}] shape \"{}\" T={:?} S={} skin {:?} extra {:?}",
                 s.av.net.name,
                 s.av.translation,
                 s.av.scale,

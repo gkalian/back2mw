@@ -1,6 +1,6 @@
 use super::*;
 
-/// DDS A8R8G8B8 из пикселей RGBA — тем же кодировщиком, что пишет вывод.
+/// DDS A8R8G8B8 from RGBA pixels — with the same encoder that writes the output.
 fn bgra(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
     let rgba = (0..height)
         .flat_map(|y| (0..width).map(move |x| (x, y)))
@@ -13,7 +13,7 @@ fn bgra(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8>
     })
 }
 
-/// Заголовок DDS со сжатием `four_cc` и данными `data`.
+/// A DDS header with `four_cc` compression and the data `data`.
 fn compressed(width: u32, height: u32, four_cc: &[u8; 4], data: &[u8]) -> Vec<u8> {
     let mut b = bgra(width, height, |_, _| [0; 4]);
     b.truncate(HEADER_LEN);
@@ -30,7 +30,7 @@ fn pixels(bytes: &[u8]) -> Image {
 
 #[test]
 fn a_64_icon_becomes_32_with_averaged_blocks() {
-    // Шахматка 1×1: чёрный и белый — в среднем серый 127.
+    // A 1×1 checkerboard: black and white average to gray 127.
     let src = bgra(64, 64, |x, y| {
         if (x + y) % 2 == 0 {
             [0, 0, 0, 255]
@@ -38,7 +38,7 @@ fn a_64_icon_becomes_32_with_averaged_blocks() {
             [255, 255, 255, 255]
         }
     });
-    let out = shrink_icon(&src).unwrap().expect("уменьшено");
+    let out = shrink_icon(&src).unwrap().expect("shrunk");
     let img = pixels(&out);
     assert_eq!((img.width, img.height), (32, 32));
     assert!(img.rgba.iter().all(|p| *p == [127, 127, 127, 255]));
@@ -46,7 +46,7 @@ fn a_64_icon_becomes_32_with_averaged_blocks() {
 
 #[test]
 fn transparent_pixels_do_not_darken_the_colour() {
-    // В каждом блоке 2×2 один красный непрозрачный и три прозрачных чёрных.
+    // Each 2×2 block has one opaque red pixel and three transparent black ones.
     let src = bgra(64, 64, |x, y| {
         if x % 2 == 0 && y % 2 == 0 {
             [200, 0, 0, 255]
@@ -70,8 +70,8 @@ fn channels_are_read_by_mask() {
     assert_eq!(img.rgba, [[10, 20, 30, 40], [11, 20, 30, 40]]);
 }
 
-/// Блок DXT1: цвет 0 — чистый красный (0xF800), цвет 1 — чистый синий (0x001F), все индексы 0
-/// кроме первого пикселя (1).
+/// A DXT1 block: color 0 is pure red (0xF800), color 1 is pure blue (0x001F), all indices 0 except
+/// the first pixel (1).
 #[test]
 fn dxt1_block_decodes_its_palette() {
     let block = [0x00, 0xf8, 0x1f, 0x00, 0x01, 0, 0, 0];
@@ -80,7 +80,7 @@ fn dxt1_block_decodes_its_palette() {
     assert_eq!(img.rgba[1], [255, 0, 0, 255]);
 }
 
-/// DXT5: альфа 0 = 255, альфа 1 = 0, индекс первого пикселя 1 → прозрачный, остальных 0.
+/// DXT5: alpha 0 = 255, alpha 1 = 0, the first pixel's index is 1 → transparent, the others 0.
 #[test]
 fn dxt5_alpha_is_interpolated_from_its_endpoints() {
     let mut block = vec![255, 0, 1, 0, 0, 0, 0, 0];

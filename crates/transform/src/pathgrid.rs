@@ -1,21 +1,24 @@
-//! Сетки путей: `PGRD` Oblivion → `PGRD` Morrowind (T4.1).
+//! Path grids: Oblivion `PGRD` → Morrowind `PGRD` (T4.1).
 //!
-//! * **Координаты.** У Oblivion точки внешней ячейки — мировые, у Morrowind — от юго-западного
-//!   угла ячейки (у 1 194 `PGRD` `Morrowind.esm` все внешние точки в 0…8192, 2026-09-27). Поэтому
-//!   из мировых X/Y вычитается угол целевой ячейки *до* смещения — смещение на координаты внутри
-//!   ячейки не влияет. Z не трогается. У интерьера координаты как есть. Округление до целого:
-//!   у Morrowind точки в целых юнитах.
-//! * **Слияние 2×2.** Четыре сетки ячеек-источников складываются в одну, номера точек сдвигаются.
-//!   Сетки городов (дочерних worldspace, T3.9) ложатся туда же, связей с сеткой родителя у них
-//!   нет: у Oblivion их и не было — город и остров разные worldspace.
-//! * **Связи с соседними ячейками** (`PGRI`: своя точка и мировые координаты чужой). Чужая
-//!   точка ищется во всех сетках того же worldspace ближе [`LINK_TOLERANCE`] ([`resolve_links`]).
-//!   Если её сетка в той же ячейке Morrowind, связь становится обычным ребром; если в другой —
-//!   теряется: у `PGRD` Morrowind связей между ячейками нет.
-//! * **Рёбра** пишутся у обоих концов (так в ванили: у каждой связи `a → b` есть `b → a`), без
-//!   повторов и петель, соседи — по возрастанию номера. У точки не больше [`MAX_NEIGHBOURS`]
-//!   соседей — ширина поля в `PGRP`; лишние отрезаются с подсчётом.
-//! * `PGRL` (связи точек с объектами) и `PGAG` у Morrowind аналога не имеют — не переносятся.
+//! * **Coordinates.** In Oblivion the points of an exterior cell are in world coordinates, in
+//!   Morrowind they are from the cell's south-western corner (in all 1,194 `PGRD` of
+//!   `Morrowind.esm` all exterior points are in 0…8192, 2026-09-27). So the target cell's corner
+//!   *before* the offset is subtracted from the world X/Y — the offset does not affect coordinates
+//!   inside a cell. Z is not touched. In an interior the coordinates are as is. Rounding to
+//!   integers: Morrowind points are in whole units.
+//! * **2×2 merge.** The four source cell grids are combined into one, the point numbers are
+//!   shifted. City grids (child worldspaces, T3.9) go there too, without links to the parent's
+//!   grid: Oblivion did not have them either — the city and the island are different worldspaces.
+//! * **Links to neighboring cells** (`PGRI`: our point and the world coordinates of the other one).
+//!   The other point is looked for in all grids of the same worldspace closer than
+//!   [`LINK_TOLERANCE`] ([`resolve_links`]). If its grid is in the same Morrowind cell, the link
+//!   becomes an ordinary edge; if in another one, it is lost: Morrowind `PGRD` has no links between
+//!   cells.
+//! * **Edges** are written at both ends (as in vanilla: every link `a → b` has `b → a`), without
+//!   repeats and loops, neighbors in ascending order. A point has no more than [`MAX_NEIGHBOURS`]
+//!   neighbors — the width of the field in `PGRP`; extra ones are cut off and counted.
+//! * `PGRL` (links from points to objects) and `PGAG` have no Morrowind equivalent and are not
+//!   carried over.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -23,27 +26,29 @@ use tes4_read::PathGrid as SourceGrid;
 
 use crate::land::CELL_SIZE_UNITS;
 
-/// Допуск поиска точки на том конце `PGRI`, юниты. Цель совпадает с точкой до бита у 206 507 из
-/// 206 601 найденных связей `Tamriel` и 69 511 из 69 516 `SEWorld`, остальные ближе 1. Связи без
-/// пары — 295 и 1 460; у `SEWorld` проверено скриптом, что ближе 1 юнита к их цели нет точки ни в
-/// одном worldspace файла, то есть связи висят в самих данных; у `Tamriel` — не проверено
-/// (2026-09-27, `transform/tests/real_pathgrid.rs`).
+/// Lookup tolerance for the point at the other end of a `PGRI`, units. The target matches a point
+/// to the bit in 206,507 of 206,601 found links of `Tamriel` and 69,511 of 69,516 of `SEWorld`, the
+/// rest are closer than 1. Links without a pair: 295 and 1,460; for `SEWorld` a script checked that
+/// there is no point within 1 unit of their target in any worldspace of the file, so the links
+/// dangle in the data itself; for `Tamriel` — not checked (2026-09-27,
+/// `transform/tests/real_pathgrid.rs`).
 pub const LINK_TOLERANCE: f32 = 1.0;
 
-/// Предел соседей точки: `connection_count` в `PGRP` Morrowind — один байт.
+/// Neighbor limit per point: `connection_count` in Morrowind's `PGRP` is one byte.
 pub const MAX_NEIGHBOURS: usize = 255;
 
-/// Сетка ячейки-источника снаружи.
+/// The grid of an exterior source cell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourcePathGrid {
-    /// 0 — сам worldspace, 1… — влитые дети по порядку ([`crate::exterior::merge_children`]).
+    /// 0 is the worldspace itself, 1… are the merged children in order
+    /// ([`crate::exterior::merge_children`]).
     pub world: usize,
-    /// Ячейка Oblivion.
+    /// The Oblivion cell.
     pub cell: (i32, i32),
     pub grid: SourceGrid,
 }
 
-/// Сетка в координатах Morrowind, без имени и сетки ячейки — их знает вызывающий.
+/// A grid in Morrowind coordinates, without the name and the cell grid — the caller knows them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PathGraph {
     pub points: Vec<[i32; 3]>,
@@ -52,55 +57,57 @@ pub struct PathGraph {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PathGridReport {
-    /// Записано `PGRD`.
+    /// `PGRD` written.
     pub grids: usize,
     pub points: usize,
-    /// Связей между ячейками Oblivion внутри одной ячейки Morrowind, ставших рёбрами.
+    /// Links between Oblivion cells inside one Morrowind cell that became edges.
     pub links_joined: usize,
-    /// Связей в другую ячейку Morrowind — потеряны.
+    /// Links into another Morrowind cell — lost.
     pub links_outside: usize,
-    /// Связей, у которых точки на том конце не нашлось, — потеряны.
+    /// Links whose point at the other end was not found — lost.
     pub links_unmatched: usize,
-    /// Соседей сверх [`MAX_NEIGHBOURS`] — отрезаны.
+    /// Neighbors beyond [`MAX_NEIGHBOURS`] — cut off.
     pub neighbours_cut: usize,
-    /// Точек внешних ячеек, чьи X/Y после перевода вне 0…8192: стоят за краем своей ячейки
-    /// Oblivion. Переносятся как есть.
+    /// Points of exterior cells whose X/Y after conversion are outside 0…8192: they stand beyond
+    /// the edge of their Oblivion cell. Carried over as is.
     pub points_outside_cell: usize,
 }
 
-/// Сетка больше, чем держит поле числа точек (`u16`).
+/// The grid is larger than the point count field holds (`u16`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TooManyPoints(pub usize);
 
 fn round(v: f32) -> i32 {
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "координаты мира Oblivion — ±2 млн юнитов, после round влезают в i32"
+        reason = "Oblivion world coordinates are ±2 million units, after round they fit into i32"
     )]
     let r = v.round() as i32;
     r
 }
 
-/// Ключ клетки поиска размером с допуск.
+/// Key of a lookup cell the size of the tolerance.
 fn bucket(p: [f32; 3]) -> [i32; 3] {
     p.map(|v| round((v / LINK_TOLERANCE).floor()))
 }
 
-/// Точка на том конце связи: номер сетки в списке и номер точки в ней.
+/// The point at the other end of a link: the grid's number in the list and the point's number in
+/// it.
 pub type LinkEnd = (usize, u16);
 
-/// Для каждой связи `PGRI` каждой сетки — точка на том конце: ближайшая точка того же worldspace
-/// ближе [`LINK_TOLERANCE`], кроме своей; при равенстве — меньшие номера. `None` — не нашлось.
+/// For each `PGRI` link of each grid — the point at the other end: the nearest point of the same
+/// worldspace closer than [`LINK_TOLERANCE`], other than its own; on a tie — the smaller numbers.
+/// `None` means not found.
 ///
-/// Ячейку цели по координатам определять нельзя: точки Oblivion стоят и ровно на кромке ячейки
-/// (x = 8192), и `floor` относит такую к восточной соседке, хотя принадлежит она западной. По
-/// координате ячейка определилась бы неверно у 19 219 связей `Tamriel` и 3 008 `SEWorld`
-/// (2026-09-27, `real_pathgrid`).
+/// The target cell must not be determined from coordinates: Oblivion points also stand exactly on a
+/// cell's edge (x = 8192), and `floor` assigns such a point to the eastern neighbor, although it
+/// belongs to the western one. By coordinate the cell would be determined wrongly for 19,219 links
+/// of `Tamriel` and 3,008 of `SEWorld` (2026-09-27, `real_pathgrid`).
 pub fn resolve_links(grids: &[SourcePathGrid]) -> Vec<Vec<Option<LinkEnd>>> {
     let mut index: HashMap<(usize, [i32; 3]), Vec<LinkEnd>> = HashMap::new();
     for (gi, g) in grids.iter().enumerate() {
         for (pi, &p) in g.grid.points.iter().enumerate() {
-            let pi = u16::try_from(pi).expect("число точек PGRD Oblivion — u16");
+            let pi = u16::try_from(pi).expect("the point count of an Oblivion PGRD is a u16");
             index
                 .entry((g.world, bucket(p)))
                 .or_default()
@@ -140,8 +147,9 @@ pub fn resolve_links(grids: &[SourcePathGrid]) -> Vec<Vec<Option<LinkEnd>>> {
         .collect()
 }
 
-/// Сетка ячейки Morrowind `target` (до смещения) из сеток `members` (номера в `grids`, их ячейки
-/// попадают в `target`). `links` — из [`resolve_links`] по тем же `grids`. `None` — точек нет.
+/// The grid of Morrowind cell `target` (before the offset) from the grids `members` (indices into
+/// `grids`, their cells fall into `target`). `links` come from [`resolve_links`] over the same
+/// `grids`. `None` means there are no points.
 pub fn exterior_graph(
     target: (i32, i32),
     members: &[usize],
@@ -149,7 +157,7 @@ pub fn exterior_graph(
     links: &[Vec<Option<LinkEnd>>],
     report: &mut PathGridReport,
 ) -> Result<Option<PathGraph>, TooManyPoints> {
-    // Где в общей нумерации начинается каждая сетка.
+    // Where each grid starts in the shared numbering.
     let mut start: HashMap<usize, usize> = HashMap::new();
     let mut world_points: Vec<[f32; 3]> = Vec::new();
     for &gi in members {
@@ -180,7 +188,7 @@ pub fn exterior_graph(
     let origin = [target.0, target.1].map(|c| {
         #[expect(
             clippy::cast_precision_loss,
-            reason = "ячейки — сотни, 8192·c точно в f32"
+            reason = "cells are hundreds, 8192·c is exact in f32"
         )]
         let o = (c * i32::try_from(CELL_SIZE_UNITS).expect("8192")) as f32;
         o
@@ -197,8 +205,8 @@ pub fn exterior_graph(
     build(points, pairs, report)
 }
 
-/// Сетка интерьера: координаты как есть, связей с соседями у интерьера быть не должно — если
-/// есть, теряются.
+/// An interior grid: coordinates as is; an interior must not have links to neighbors — if it does,
+/// they are lost.
 pub fn interior_graph(
     grid: &SourceGrid,
     report: &mut PathGridReport,
@@ -214,7 +222,7 @@ pub fn interior_graph(
     build(points, pairs, report)
 }
 
-/// Рёбра у обоих концов, без повторов и петель, по возрастанию; не больше [`MAX_NEIGHBOURS`].
+/// Edges at both ends, without repeats and loops, ascending; no more than [`MAX_NEIGHBOURS`].
 fn build(
     points: Vec<[i32; 3]>,
     pairs: Vec<(usize, usize)>,
@@ -227,7 +235,7 @@ fn build(
         return Err(TooManyPoints(points.len()));
     }
     let mut adjacency: Vec<BTreeSet<u16>> = vec![BTreeSet::new(); points.len()];
-    let number = |i: usize| u16::try_from(i).expect("число точек проверено выше");
+    let number = |i: usize| u16::try_from(i).expect("the point count is checked above");
     for (a, b) in pairs {
         if a != b {
             adjacency[a].insert(number(b));

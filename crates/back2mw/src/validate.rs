@@ -1,40 +1,40 @@
-//! Стадия `validate`: независимые читатели проверяют то, что мы записали (T1.9).
+//! The `validate` stage: independent readers check what we wrote (T1.9).
 //!
-//! Критерий у инструментов разный (измерено на OpenMW 0.51.0):
+//! The tools have different criteria (measured on OpenMW 0.51.0):
 //!
-//! * `esmtool dump` — код возврата: 0 на целом плагине, 1 на битом.
-//! * `niftest` **всегда возвращает 0**, даже на битом или отсутствующем файле; ошибка — это
-//!   строки `Failed to read '<путь>':` (и `Failed to open '<путь>' …`) в stderr. Поэтому код
-//!   возврата не смотрим, а разбираем вывод.
+//! * `esmtool dump` — the exit code: 0 on a sound plugin, 1 on a broken one.
+//! * `niftest` **always returns 0**, even on a broken or missing file; an error is the lines
+//!   `Failed to read '<path>':` (and `Failed to open '<path>' …`) in stderr. So we ignore the exit
+//!   code and parse the output.
 //!
-//! `niftest` принимает несколько файлов за вызов и печатает путь **так, как он передан** (для
-//! каталога — только имя файла без каталога, так что двух одноимённых не различить). Поэтому
-//! файлы передаются явным списком, порциями, чтобы уложиться в предел длины командной строки.
+//! `niftest` takes several files per call and prints the path **as it was passed** (for a directory
+//! — only the file name without the directory, so two files with the same name cannot be told
+//! apart). So the files are passed as an explicit list, in chunks, to stay within the command-line
+//! length limit.
 //!
-//! Нет инструмента — ошибка стадии, а не пропуск: `validate` — часть потока.
+//! A missing tool is a stage error, not a skip: `validate` is part of the flow.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Сколько символов путей передаём `niftest` за один вызов. Предел командной строки Windows —
-/// 32 767 знаков; берём с запасом.
+/// How many characters of paths we pass to `niftest` per call. The Windows command-line limit is
+/// 32,767 characters; we keep a margin.
 const ARG_BUDGET: usize = 20_000;
 
-/// Меш, который `niftest` не смог прочитать.
+/// A mesh `niftest` could not read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NiftestFailure {
-    /// Путь так, как его напечатал `niftest`.
+    /// The path as `niftest` printed it.
     pub path: String,
-    /// Строка с причиной, если она есть (`NIFFile Error: …`).
+    /// The line with the reason, if there is one (`NIFFile Error: …`).
     pub reason: String,
 }
 
-/// Разбирает вывод `niftest` (stderr и stdout вместе). Чистая функция.
+/// Parses `niftest` output (stderr and stdout together). A pure function.
 ///
-/// Провалом считается строка `Failed to read '<путь>':` или `Failed to open '<путь>' …`;
-/// следующая строка, если она не начинается с `Failed`, — причина. Один и тот же путь,
-/// названный дважды, считается один раз.
+/// A failure is a line `Failed to read '<path>':` or `Failed to open '<path>' …`; the next line,
+/// unless it starts with `Failed`, is the reason. The same path named twice is counted once.
 pub fn parse_niftest_output(text: &str) -> Vec<NiftestFailure> {
     let lines: Vec<&str> = text.lines().collect();
     let mut out: Vec<NiftestFailure> = Vec::new();
@@ -65,18 +65,18 @@ pub fn parse_niftest_output(text: &str) -> Vec<NiftestFailure> {
 
 #[derive(Debug)]
 pub enum ValidateError {
-    /// Путь к инструменту не задан (ни флагом, ни ключом, ни переменной).
+    /// The tool path is not set (neither by a flag, nor a key, nor a variable).
     ToolNotConfigured {
         tool: &'static str,
         key: &'static str,
         flag: &'static str,
         env: &'static str,
     },
-    /// Инструмент не запустился.
+    /// The tool failed to start.
     Spawn { tool: PathBuf, message: String },
-    /// В проверяемой папке нет ни одного плагина.
+    /// The folder being checked has no plugins.
     NoPlugins(PathBuf),
-    /// Папка не читается.
+    /// The folder cannot be read.
     Io { path: PathBuf, message: String },
 }
 
@@ -111,32 +111,32 @@ impl fmt::Display for ValidateError {
 
 impl std::error::Error for ValidateError {}
 
-/// Итог `esmtool dump` по плагину.
+/// `esmtool dump` result for a plugin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginCheck {
     pub ok: bool,
-    /// Записей `STAT` в дампе (регистр не важен: `esmtool` пишет `Record: STAT`).
+    /// `STAT` records in the dump (case does not matter: `esmtool` writes `Record: STAT`).
     pub stat_records: usize,
-    /// Записей `WEAP` в дампе.
+    /// `WEAP` records in the dump.
     pub weapon_records: usize,
-    /// Записей `ARMO`, `CLOT`, `BODY` в дампе.
+    /// `ARMO`, `CLOT`, `BODY` records in the dump.
     pub armor_records: usize,
     pub clothing_records: usize,
     pub body_records: usize,
-    /// Предметов: `MISC` + `BOOK` + `ALCH` + `INGR` + `APPA`.
+    /// Items: `MISC` + `BOOK` + `ALCH` + `INGR` + `APPA`.
     pub item_records: usize,
-    /// Объектов мира: `ACTI` + `DOOR` + `CONT` + `LIGH`.
+    /// World objects: `ACTI` + `DOOR` + `CONT` + `LIGH`.
     pub world_records: usize,
-    /// Записей `NPC_` (фаза 7).
+    /// `NPC_` records (phase 7).
     pub npc_records: usize,
-    /// Записей `DIAL` и `INFO` (T10.6).
+    /// `DIAL` and `INFO` records (T10.6).
     pub topic_records: usize,
     pub info_records: usize,
-    /// Первые строки stderr при провале.
+    /// The first lines of stderr on failure.
     pub message: String,
 }
 
-/// `esmtool dump <плагин>`: код возврата и число записей `STAT` и `WEAP` в дампе.
+/// `esmtool dump <plugin>`: the exit code and the number of `STAT` and `WEAP` records in the dump.
 pub fn check_plugin(esmtool: &Path, plugin: &Path) -> Result<PluginCheck, ValidateError> {
     let out = Command::new(esmtool)
         .arg("dump")
@@ -170,8 +170,8 @@ pub fn check_plugin(esmtool: &Path, plugin: &Path) -> Result<PluginCheck, Valida
     })
 }
 
-/// Делит файлы на порции так, чтобы сумма длин путей в порции не превышала `budget`.
-/// Порция всегда содержит хотя бы один файл.
+/// Splits files into chunks so that the total path length in a chunk does not exceed `budget`. A
+/// chunk always holds at least one file.
 pub fn chunks_by_length(files: &[PathBuf], budget: usize) -> Vec<&[PathBuf]> {
     let mut out = Vec::new();
     let (mut start, mut used) = (0usize, 0usize);
@@ -190,7 +190,7 @@ pub fn chunks_by_length(files: &[PathBuf], budget: usize) -> Vec<&[PathBuf]> {
     out
 }
 
-/// `niftest -q` по каждому файлу; провалы разобраны из вывода.
+/// `niftest -q` on each file; failures are parsed from the output.
 pub fn check_meshes(
     niftest: &Path,
     files: &[PathBuf],
@@ -213,19 +213,19 @@ pub fn check_meshes(
     Ok(failures)
 }
 
-/// Итог проверки готового мода в папке ([`check_output`]).
+/// Result of checking the finished mod in a folder ([`check_output`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputCheck {
-    /// Плагины из корня папки, по имени, с итогом `esmtool`.
+    /// Plugins from the root of the folder, by name, with the `esmtool` result.
     pub plugins: Vec<(PathBuf, PluginCheck)>,
-    /// Сколько мешей проверил `niftest`.
+    /// How many meshes `niftest` checked.
     pub meshes: usize,
-    /// Меши, которые `niftest` не прочитал.
+    /// Meshes `niftest` could not read.
     pub mesh_failures: Vec<NiftestFailure>,
 }
 
 impl OutputCheck {
-    /// Брак строками: отвергнутые плагины и нечитаемые меши. Пусто — мод цел.
+    /// Defects as lines: rejected plugins and unreadable meshes. Empty means the mod is sound.
     pub fn problems(&self) -> Vec<String> {
         self.plugins
             .iter()
@@ -247,8 +247,8 @@ impl OutputCheck {
     }
 }
 
-/// Стадия `validate` целиком: `esmtool` по каждому плагину из корня `output_dir` и `niftest`
-/// по всем `Meshes/**/*.nif`. Общая для консоли и окна.
+/// The whole `validate` stage: `esmtool` on each plugin in the root of `output_dir` and `niftest`
+/// on all `Meshes/**/*.nif`. Shared by the console and the window.
 pub fn check_output(
     output_dir: &Path,
     esmtool: &Path,

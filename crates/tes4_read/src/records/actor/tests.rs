@@ -39,7 +39,7 @@ fn race_bonuses_skip_empty_slots_and_attributes_split_by_sex() {
     assert_eq!(race.attributes[1][7], 57);
     assert_eq!(race.spells, [0x11, 0x12]);
     assert_eq!(race.name.as_deref(), Some("Golden Saint"));
-    // Без `VNAM` — свой голос.
+    // Without `VNAM` — their own voice.
     assert_eq!(race.voices, [0, 0]);
 }
 
@@ -219,7 +219,11 @@ fn race_head_parts_stop_at_nam1_and_face_is_read() {
         f32s(b"FGGS", &[0.5; 50]),
     ])
     .unwrap();
-    assert_eq!(race.head_parts.len(), 2, "тело после NAM1 — не голова");
+    assert_eq!(
+        race.head_parts.len(),
+        2,
+        "the body after NAM1 is not the head"
+    );
     assert_eq!(
         race.head_parts[0].texture.as_deref(),
         Some("Characters/Imperial/HeadHuman.dds")
@@ -247,7 +251,8 @@ fn hair_and_eyes() {
     assert_eq!(eyes.texture.as_deref(), Some("Characters/Eyes/Blue.dds"));
 }
 
-/// `VNAM` — голосовые расы мужчин и женщин (у бретонки — имперская, у бретонца — 0, свой).
+/// `VNAM` — the voice races of men and women (a Breton woman has the Imperial one, a Breton man 0,
+/// his own).
 #[test]
 fn race_voices_by_sex() {
     let mut data = [255, 0].repeat(7);

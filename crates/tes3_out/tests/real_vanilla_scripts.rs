@@ -1,14 +1,14 @@
-//! Шаблоны скриптов `crate::scripts` против ванили (T10.3): байт-код, который пишем мы, побайтово
-//! совпадает с `SCDT` ванильных скриптов того же вида. Синтетика раскладки — в
-//! `src/scripts/tests.rs`; здесь — сверка, которую синтетика дать не может (ванильные байты в
-//! репозиторий не кладутся).
+//! The `crate::scripts` templates against vanilla (T10.3): the bytecode we write matches the `SCDT`
+//! of vanilla scripts of the same kind byte for byte. The synthetic layout test is in
+//! `src/scripts/tests.rs`; here is the check the synthetic test cannot give (vanilla bytes are not
+//! put into the repository).
 //!
-//! * Петля — каждый скрипт `Morrowind.esm`, чей текст — ровно наш шаблон с громкостью и тоном 1.0
-//!   (`Sound_Cave_Drip`, `Sound_Machinery`, …), пересобирается с тем же ID и звуком.
-//! * Переменные — каждый скрипт из одних объявлений `short` (`nohello`, `noflee`, …).
+//! * Loop — every script of `Morrowind.esm` whose text is exactly our template with volume and
+//!   pitch 1.0 (`Sound_Cave_Drip`, `Sound_Machinery`, …) is rebuilt with the same ID and sound.
+//! * Variables — every script made only of `short` declarations (`nohello`, `noflee`, …).
 //!
 //! ```text
-//! BACK2MW_GAME_DATA='<каталог с Morrowind.esm>' \
+//! BACK2MW_GAME_DATA='<directory with Morrowind.esm>' \
 //!   cargo test -p tes3_out --test real_vanilla_scripts -- --ignored --nocapture
 //! ```
 
@@ -17,7 +17,7 @@ mod common;
 use tes3::esp::{Plugin, TES3Object};
 use tes3_out::{PluginBuilder, Script};
 
-/// Наш скрипт, записанный и прочитанный обратно: `(SCVR, SCDT)`.
+/// Our script, written and read back: `(SCVR, SCDT)`.
 fn ours(script: &Script) -> (Vec<u8>, Vec<u8>, u32) {
     let mut builder = PluginBuilder::new("back2mw", "");
     builder.add_script(script).unwrap();
@@ -30,10 +30,10 @@ fn ours(script: &Script) -> (Vec<u8>, Vec<u8>, u32) {
             TES3Object::Script(s) => Some((s.variables, s.bytecode, s.header.num_shorts)),
             _ => None,
         })
-        .expect("в плагине один SCPT")
+        .expect("the plugin has one SCPT")
 }
 
-/// Текст без комментариев, пустых строк и регистра — строки по одной.
+/// Text without comments, empty lines and case — one line at a time.
 fn lines(text: &str) -> Vec<String> {
     text.lines()
         .map(|l| {
@@ -47,7 +47,7 @@ fn lines(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// `PlayLoopSound3DVP "<звук>"[,] 1.0[,] 1.0` → звук.
+/// `PlayLoopSound3DVP "<sound>"[,] 1.0[,] 1.0` → the sound.
 fn loop_sound_of(text: &str) -> Option<String> {
     let l = lines(text);
     let [begin, if_cell, if_playing, play, endif1, endif2, end] = l.as_slice() else {
@@ -74,14 +74,14 @@ fn loop_sound_of(text: &str) -> Option<String> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn templates_match_vanilla_bytecode() {
     let plugin = Plugin::from_path(common::game_file("Morrowind.esm")).unwrap();
     let (mut loops, mut locals) = (Vec::new(), Vec::new());
     for o in &plugin.objects {
         let TES3Object::Script(s) = o else { continue };
         if let Some(text_sound) = loop_sound_of(&s.text) {
-            // Звук берётся из байт-кода: в тексте регистр может отличаться.
+            // The sound is taken from the bytecode: the case in the text may differ.
             let at = s
                 .bytecode
                 .windows(2)
@@ -95,7 +95,7 @@ fn templates_match_vanilla_bytecode() {
                 sound,
             });
             assert!(vars.is_empty());
-            assert_eq!(code, s.bytecode, "SCDT {} не сошёлся", s.id);
+            assert_eq!(code, s.bytecode, "SCDT {} did not match", s.id);
             loops.push(s.id.clone());
             continue;
         }
@@ -121,9 +121,9 @@ fn templates_match_vanilla_bytecode() {
             locals.push(s.id.clone());
         }
     }
-    println!("петли: {} — {}", loops.len(), loops.join(", "));
-    println!("переменные: {} — {}", locals.len(), locals.join(", "));
-    // Контроль: сверка прошла не на пустом множестве.
+    println!("loops: {} — {}", loops.len(), loops.join(", "));
+    println!("variables: {} — {}", locals.len(), locals.join(", "));
+    // Control: the check did not pass on an empty set.
     assert!(loops.len() >= 10, "{loops:?}");
     assert!(locals.len() >= 10, "{locals:?}");
 }

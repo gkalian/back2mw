@@ -1,12 +1,13 @@
-//! Измерение T11.4: уровневые списки существ `LEVC` ванильных мастеров Morrowind — что стоит в
-//! строках (существа, вложенные списки, NPC) и как списки расставлены в мире (постоянные ссылки
-//! или временные).
+//! Measurement T11.4: the `LEVC` leveled creature lists of the vanilla Morrowind masters — what
+//! stands in the rows (creatures, nested lists, NPCs) and how the lists are placed in the world
+//! (persistent references or temporary ones).
 //!
-//! От ответа зависит перенос `LVLC` Oblivion: в его строках 867 NPC из 4 118 и 1 163 вложенных
-//! списка, и ссылки на список надо писать так же, как пишет ваниль. Итог (2026-10-01): NPC в
-//! строках ваниль держит (`Morrowind.esm` — 28 строк), вложенные списки — тоже (Bloodmoon — 11);
-//! ссылки на список все временные, на существ и NPC — все постоянные. Это измерение, синтетики
-//! нет; числа переносятся в `docs/ru/formats/tes3.md` («Уровневые списки существ») руками.
+//! The conversion of Oblivion's `LVLC` depends on the answer: its rows hold 867 NPCs out of 4,118
+//! and 1,163 nested lists, and references to a list must be written the way vanilla writes them.
+//! Result (2026-10-01): vanilla does keep NPCs in rows (`Morrowind.esm` — 28 rows), nested lists
+//! too (Bloodmoon — 11); references to a list are all temporary, to creatures and NPCs all
+//! persistent. This is a measurement, there is no synthetic test; the numbers are carried into
+//! `docs/en/formats/tes3.md` ("Leveled creature lists") by hand.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -20,11 +21,11 @@ use std::collections::{BTreeMap, HashMap};
 use tes3::esp::{Cell, Creature, LeveledCreature, LeveledItem, Npc, Plugin};
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn vanilla_creature_lists_hold_npcs_and_lists_and_are_placed_as_temporary() {
     let masters = ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"];
-    // Тип записи по ID в нижнем регистре — по всем мастерам сразу: список Tribunal может
-    // ссылаться на существо `Morrowind.esm`.
+    // Record type by lower-case ID — over all masters at once: a Tribunal list can reference a
+    // creature of `Morrowind.esm`.
     let mut kind_of: HashMap<String, &'static str> = HashMap::new();
     let mut plugins = Vec::new();
     for master in masters {
@@ -33,7 +34,7 @@ fn vanilla_creature_lists_hold_npcs_and_lists_and_are_placed_as_temporary() {
             .load_path_filtered(common::game_file(master), |tag| {
                 matches!(&tag, b"CREA" | b"NPC_" | b"LEVC" | b"LEVI" | b"CELL")
             })
-            .unwrap_or_else(|e| panic!("не загрузить {master}: {e}"));
+            .unwrap_or_else(|e| panic!("cannot load {master}: {e}"));
         for c in plugin.objects_of_type::<Creature>() {
             kind_of.insert(c.id.to_ascii_lowercase(), "CREA");
         }
@@ -71,7 +72,7 @@ fn vanilla_creature_lists_hold_npcs_and_lists_and_are_placed_as_temporary() {
                 max_level = max_level.max(*level);
             }
         }
-        // Ссылки на актёров и списки в ячейках: постоянные (до `NAM0`) и временные.
+        // References to actors and lists in cells: persistent (before `NAM0`) and temporary.
         let mut placed: BTreeMap<(&str, bool), usize> = BTreeMap::new();
         for cell in plugin.objects_of_type::<Cell>() {
             for r in cell.references.values() {
@@ -82,11 +83,12 @@ fn vanilla_creature_lists_hold_npcs_and_lists_and_are_placed_as_temporary() {
             }
         }
         println!(
-            "{master}: LEVC {lists} (пустых {empty}, строк до {longest}, уровень до {max_level}); \
-             флаги {flags:?}; цели строк {targets:?}; шанс «ничего» {chances:?}"
+            "{master}: LEVC {lists} (empty {empty}, rows up to {longest}, level up to {max_level}); \
+             flags {flags:?}; row targets {targets:?}; \"nothing\" chance {chances:?}"
         );
-        println!("{master}: ссылки (тип, постоянная) {placed:?}");
-        // Ссылка на список — временная, на существо и NPC — постоянная; исключений нет.
+        println!("{master}: references (type, persistent) {placed:?}");
+        // A reference to a list is temporary, to a creature or NPC persistent; there are no
+        // exceptions.
         for wrong in [("LEVC", true), ("CREA", false), ("NPC_", false)] {
             assert_eq!(placed.get(&wrong), None, "{master}: {wrong:?}");
         }
@@ -106,7 +108,7 @@ fn vanilla_creature_lists_hold_npcs_and_lists_and_are_placed_as_temporary() {
             .filter(|l| l.items.iter().any(|(id, _)| kind(id) == "LEVI"))
             .count();
         println!(
-            "{master}: списки с NPC {with_npc:?}; с вложенным LEVC {nested:?}; LEVI с вложенным LEVI {item_nested}"
+            "{master}: lists with NPCs {with_npc:?}; with a nested LEVC {nested:?}; LEVI with a nested LEVI {item_nested}"
         );
     }
     let (_, morrowind) = &plugins[0];
@@ -115,20 +117,20 @@ fn vanilla_creature_lists_hold_npcs_and_lists_and_are_placed_as_temporary() {
         116,
         "LEVC Morrowind.esm"
     );
-    // На этом стоит перенос: строки с NPC и вложенные списки остаются в `LEVC`.
+    // The conversion relies on this: rows with NPCs and nested lists stay in `LEVC`.
     assert_eq!(
         rows(&plugins[0].1, "NPC_", &kind),
         28,
-        "NPC в Morrowind.esm"
+        "NPCs in Morrowind.esm"
     );
     assert_eq!(
         rows(&plugins[2].1, "LEVC", &kind),
         11,
-        "вложенные в Bloodmoon"
+        "nested in Bloodmoon"
     );
 }
 
-/// Число строк списков существ плагина, ведущих на запись типа `target`.
+/// The number of rows of the plugin's creature lists pointing at a record of type `target`.
 fn rows(plugin: &Plugin, target: &str, kind: &impl Fn(&str) -> &'static str) -> usize {
     plugin
         .objects_of_type::<LeveledCreature>()

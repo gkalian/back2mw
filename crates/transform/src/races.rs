@@ -1,16 +1,17 @@
-//! Расы (T7.2): `RACE` Oblivion → ванильная раса Morrowind или своя `RACE` с телом донора.
+//! Races (T7.2): Oblivion `RACE` → a vanilla Morrowind race or our own `RACE` with a donor's body.
 //!
-//! * **Какая.** По `data/races.tsv`: десять общих рас — на ванильные (своя запись не пишется), пять
-//!   без аналога — свои (решение владельца 2026-09-27). Раса не из таблицы (моды) — своя с донором
-//!   [`DEFAULT_DONOR`].
-//! * **Своя раса:** имя (`FULL`, без него — `EDID`), описание, атрибуты мужчин и женщин, рост и вес
-//!   — как есть; бонусы навыков — на основной навык Morrowind (`data/skills.tsv`); врождённые
-//!   заклинания — если перенесены.
-//! * **Тело.** Движок собирает NPC из частей `Skin` его расы и пола, поэтому своей расе нужны свои
-//!   `BODY`: копии частей донора (меш тот же) с новой расой. Головы и причёски не копируются — NPC
-//!   ссылается на голову прямо по ID (T7.5 берёт донорские); особые (`NOT_PLAYABLE`) и вампирские
-//!   части — тоже нет. Кисти для вида от первого лица движок узнаёт по окончанию ID `.1st` (у
-//!   ванили: `b_n_breton_m_hand.1st`) — у копии оно сохраняется.
+//! * **Which.** Per `data/races.tsv`: ten shared races map onto vanilla ones (no record of our own
+//!   is written), five without an equivalent become our own (owner's decision 2026-09-27). A race
+//!   not in the table (mods) becomes our own with donor [`DEFAULT_DONOR`].
+//! * **Our own race:** the name (`FULL`, without it `EDID`), description, male and female
+//!   attributes, height and weight — as is; skill bonuses go to the major Morrowind skill
+//!   (`data/skills.tsv`); innate spells — if carried over.
+//! * **Body.** The engine assembles an NPC from the `Skin` parts of its race and sex, so our own
+//!   race needs its own `BODY` records: copies of the donor's parts (the same mesh) with the new
+//!   race. Heads and hair are not copied — an NPC references its head directly by ID (T7.5 takes
+//!   the donor's); special (`NOT_PLAYABLE`) and vampire parts are not copied either. The engine
+//!   recognizes first-person hands by the `.1st` ID suffix (in vanilla: `b_n_breton_m_hand.1st`) —
+//!   the copy keeps it.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -23,28 +24,28 @@ use crate::ids::{DEFAULT_MAX_LEN, IdAllocator, IdError, variant_id};
 use crate::skills::SKILLS;
 use crate::weapons::display_name;
 
-/// `data/races.tsv`, встроенный в сборку.
+/// `data/races.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/races.tsv");
 
-/// Донор для расы, которой нет в таблице.
+/// The donor for a race that is not in the table.
 pub const DEFAULT_DONOR: &str = "Imperial";
 
-/// Окончание ID кисти для вида от первого лица.
+/// The ID suffix of a first-person hand.
 pub const FIRST_PERSON_SUFFIX: &str = ".1st";
 
-/// Звериные расы Morrowind: у своей расы с таким донором — флаг звериной.
+/// Morrowind beast races: our own race with such a donor gets the beast flag.
 pub const BEAST_RACES: [&str; 2] = ["Argonian", "Khajiit"];
 
-/// Что делать с расой Oblivion.
+/// What to do with an Oblivion race.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RaceTarget {
-    /// Ванильная раса Morrowind (ID).
+    /// A vanilla Morrowind race (ID).
     Vanilla(String),
-    /// Своя раса с телом донора (ID ванильной расы).
+    /// Our own race with a donor's body (the vanilla race ID).
     Own { donor: String },
 }
 
-/// Разбор таблицы: `EDID` (без учёта регистра) → цель.
+/// Table parsing: `EDID` (case-insensitive) → target.
 pub fn parse_table(text: &str) -> Result<HashMap<String, RaceTarget>, String> {
     let mut out = HashMap::new();
     for (i, line) in text.lines().enumerate() {
@@ -86,7 +87,7 @@ pub fn parse_table(text: &str) -> Result<HashMap<String, RaceTarget>, String> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RaceError {
     Id(IdError),
-    /// У ванили нет частей тела расы-донора (или таблица назвала не ту расу).
+    /// Vanilla has no body parts of the donor race (or the table named the wrong race).
     NoDonorBody(String),
 }
 
@@ -111,30 +112,30 @@ impl From<IdError> for RaceError {
     }
 }
 
-/// Итог.
+/// Result.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConvertedRaces {
-    /// `FormID` расы Oblivion → ID расы Morrowind (ванильной или своей).
+    /// Oblivion race `FormID` → Morrowind race ID (vanilla or our own).
     pub ids: HashMap<u32, String>,
-    /// Раса Morrowind → раса, чьи головы и причёски брать NPC (у ванильной — она сама).
+    /// Morrowind race → the race whose heads and hair the NPCs take (for a vanilla race, itself).
     pub head_donors: HashMap<String, String>,
     pub races: Vec<OutRace>,
     pub bodies: Vec<BodyPart>,
-    /// `EDID` рас не из таблицы — стали своими с донором [`DEFAULT_DONOR`].
+    /// `EDID`s of races not in the table — they became our own with donor [`DEFAULT_DONOR`].
     pub unlisted: Vec<String>,
-    /// Врождённых заклинаний, которые не перенесены.
+    /// Innate spells that were not carried over.
     pub spells_lost: usize,
 }
 
-/// Переводит расы. `races` — (`FormID`, раса) в порядке `FormID`; `spell` — ID перенесённого
-/// заклинания; `vanilla` — `BODY` мастера (`tes3_out::vanilla::body_parts`).
+/// Converts races. `races` is (`FormID`, race) in `FormID` order; `spell` is the ID of a
+/// carried-over spell; `vanilla` are the master's `BODY` records (`tes3_out::vanilla::body_parts`).
 pub fn convert_races(
     races: &[(u32, Race)],
     ids: &mut IdAllocator,
     spell: impl Fn(u32) -> Option<String>,
     vanilla: &[VanillaBodyPart],
 ) -> Result<ConvertedRaces, RaceError> {
-    let table = parse_table(TABLE).expect("data/races.tsv проверена тестом");
+    let table = parse_table(TABLE).expect("data/races.tsv is checked by a test");
     let mut out = ConvertedRaces::default();
     for (form_id, race) in races {
         let target = match table.get(&race.editor_id.to_ascii_lowercase()) {
@@ -179,9 +180,9 @@ pub fn convert_races(
     Ok(out)
 }
 
-/// Копии частей тела донора для расы `race_id`. Метка производного ID — пол и номер части; у
-/// кисти для первого лица к ID добавляется [`FIRST_PERSON_SUFFIX`]. Две части с одной меткой у
-/// ванили не встречаются (тест на `Morrowind.esm`); если встретятся — берётся первая.
+/// Copies of the donor's body parts for race `race_id`. The derived ID tag is the sex and the part
+/// number; for a first-person hand [`FIRST_PERSON_SUFFIX`] is added to the ID. Two parts with the
+/// same tag do not occur in vanilla (a test on `Morrowind.esm`); if they do, the first is taken.
 fn copy_body(
     race_id: &str,
     donor: &str,

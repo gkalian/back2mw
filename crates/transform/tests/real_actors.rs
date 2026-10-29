@@ -1,10 +1,10 @@
-//! Классы и фракции NPC `Oblivion.esm` (T7.3, T7.4). Требует `BACK2MW_GAME_DATA`.
+//! Classes and factions of `Oblivion.esm` NPCs (T7.3, T7.4). Needs `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p transform --test real_actors -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Актёры».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Actors".
 
 mod common;
 
@@ -23,7 +23,7 @@ fn all<T: FromFields>(plugin: &Plugin, tag: &[u8; 4]) -> Vec<(u32, T)> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn classes_of_all_npcs() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -38,7 +38,7 @@ fn classes_of_all_npcs() {
         *sets.entry(services(n.ai.services)).or_default() += 1;
         let class = n
             .class
-            .expect("у всех NPC `Oblivion.esm` есть класс (real_actors)");
+            .expect("every NPC of `Oblivion.esm` has a class (real_actors)");
         if registry
             .class_for(class, n.ai.services, &mut ids)
             .unwrap()
@@ -54,18 +54,18 @@ fn classes_of_all_npcs() {
         .filter(|(_, n)| n.ai.services & 0x1_0000 != 0)
         .count();
     println!(
-        "NPC {}: классов на выходе {} (с услугами {with_services}), класс не найден у {missing}; \
-         наборов услуг {}; с перезарядкой (выпадает) {recharge}",
+        "NPC {}: output classes {} (with services {with_services}), class not found for {missing}; \
+         service sets {}; with recharge (drops out) {recharge}",
         npcs.len(),
         out.len(),
         sets.len()
     );
-    println!("наборы услуг Morrowind → NPC: {sets:x?}");
+    println!("Morrowind service sets → NPCs: {sets:x?}");
     assert_eq!(missing, 0);
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn factions_of_all_npcs() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -94,8 +94,8 @@ fn factions_of_all_npcs() {
     let reactions: usize = out.iter().map(|f| f.reactions.len()).sum();
     let ranked = out.iter().filter(|f| f.ranks.len() > 1).count();
     println!(
-        "членств {memberships} (ранг < 0 у {negative}, фракции нет у {missing}); фракций на выходе \
-         {}, скрытых {hidden}, с несколькими рангами {ranked}, отношений {reactions}",
+        "memberships {memberships} (rank < 0 in {negative}, no faction in {missing}); output factions \
+         {}, hidden {hidden}, with several ranks {ranked}, reactions {reactions}",
         out.len()
     );
     assert_eq!(missing, 0);
@@ -106,7 +106,7 @@ fn factions_of_all_npcs() {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_npc_of_oblivion_converts() {
     use tes4_read::{Package, Race};
     use transform::npcs::{NpcContext, NpcReport, convert_npc};
@@ -157,10 +157,10 @@ fn every_npc_of_oblivion_converts() {
     }
     let r = ctx.report.clone();
     println!("{r:?}");
-    println!("уровни (по 5): {levels:?}");
-    println!("wander (по 250): {wander:?}");
+    println!("levels (by 5): {levels:?}");
+    println!("wander (by 250): {wander:?}");
     println!(
-        "драка: {fight:?}; разных голов {}; самый длинный ID {ids_len}",
+        "fight: {fight:?}; distinct heads {}; longest ID {ids_len}",
         heads.len()
     );
     assert_eq!(r.converted, 2482);

@@ -1,20 +1,20 @@
-//! Карточки листвы (T2.4e): у движка лист — билборд, повёрнутый к камере каждый кадр; в
-//! Morrowind поштучных билбордов нет, поэтому каждый лист становится **крестом из двух
-//! вертикальных плоскостей**. Центр, карта и число листьев — от движка (`speedtree::branch`),
-//! форма карточки — по карте: размер `4005 · size · 10`, точка крепления `4004` в центре листа.
+//! Foliage cards (T2.4e): in the engine a leaf is a billboard turned toward the camera every frame;
+//! Morrowind has no per-leaf billboards, so each leaf becomes **a cross of two vertical planes**.
+//! The center, the map and the number of leaves come from the engine (`speedtree::branch`), the
+//! card shape from the map: size `4005 · size · 10`, the anchor point `4004` at the leaf center.
 //!
-//! UV — прямоугольник карты в сводной текстуре (`10002`; нет — текстура целиком), у нечётной
-//! записи — зеркально по горизонтали, как у движка (`0x798550`); V переворачивается
-//! (`SetTextureFlip`). Поворот креста вокруг вертикали — от числа качания листа: у движка это
-//! индекс угла ветра, у нас — только способ не ставить все кресты одинаково (**наш выбор**).
+//! UV is the map's rectangle in the texture atlas (`10002`; if absent, the whole texture); an odd
+//! entry is mirrored horizontally, as in the engine (`0x798550`); V is flipped (`SetTextureFlip`).
+//! The cross's rotation around the vertical comes from the leaf's sway number: in the engine it is
+//! a wind angle index, for us it is just a way to not place all crosses the same (**our choice**).
 
 use super::branch::Leaf;
 use super::model::Tree;
 
-/// Прямоугольник всей текстуры в осях TGA, против часовой: `(0,0) (1,0) (1,1) (0,1)`.
+/// The whole-texture rectangle in TGA axes, counterclockwise: `(0,0) (1,0) (1,1) (0,1)`.
 const WHOLE: [f32; 8] = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
 
-/// Геометрия листвы: треугольники, обе стороны — у свойства материала (двусторонность).
+/// Foliage geometry: triangles; both sides come from the material property (two-sidedness).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CardMesh {
     pub vertices: Vec<[f32; 3]>,
@@ -23,18 +23,18 @@ pub struct CardMesh {
     pub triangles: Vec<[u32; 3]>,
 }
 
-/// Углы карточки записи `entry`: `(u, v)` в осях TGA.
+/// Corners of the card for entry `entry`: `(u, v)` in TGA axes.
 fn corners(tree: &Tree, entry: usize) -> [[f32; 2]; 4] {
     let q = tree.leaf_quads.get(entry / 2).copied().unwrap_or(WHOLE);
     if entry.is_multiple_of(2) {
         [[q[0], q[1]], [q[2], q[3]], [q[4], q[5]], [q[6], q[7]]]
     } else {
-        // Вторая запись карты: u соседних углов переставлены (0x7985dd…0x798626).
+        // The map's second entry: u of neighboring corners is swapped (0x7985dd…0x798626).
         [[q[2], q[1]], [q[0], q[3]], [q[6], q[5]], [q[4], q[7]]]
     }
 }
 
-/// Карточки всех листьев.
+/// Cards of all leaves.
 pub fn leaf_cards(tree: &Tree, leaves: &[Leaf]) -> CardMesh {
     let mut mesh = CardMesh::default();
     let base_size = tree.size * super::branch::SIZE_CONVERSION;
@@ -68,10 +68,10 @@ pub fn leaf_cards(tree: &Tree, leaves: &[Leaf]) -> CardMesh {
             [(lu - map.origin[0]) * w, (lv - map.origin[1]) * h]
         };
         let yaw = f64::from(leaf.spin) / 10_000.0 * std::f64::consts::PI;
-        #[expect(clippy::cast_possible_truncation, reason = "координаты в f32")]
+        #[expect(clippy::cast_possible_truncation, reason = "coordinates in f32")]
         let (s, c) = (yaw.sin() as f32, yaw.cos() as f32);
         for right in [[c, s, 0.0f32], [-s, c, 0.0]] {
-            let base = u32::try_from(mesh.vertices.len()).expect("вершин меньше 4 млрд");
+            let base = u32::try_from(mesh.vertices.len()).expect("fewer than 4 billion vertices");
             for corner in uv {
                 let [a, b] = local(corner);
                 mesh.vertices.push(
@@ -137,14 +137,14 @@ mod tests {
         let m = leaf_cards(&t, &[leaf(0)]);
         assert_eq!(m.vertices.len(), 8);
         assert_eq!(m.triangles.len(), 4);
-        // Карточка 0.2·100 = 20 × 0.1·100 = 10, точка крепления (0.5, 0.25): по X −10…10,
-        // по Z 50 − 2.5 … 50 + 7.5. Вторая плоскость — по Y.
+        // Card 0.2·100 = 20 × 0.1·100 = 10, anchor point (0.5, 0.25): X −10…10, Z 50 − 2.5 … 50 +
+        // 7.5. The second plane is along Y.
         let xs: Vec<f32> = m.vertices[..4].iter().map(|v| v[0]).collect();
         let zs: Vec<f32> = m.vertices[..4].iter().map(|v| v[2]).collect();
         assert_eq!(xs, [90.0, 110.0, 110.0, 90.0]);
         assert_eq!(zs, [47.5, 47.5, 57.5, 57.5]);
         assert!(m.vertices[4..].iter().all(|v| (v[0] - 100.0).abs() < 1e-4));
-        // V перевёрнута.
+        // V is flipped.
         assert_eq!(m.uvs[0], [0.0, 1.0]);
         assert_eq!(m.uvs[2], [1.0, 0.0]);
     }
@@ -157,7 +157,7 @@ mod tests {
         let odd = leaf_cards(&t, &[leaf(1)]);
         assert_eq!(even.uvs[0], [0.5, 1.0]);
         assert_eq!(odd.uvs[0], [1.0, 1.0]);
-        // Геометрия та же, отражена только текстура.
+        // The geometry is the same, only the texture is mirrored.
         assert_eq!(even.vertices[0], [90.0, 0.0, 47.5]);
         assert_eq!(odd.vertices[0], [110.0, 0.0, 47.5]);
     }

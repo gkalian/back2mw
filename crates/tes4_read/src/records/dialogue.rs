@@ -3,8 +3,8 @@ use crate::cp1252;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Тип темы (`DIAL` `DATA`, T10.5). В `Oblivion.esm` (2026-09-28): Topic 3 184, Conversation 555,
-/// Combat 16, Persuasion 39, Detection 4, Service 14, Miscellaneous 5.
+/// Topic type (`DIAL` `DATA`, T10.5). In `Oblivion.esm` (2026-09-28): Topic 3,184, Conversation
+/// 555, Combat 16, Persuasion 39, Detection 4, Service 14, Miscellaneous 5.
 pub const TOPIC_TOPIC: u8 = 0;
 pub const TOPIC_CONVERSATION: u8 = 1;
 pub const TOPIC_COMBAT: u8 = 2;
@@ -13,31 +13,32 @@ pub const TOPIC_DETECTION: u8 = 4;
 pub const TOPIC_SERVICE: u8 = 5;
 pub const TOPIC_MISC: u8 = 6;
 
-/// Флаг `QUST` `DATA`: квест запускается вместе с игрой (решение 1 фазы 10).
+/// `QUST` `DATA` flag: the quest starts together with the game (decision 1 of phase 10).
 pub const QUEST_START_GAME_ENABLED: u8 = 0x01;
 
-/// Флаги условия (младшие 5 бит первого байта `CTDA`).
-/// Условие связано со следующим через «или», а не «и».
+/// Condition flags (the low 5 bits of the first `CTDA` byte). The condition is joined to the next
+/// one by "or", not "and".
 pub const CONDITION_OR: u8 = 0x01;
-/// Функция вызывается на цели разговора (у реплик — на игроке), а не на говорящем.
+/// The function is called on the conversation target (for responses — on the player), not on the
+/// speaker.
 pub const CONDITION_RUN_ON_TARGET: u8 = 0x02;
-/// Вместо числа сравнения — `FormID` глобальной переменной.
+/// Instead of a comparison number — the `FormID` of a global variable.
 pub const CONDITION_USE_GLOBAL: u8 = 0x04;
 
-/// Тема диалога (`DIAL`).
+/// A dialogue topic (`DIAL`).
 ///
-/// Раскладка измерена на `Oblivion.esm` (2026-09-28, `docs/ru/formats/tes4.md`, «Диалоги»): 3 817
-/// записей; `EDID` нет у 3, `FULL` — у 4; `QSTI` 4 372 (у темы может быть несколько квестов);
-/// `DATA` — 1 байт. Реплики темы лежат не в записи, а в группе её детей (тип 7) —
-/// `dialogue_tree`.
+/// The layout was measured on `Oblivion.esm` (2026-09-28, `docs/en/formats/tes4.md`, "Dialogue"):
+/// 3,817 records; 3 have no `EDID`, 4 have no `FULL`; `QSTI` 4,372 (a topic can have several
+/// quests); `DATA` is 1 byte. A topic's responses are not in the record but in the group of its
+/// children (type 7) — `dialogue_tree`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Topic {
     pub editor_id: Option<String>,
-    /// `FULL` — то, что видит игрок в списке тем.
+    /// `FULL` — what the player sees in the topic list.
     pub name: Option<String>,
-    /// `QSTI` — квесты, к которым тема приписана.
+    /// `QSTI` — the quests the topic is assigned to.
     pub quests: Vec<u32>,
-    /// `DATA` — [`TOPIC_TOPIC`] и т. д.
+    /// `DATA` — [`TOPIC_TOPIC`] and so on.
     pub kind: u8,
 }
 
@@ -56,7 +57,7 @@ impl FromFields for Topic {
     }
 }
 
-/// Операция сравнения условия (старшие 3 бита первого байта `CTDA`).
+/// The condition's comparison operator (the high 3 bits of the first `CTDA` byte).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Comparison {
     Equal,
@@ -67,27 +68,29 @@ pub enum Comparison {
     LessOrEqual,
 }
 
-/// С чем сравнивается результат функции.
+/// What the function's result is compared with.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ConditionValue {
     Number(f32),
-    /// `FormID` `GLOB` — флаг [`CONDITION_USE_GLOBAL`].
+    /// `GLOB` `FormID` — the [`CONDITION_USE_GLOBAL`] flag.
     Global(u32),
 }
 
-/// Условие (`CTDA`, 24 байта; старое `CTDT` — 20, без последних 4 неиспользуемых).
+/// A condition (`CTDA`, 24 bytes; the old `CTDT` is 20, without the last 4 unused ones).
 ///
-/// Номер функции — её номер в движке: в байт-коде скриптов вызов — опкод `0x1000 + номер`. Это
-/// сверено по парам `SCTX` ↔ `SCDA` `Oblivion.esm` (2026-09-28): например, 72 — `GetIsID`, 58 —
-/// `GetStage`, 69 — `GetIsRace`, 47 — `GetItemCount` (`docs/ru/formats/tes4.md`, «Диалоги»).
+/// The function number is its number in the engine: in script bytecode a call is the opcode
+/// `0x1000 + number`. This was checked on the `SCTX` ↔ `SCDA` pairs of `Oblivion.esm` (2026-09-28):
+/// for example, 72 is `GetIsID`, 58 `GetStage`, 69 `GetIsRace`, 47 `GetItemCount`
+/// (`docs/en/formats/tes4.md`, "Dialogue").
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Condition {
-    /// Младшие 5 бит: [`CONDITION_OR`], [`CONDITION_RUN_ON_TARGET`], [`CONDITION_USE_GLOBAL`].
+    /// The low 5 bits: [`CONDITION_OR`], [`CONDITION_RUN_ON_TARGET`], [`CONDITION_USE_GLOBAL`].
     pub flags: u8,
     pub comparison: Comparison,
     pub value: ConditionValue,
     pub function: u32,
-    /// Первый параметр: `FormID` (квест, NPC, фракция…) или число — зависит от функции.
+    /// The first parameter: a `FormID` (quest, NPC, faction…) or a number — depends on the
+    /// function.
     pub param1: u32,
     pub param2: u32,
 }
@@ -102,8 +105,13 @@ impl Condition {
     }
 
     fn parse(raw: &[u8], record: &'static str, field: Tag) -> Result<Self> {
-        let u32_at =
-            |at: usize| u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"));
+        let u32_at = |at: usize| {
+            u32::from_le_bytes(
+                raw[at..at + 4]
+                    .try_into()
+                    .expect("the slice is exactly 4 bytes"),
+            )
+        };
         let comparison = match raw[0] >> 5 {
             0 => Comparison::Equal,
             1 => Comparison::NotEqual,
@@ -136,7 +144,7 @@ impl Condition {
     }
 }
 
-/// Условия записи в порядке файла: `CTDA` (24 байта) и старые `CTDT` (20).
+/// The record's conditions in file order: `CTDA` (24 bytes) and the old `CTDT` (20).
 fn conditions<'a>(
     fields: impl Iterator<Item = (Tag, &'a [u8])>,
     record: &'static str,
@@ -174,48 +182,49 @@ fn form_ids(fields: &Fields<'_>, tag: Tag, record: &'static str) -> Result<Vec<u
         .collect()
 }
 
-/// Один ответ реплики: `TRDT` + `NAM1` + `NAM2`.
+/// One response of a dialogue line: `TRDT` + `NAM1` + `NAM2`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
-    /// 0 нейтрально, 1 гнев, 2 отвращение, 3 страх, 4 грусть, 5 радость, 6 удивление.
+    /// 0 neutral, 1 anger, 2 disgust, 3 fear, 4 sad, 5 happy, 6 surprise.
     pub emotion: u32,
     pub emotion_value: i32,
-    /// Номер ответа, с 1: по нему назван файл голоса.
+    /// Response number, from 1: the voice file is named after it.
     pub number: u8,
-    /// `NAM1` — текст.
+    /// `NAM1` — the text.
     pub text: String,
-    /// `NAM2` — пометка для актёра озвучки.
+    /// `NAM2` — a note for the voice actor.
     pub notes: String,
 }
 
-/// Реплика (`INFO`).
+/// A dialogue line (`INFO`).
 ///
-/// Раскладка измерена на `Oblivion.esm` (2026-09-28): 19 278 записей, у всех ровно один `QSTI`;
-/// `DATA` 3 байта (у 2 — 2, без флагов); ответов (`TRDT` 16 байт + `NAM1` + `NAM2`) 23 877;
-/// `CTDA` 48 531 и `CTDT` 72; `PNAM` нет ни у одной — порядок реплик темы задаёт порядок файла.
+/// The layout was measured on `Oblivion.esm` (2026-09-28): 19,278 records, all with exactly one
+/// `QSTI`; `DATA` is 3 bytes (2 in two records, without flags); 23,877 responses (`TRDT` 16 bytes +
+/// `NAM1` + `NAM2`); 48,531 `CTDA` and 72 `CTDT`; none has a `PNAM` — the order of a topic's
+/// responses is the file order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Info {
-    /// `DATA[0]` — тип темы, как у `DIAL`.
+    /// `DATA[0]` — the topic type, as in `DIAL`.
     pub kind: u8,
-    /// `DATA[1]` — кто говорит следующим (у разговоров NPC).
+    /// `DATA[1]` — who speaks next (in NPC conversations).
     pub next_speaker: u8,
-    /// `DATA[2]`: 0x01 прощание, 0x02 случайная, 0x04 сказать раз, 0x08 сразу, 0x10 отказ в
-    /// информации, 0x20 случайный конец, 0x40 для слухов.
+    /// `DATA[2]`: 0x01 goodbye, 0x02 random, 0x04 say once, 0x08 run immediately, 0x10 info
+    /// refusal, 0x20 random end, 0x40 run for rumors.
     pub flags: u8,
-    /// `QSTI` — квест реплики.
+    /// `QSTI` — the line's quest.
     pub quest: u32,
-    /// `NAME` — темы, которые реплика добавляет игроку.
+    /// `NAME` — topics the line adds for the player.
     pub add_topics: Vec<u32>,
     pub responses: Vec<Response>,
     pub conditions: Vec<Condition>,
-    /// `TCLT` — темы-варианты выбора после реплики.
+    /// `TCLT` — choice topics after the line.
     pub choices: Vec<u32>,
-    /// `TCLF` — темы, из которых реплика доступна как продолжение.
+    /// `TCLF` — topics from which the line is available as a follow-up.
     pub link_from: Vec<u32>,
-    /// `SCTX` — текст скрипта-результата (байт-код `SCDA` не нужен: Morrowind компилирует
-    /// результат сам).
+    /// `SCTX` — the result script text (the `SCDA` bytecode is not needed: Morrowind compiles the
+    /// result itself).
     pub result_script: Option<String>,
-    /// `SCRO` — записи, на которые ссылается скрипт-результат.
+    /// `SCRO` — records the result script references.
     pub result_refs: Vec<u32>,
 }
 
@@ -253,7 +262,7 @@ impl FromFields for Info {
     }
 }
 
-/// Ответы: `TRDT` открывает ответ, `NAM1`/`NAM2` после него — его текст и пометка.
+/// Responses: `TRDT` opens a response, the `NAM1`/`NAM2` after it are its text and note.
 fn responses(fields: &Fields<'_>) -> Result<Vec<Response>> {
     let mut out: Vec<Response> = Vec::new();
     for (tag, raw) in fields.iter() {
@@ -268,9 +277,11 @@ fn responses(fields: &Fields<'_>) -> Result<Vec<Response>> {
                     });
                 }
                 out.push(Response {
-                    emotion: u32::from_le_bytes(raw[0..4].try_into().expect("срез ровно 4 байта")),
+                    emotion: u32::from_le_bytes(
+                        raw[0..4].try_into().expect("the slice is exactly 4 bytes"),
+                    ),
                     emotion_value: i32::from_le_bytes(
-                        raw[4..8].try_into().expect("срез ровно 4 байта"),
+                        raw[4..8].try_into().expect("the slice is exactly 4 bytes"),
                     ),
                     number: raw[12],
                     text: String::new(),
@@ -296,21 +307,22 @@ fn responses(fields: &Fields<'_>) -> Result<Vec<Response>> {
     Ok(out)
 }
 
-/// Квест (`QUST`) — только то, что нужно для отбора реплик.
+/// A quest (`QUST`) — only what is needed for selecting dialogue.
 ///
-/// `Oblivion.esm` (2026-09-28): 390 квестов, со стартом с игрой 208; `DATA` 2 байта (флаги,
-/// приоритет). Условия квеста (`CTDA` до первой стадии `INDX`) действуют на все его реплики;
-/// условия после `INDX` — у записей журнала стадий, к репликам отношения не имеют.
+/// `Oblivion.esm` (2026-09-28): 390 quests, 208 start with the game; `DATA` is 2 bytes (flags,
+/// priority). The quest's conditions (`CTDA` before the first `INDX` stage) apply to all its
+/// dialogue; the conditions after `INDX` belong to stage journal entries and have nothing to do
+/// with dialogue.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Quest {
     pub editor_id: String,
     pub name: Option<String>,
-    /// `DATA[0]`: [`QUEST_START_GAME_ENABLED`], 0x04 повторять темы, 0x08 повторять стадии.
+    /// `DATA[0]`: [`QUEST_START_GAME_ENABLED`], 0x04 repeated topics, 0x08 repeated stages.
     pub flags: u8,
     pub priority: u8,
-    /// `SCRI` — скрипт квеста.
+    /// `SCRI` — the quest script.
     pub script: Option<u32>,
-    /// Условия квеста — `CTDA` до первого `INDX`.
+    /// Quest conditions — the `CTDA` before the first `INDX`.
     pub conditions: Vec<Condition>,
 }
 

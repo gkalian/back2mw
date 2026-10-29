@@ -1,6 +1,7 @@
-//! Оркестрация: конфигурация, стадии `extract` и `validate`, прогон `all` для среза M1.
+//! Orchestration: configuration, the `extract` and `validate` stages, the `all` run for the M1
+//! slice.
 //!
-//! Правила границ (`docs/ru/architecture.md`): этот крейт — единственный, кто видит все остальные.
+//! Boundary rules (`docs/en/architecture.md`): this crate is the only one that sees all the others.
 
 pub(crate) mod bodies;
 pub mod config;

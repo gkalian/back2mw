@@ -34,7 +34,7 @@ fn sample_output(out: &Path) {
     write(&out.join("Textures/ob_rock.dds"), b"DDS");
 }
 
-/// Каталог игры с ванильным файлом и уже существующей папкой `Meshes`.
+/// A game directory with a vanilla file and an already existing `Meshes` folder.
 fn game(t: &Temp) -> PathBuf {
     let data = t.dir("Data Files");
     write(&data.join("Morrowind.esm"), b"VANILLA");
@@ -63,7 +63,7 @@ fn install_copies_files_and_records_them_and_the_new_directories() {
     assert!(manifest.contains("D\tTextures\n"), "{manifest}");
     assert!(
         !manifest.contains("D\tMeshes\n"),
-        "Meshes существовала до нас: {manifest}"
+        "Meshes existed before us: {manifest}"
     );
 }
 
@@ -78,7 +78,10 @@ fn uninstall_restores_the_game_folder_exactly() {
     assert_eq!((r.removed, r.missing, r.dirs_removed), (3, 0, 3));
     assert!(r.kept_changed.is_empty());
     assert!(!data.join("Mod1.esp").exists());
-    assert!(!data.join("Meshes/ob").exists(), "наши каталоги убраны");
+    assert!(
+        !data.join("Meshes/ob").exists(),
+        "our directories are removed"
+    );
     assert!(!data.join("Textures").exists());
     assert!(!data.join(MANIFEST_NAME).exists());
     assert_eq!(fs::read(data.join("Morrowind.esm")).unwrap(), b"VANILLA");
@@ -97,7 +100,7 @@ fn a_foreign_file_in_the_way_stops_everything_before_any_write() {
         matches!(&err, InstallError::Conflicts(c) if c == &["Textures/ob_rock.dds"]),
         "{err}"
     );
-    assert!(!data.join("Mod1.esp").exists(), "ничего не записано");
+    assert!(!data.join("Mod1.esp").exists(), "nothing is written");
     assert!(!data.join(MANIFEST_NAME).exists());
     assert_eq!(
         fs::read(data.join("Textures/ob_rock.dds")).unwrap(),
@@ -118,7 +121,7 @@ fn an_identical_preexisting_file_is_left_alone_and_never_removed() {
     assert_eq!(
         fs::read(data.join("Textures/ob_rock.dds")).unwrap(),
         b"DDS",
-        "файл существовал до установки"
+        "the file existed before the installation"
     );
 }
 
@@ -129,7 +132,7 @@ fn reinstalling_overwrites_only_our_own_files_and_drops_stale_ones() {
     sample_output(&out);
     install(&out, &data).unwrap();
 
-    // Новая версия мода: меш изменился, текстуры больше нет, появился второй меш.
+    // A new version of the mod: the mesh changed, the texture is gone, a second mesh appeared.
     write(&out.join("Meshes/ob/a/rock.nif"), b"NIF-2");
     fs::remove_file(out.join("Textures/ob_rock.dds")).unwrap();
     write(&out.join("Meshes/ob/b.nif"), b"B");
@@ -159,11 +162,11 @@ fn uninstall_keeps_files_that_changed_since_and_reports_them() {
     assert!(data.join("Meshes/ob/a/rock.nif").exists());
     assert!(
         data.join("Meshes/ob/a").exists(),
-        "каталог не пуст — остаётся"
+        "the directory is not empty — it stays"
     );
     assert!(
         data.join(MANIFEST_NAME).exists(),
-        "манифест остаётся, пока есть что откатывать"
+        "the manifest stays while there is something to roll back"
     );
 }
 
@@ -184,7 +187,7 @@ fn a_missing_target_or_output_is_an_error() {
         Err(InstallError::NoTarget(_))
     ));
     let data = game(&t);
-    assert!(install(&out, &data).is_err(), "в output/ нет плагина");
+    assert!(install(&out, &data).is_err(), "output/ has no plugin");
 }
 
 #[test]
@@ -216,7 +219,7 @@ fn a_foreign_file_is_replaced_only_when_the_player_agreed() {
     let r = install_replacing(&out, &data, &[OUTPUT_PLUGIN.to_owned()]).unwrap();
     assert_eq!(r.written, 3);
     assert_eq!(fs::read(data.join(OUTPUT_PLUGIN)).unwrap(), b"ESP");
-    // Теперь файл наш: повторная проверка его не называет, откат удалит.
+    // Now the file is ours: the repeated check does not list it, the rollback will delete it.
     assert!(foreign_files(&data, &candidates).unwrap().is_empty());
     uninstall(&data).unwrap();
     assert!(!data.join(OUTPUT_PLUGIN).exists());

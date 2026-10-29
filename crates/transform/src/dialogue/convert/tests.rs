@@ -2,10 +2,11 @@ use super::*;
 use crate::dialogue::CONDITIONS;
 use tes4_read::{CONDITION_RUN_ON_TARGET, Info, Record, RecordHeader, Response, Topic};
 
-/// NPC: A и D — имперцы класса cA, A и B — в фракции F (у Morrowind основная), B, C и D ещё в
-/// 0x31 (у Morrowind она не основная ни у кого), C — неиграбельный дремора.
+/// NPCs: A and D are Imperials of class cA, A and B are in faction F (the primary one in
+/// Morrowind), B, C and D are also in 0x31 (primary for nobody in Morrowind), C is a non-playable
+/// dremora.
 fn speakers() -> Vec<Speaker> {
-    #[expect(clippy::too_many_arguments, reason = "строка таблицы теста")]
+    #[expect(clippy::too_many_arguments, reason = "a test table row")]
     fn s(
         form_id: u32,
         id: &str,
@@ -98,7 +99,7 @@ fn vanilla() -> Vec<VanillaTopic> {
     ]
 }
 
-/// Конвертация с миром теста.
+/// Conversion with the test world.
 fn run(
     tree: &[TopicTree<'_>],
     selected: &[Selected],
@@ -106,8 +107,8 @@ fn run(
     run_with_voices(tree, selected).map(|c| (c.topics, c.report))
 }
 
-/// Конвертация с миром теста; голос есть у реплик 0xA00…0xAFF: у имперцев-мужчин и дреморы — на
-/// каждый ответ, у имперок — только на первый.
+/// Conversion with the test world; responses 0xA00…0xAFF have a voice: for Imperial men and the
+/// dremora — for every answer, for Imperial women — only for the first.
 fn run_with_voices(tree: &[TopicTree<'_>], selected: &[Selected]) -> Result<Converted, IdClash> {
     let speakers = speakers();
     let vanilla = vanilla();
@@ -232,11 +233,11 @@ fn on_target(mut c: Condition) -> Condition {
 fn with_kinds(conditions: &[Condition]) -> Vec<(Condition, FilterKind)> {
     conditions
         .iter()
-        .map(|c| (*c, CONDITIONS.kind(c).expect("в таблице")))
+        .map(|c| (*c, CONDITIONS.kind(c).expect("in the table")))
         .collect()
 }
 
-/// Одна тема, одна реплика, один вариант с условиями.
+/// One topic, one response, one variant with conditions.
 fn one(conditions: &[Condition]) -> Result<Vec<OutInfo>, WriteRejection> {
     let topic_record = record(0x900);
     let info_record = record(0x901);
@@ -257,7 +258,7 @@ fn one(conditions: &[Condition]) -> Result<Vec<OutInfo>, WriteRejection> {
             .rejected
             .keys()
             .next()
-            .expect("либо тема, либо отказ")),
+            .expect("either a topic or a refusal")),
     }
 }
 
@@ -287,10 +288,10 @@ const GET_IS_ID: u32 = 72;
 
 #[test]
 fn speaker_conditions_become_the_set_of_npcs_and_its_fields() {
-    // Один NPC — `ONAM`, без `Local`.
+    // One NPC — `ONAM`, without `Local`.
     let i = &one(&[cond(GET_IS_ID, Eq, 1.0, 0x100)]).unwrap()[0];
     assert_eq!((i.speaker.as_str(), i.filters.len()), ("ob_A", 0));
-    // Класс cB, женщины, ранг в F ≥ 1 — по одному NPC.
+    // Class cB, women, rank in F ≥ 1 — one NPC each.
     for (c, who) in [
         (cond(68, Eq, 1.0, 0x21), "ob_B"),
         (cond(70, Eq, 1.0, 1), "ob_B"),
@@ -299,26 +300,26 @@ fn speaker_conditions_become_the_set_of_npcs_and_its_fields() {
         assert_eq!(one(&[c]).unwrap()[0].speaker, who, "{c:?}");
     }
 
-    // Раса и `GetIsPlayableRace` — общая раса набора, `RNAM` и `Local`.
+    // Race and `GetIsPlayableRace` — the set's shared race, `RNAM` and `Local`.
     for c in [cond(69, Eq, 1.0, 0x10), cond(254, Eq, 1.0, 0)] {
         let i = &one(&[c]).unwrap()[0];
         assert_eq!((i.race.as_str(), i.speaker.as_str()), ("Imperial", ""));
         assert_eq!(i.filters, [local()]);
     }
 
-    // «Не A»: общего поля нет — все переносимые (`Local`) минус A.
+    // "Not A": no shared field — all carried-over ones (`Local`) minus A.
     let i = &one(&[cond(GET_IS_ID, Eq, 0.0, 0x100)]).unwrap()[0];
     assert_eq!(i.filters, [local(), not_a()]);
-    // Фракция 0x31 у Morrowind ни у кого не основная — всё равно B, C, D, а не пусто.
+    // Faction 0x31 is nobody's primary faction in Morrowind — still B, C, D, not empty.
     let i = &one(&[cond(71, Eq, 1.0, 0x31)]).unwrap()[0];
     assert_eq!(i.faction, "");
     assert_eq!(i.filters, [local(), not_a()]);
-    // Фракция F основная у A и B: `FNAM`, ранг — меньший из двух (0 → не проверяется).
+    // Faction F is primary for A and B: `FNAM`, the rank is the lower of the two (0 → not checked).
     let i = &one(&[cond(71, Eq, 1.0, 0x30)]).unwrap()[0];
     assert_eq!((i.faction.as_str(), i.speaker_rank), ("ob_F", -1));
     assert_eq!(i.filters, [local()]);
 
-    // Никто не подходит.
+    // Nobody matches.
     assert_eq!(
         one(&[cond(GET_IS_ID, Eq, 1.0, 0x100), cond(70, Eq, 1.0, 1)]),
         Err(WriteRejection::NoSpeaker)
@@ -371,7 +372,8 @@ fn changing_conditions_become_filters() {
             on_target(cond(80, Ge, 10.0, 0)),
             vec![f(Out::Function(6), Cmp::GreaterOrEqual, int(10))],
         ),
-        // Сила, интеллект, `Armorer` (навык Morrowind 1 → функция 12); дробный порог — к целому.
+        // Strength, intelligence, `Armorer` (Morrowind skill 1 → function 12); a fractional
+        // threshold goes to an integer.
         (
             on_target(cond(14, Ge, 50.0, 0)),
             vec![f(Out::Function(10), Cmp::GreaterOrEqual, int(50))],
@@ -403,7 +405,7 @@ fn changing_conditions_become_filters() {
             cond(67, Eq, 0.0, 0x600),
             vec![f(Out::NotCell("SE Cell".into()), Cmp::Equal, int(1))],
         ),
-        // Предмета нет в Morrowind: «ноль» верно всегда — фильтра нет.
+        // The item does not exist in Morrowind: "zero" is always true — no filter.
         (on_target(cond(47, Eq, 0.0, 0x501)), vec![]),
     ];
     for (c, want) in cases {
@@ -411,7 +413,7 @@ fn changing_conditions_become_filters() {
         assert_eq!(i.filters[0], local(), "{c:?}");
         assert_eq!(i.filters[1..], want[..], "{c:?}");
     }
-    // Контроль: `!= 2.5` у целой функции верно всегда — фильтра нет.
+    // Control: `!= 2.5` for an integer function is always true — no filter.
     assert_eq!(
         one(&[cond(80, Comparison::NotEqual, 2.5, 0)]).unwrap()[0].filters,
         [local()]
@@ -430,7 +432,8 @@ fn changing_conditions_become_fields() {
     assert_eq!((i.player_faction.as_str(), i.player_rank), ("ob_F", -1));
     let i = &one(&[on_target(cond(73, Ge, 2.0, 0x30))]).unwrap()[0];
     assert_eq!((i.player_faction.as_str(), i.player_rank), ("ob_F", 2));
-    // Изгнание: у Morrowind функция смотрит фракцию говорящего — у набора она должна быть той же.
+    // Expulsion: in Morrowind the function looks at the speaker's faction — the set must have the
+    // same one.
     let i = &one(&[cond(71, Eq, 1.0, 0x30), cond(193, Eq, 1.0, 0x30)]).unwrap()[0];
     assert_eq!(i.faction, "ob_F");
     assert_eq!(
@@ -444,7 +447,7 @@ fn inexpressible_conditions_reject_the_copy() {
     for (c, why) in [
         (cond(76, Lt, 40.0, 0), WriteRejection::Comparison(76)),
         (cond(132, Eq, 0.0, 0x30), WriteRejection::Comparison(132)),
-        // Изгнание без общей фракции говорящих.
+        // Expulsion without a faction shared by the speakers.
         (cond(193, Eq, 1.0, 0x30), WriteRejection::Comparison(193)),
         (cond(67, Eq, 1.0, 0x601), WriteRejection::Never),
         (on_target(cond(47, Gt, 0.0, 0x501)), WriteRejection::Never),
@@ -456,8 +459,8 @@ fn inexpressible_conditions_reject_the_copy() {
     }
 }
 
-/// Шесть фильтров — предел: с `Local` седьмой не влезает, и реплика расходится по копиям на
-/// каждого NPC с `ONAM`; семь своих фильтров не влезают ни в какую копию.
+/// Six filters are the limit: with `Local` the seventh does not fit, and the response splits into
+/// copies per NPC with `ONAM`; seven filters of its own fit into no copy.
 #[test]
 fn seventh_filter_rejects_the_copy() {
     let stats =
@@ -499,7 +502,7 @@ fn responses_are_joined_and_long_text_continues_by_choice() {
     }];
     let (topics, report) = run(&tree, &selected).unwrap();
     let infos = &topics[0].infos;
-    // Продолжение — выше: его находит поиск после выбора «Continue».
+    // The continuation goes above: the lookup after the "Continue" choice finds it.
     assert_eq!(infos.len(), 2);
     assert_eq!(infos[1].text, long);
     assert_eq!(infos[1].result, "Choice \"Continue\" 1");
@@ -514,8 +517,9 @@ fn responses_are_joined_and_long_text_continues_by_choice() {
     assert_ne!(infos[0].id, infos[1].id);
 }
 
-/// Выбор `TCLT`: реплики темы-варианта — копиями выше, с `Choice = n`; тема-вариант своей темой не
-/// становится; вариант без записанных копий из `Choice` выпадает; вложенный выбор — в той же теме.
+/// `TCLT` choice: the choice topic's responses become copies above, with `Choice = n`; the choice
+/// topic does not become a topic of its own; a choice without written copies drops out of `Choice`;
+/// a nested choice stays in the same topic.
 #[test]
 fn choices_copy_the_chosen_topic_into_the_asking_one() {
     let records: Vec<Record> = (0x900..0x910).map(record).collect();
@@ -608,16 +612,16 @@ fn greetings_and_known_names_join_the_masters_topics() {
             ("Skooma", TopicKind::Topic, "888"),
         ]
     );
-    // `AddTopic` — только на записанные темы: `Thief` занят голосом мастера.
+    // `AddTopic` — only for written topics: `Thief` is taken by the master's voice.
     assert_eq!(topics[0].infos[0].result, "AddTopic \"skooma\"");
     assert_eq!((report.topics, report.merged), (2, 2));
     assert_eq!(report.rejected[&WriteRejection::TopicName], 2);
-    // ID — цифры, 17 знаков, без ведущего нуля.
+    // The ID is digits, 17 characters, without a leading zero.
     let id = &topics[0].infos[0].id;
     assert_eq!(id.len(), 18);
     assert!(id.starts_with('1') && id.bytes().all(|b| b.is_ascii_digit()));
 
-    // ID, совпавший с ванильным в той же теме, — ошибка, а не молчаливая подмена.
+    // An ID that matches a vanilla one in the same topic is an error, not a silent substitution.
     let mut clash = vanilla();
     clash[0].infos.push(id.clone());
     let speakers = speakers();
@@ -658,9 +662,9 @@ fn ids_differ_in_every_copy_key() {
     assert_eq!(info_id(1, 1000, 0, 0, 0), None);
 }
 
-/// T10.7: голосовые и служебные темы — в ванильные темы голоса и убеждения по таблице, в начало;
-/// без пары, без ванильной темы того же типа и с продолжением — не переносятся. В результате
-/// только `AddTopic`: ни выбора, ни прощания.
+/// T10.7: voice and service topics go into the vanilla voice and persuasion topics via the table,
+/// at the start; those without a pair, without a vanilla topic of the same type and with a
+/// continuation are not carried over. The result has only `AddTopic`: no choice, no goodbye.
 #[test]
 fn voice_and_service_topics_join_vanilla_voice_and_persuasion() {
     let records: Vec<Record> = (0xA00..0xA10).map(record).collect();
@@ -696,7 +700,7 @@ fn voice_and_service_topics_join_vanilla_voice_and_persuasion() {
             voiced("Seen", tes4_read::TOPIC_DETECTION),
             line(&["Hm?"]),
         ),
-        // `Hit` в таблице есть, но у мастера теста такой темы нет.
+        // `Hit` is in the table, but the test master has no such topic.
         entry(4, voiced("Hit", tes4_read::TOPIC_COMBAT), line(&["Ow!"])),
         entry(
             5,
@@ -732,8 +736,9 @@ fn voice_and_service_topics_join_vanilla_voice_and_persuasion() {
             ("Bruma", TopicKind::Topic, "", 1),
         ]
     );
-    // Силовой удар и удар — одна тема `Attack`, порядок файла; прощание и выбор не переносятся;
-    // пометка актёру вместо слов у голоса вычищается, в обычной теме — нет (контроль).
+    // A power attack and an attack — one `Attack` topic, in file order; goodbye and choice are not
+    // carried over; a note to the actor instead of words is cleaned out of a voice, not of an
+    // ordinary topic (control).
     let attack = &topics[0].infos;
     assert_eq!(
         (attack[0].text.as_str(), attack[1].text.as_str()),
@@ -758,9 +763,9 @@ fn stage_notes_are_whole_bracketed_responses() {
     assert!(!is_stage_note("Die!"));
 }
 
-/// T10.8: реплика голоса — копия на пару раса + пол говорящих, у каждой свой файл (склейка ответов
-/// по порядку); пара без файла хоть одного ответа копии не получает. Тема (Topic) голоса не
-/// получает — до проверки владельца (контроль).
+/// T10.8: a voice response becomes a copy per race + sex pair of the speakers, each with its own
+/// file (the answers joined in order); a pair without the file of at least one answer gets no copy.
+/// A Topic does not get a voice — until the owner checks it (control).
 #[test]
 fn voice_lines_are_split_by_race_and_sex_and_get_their_files() {
     let records: Vec<Record> = [0xA40, 0xA41, 0xA42, 0xA43, 0x940, 0x941]
@@ -780,7 +785,7 @@ fn voice_lines_are_split_by_race_and_sex_and_get_their_files() {
             topic: topic("Bruma", "Bruma"),
             infos: vec![(&records[3], line(&["A town."]))],
         },
-        // Реплика без файлов голоса вовсе.
+        // A response with no voice files at all.
         TopicTree {
             record: &records[4],
             topic: combat,
@@ -796,7 +801,8 @@ fn voice_lines_are_split_by_race_and_sex_and_get_their_files() {
         .collect();
     let c = run_with_voices(&tree, &selected).unwrap();
     let attack = &c.topics[0].infos;
-    // Имперцы-мужчины A и D — одна копия с полями, дремора C — своя; имперке B нет второго ответа.
+    // Imperial men A and D — one copy with fields, the dremora C — its own; Imperial woman B lacks
+    // the second answer.
     let got: Vec<(&str, &str, Option<bool>, &str)> = attack
         .iter()
         .map(|i| {
@@ -823,17 +829,18 @@ fn voice_lines_are_split_by_race_and_sex_and_get_their_files() {
         ]
     );
     assert_eq!(c.voices.len(), 2);
-    // Контроль: у темы звука нет.
+    // Control: the topic has no sound.
     assert_eq!(c.topics[1].infos[0].sound, "");
-    // B (одна пара) и вся реплика без файлов (три пары) — без копий.
+    // B (one pair) and the whole response without files (three pairs) — no copies.
     assert_eq!(c.report.rejected[&WriteRejection::NoVoice], 4);
     assert_eq!((c.report.voiced, c.report.voice_files), (2, 2));
     assert_eq!(c.topics.len(), 2);
 }
 
-/// Решение владельца 2026-09-30: набор больше [`super::super::MAX_VARIANTS`], который поля не
-/// выражают (у всех своя фракция Morrowind, общая — только вторая фракция Oblivion 0x40), —
-/// метка фракции `Local obf_… = 0` без `ob_npc`; захваченные лишние — `Not ID`.
+/// Owner's decision 2026-09-30: a set larger than [`super::super::MAX_VARIANTS`] that the fields
+/// cannot express (everyone has their own Morrowind faction, the shared one is only the second
+/// Oblivion faction 0x40) — the faction marker `Local obf_… = 0` without `ob_npc`; the extras
+/// caught get `Not ID`.
 #[test]
 fn a_second_oblivion_faction_becomes_a_marker() {
     let base = speakers().remove(0);
@@ -850,7 +857,7 @@ fn a_second_oblivion_faction_becomes_a_marker() {
         source_factions: factions,
         ..base.clone()
     };
-    // 0…9 — во фракции 0x40 и 0x41, 10 — только в 0x40 (лишний), 11 — ни в одной.
+    // 0…9 are in factions 0x40 and 0x41, 10 only in 0x40 (an extra), 11 in neither.
     let mut all: Vec<Speaker> = (0..10)
         .map(|k| npc(k, vec![(0x41, 0), (0x40, 0)]))
         .collect();
@@ -859,16 +866,20 @@ fn a_second_oblivion_faction_becomes_a_marker() {
     let set: Vec<&Speaker> = all[..10].iter().collect();
     let exprs = express(&set, &all, 2).unwrap();
     assert_eq!(exprs.len(), 1);
-    // У 0x41 лишних нет, у 0x40 — один: берётся 0x41.
+    // 0x41 has no extras, 0x40 has one: 0x41 is taken.
     assert_eq!(exprs[0].marker, Some(0x41));
     assert!(exprs[0].not_ids.is_empty() && !exprs[0].local);
-    // Не влезло и в метку (бюджет 0) — отказ, как раньше.
+    // It did not fit even into the marker (budget 0) — refusal, as before.
     assert_eq!(express(&set, &all, 0), Err(WriteRejection::TooManyFilters));
 
     let (by_npc, scripts) = marker_scripts(&all, &BTreeSet::from([0x41, 0x40])).unwrap();
-    assert_eq!(by_npc.len(), 11, "у NPC без фракций скрипт прежний");
+    assert_eq!(
+        by_npc.len(),
+        11,
+        "NPCs without factions keep the old script"
+    );
     assert!(!by_npc.contains_key("ob_N11"));
-    assert_eq!(scripts.len(), 2, "два набора меток — два скрипта");
+    assert_eq!(scripts.len(), 2, "two marker sets — two scripts");
     let vars = |npc: &str| {
         let id = &by_npc[npc];
         scripts.iter().find(|(s, _)| s == id).unwrap().1.clone()

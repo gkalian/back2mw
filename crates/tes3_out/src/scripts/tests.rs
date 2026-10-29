@@ -7,8 +7,8 @@ fn loop_sound(id: &str, sound: &str) -> Script {
     }
 }
 
-/// Байт-код петли, выписанный по инструкциям (раскладка — в заголовке модуля); сверка с ванилью —
-/// `tests/real_vanilla_scripts.rs`.
+/// The loop bytecode written out instruction by instruction (the layout is in the module header);
+/// the check against vanilla is `tests/real_vanilla_scripts.rs`.
 #[test]
 fn loop_sound_bytecode_follows_the_vanilla_layout() {
     let c = compile(&loop_sound("obls_Wind_2", "ob_Wind_2")).unwrap();
@@ -24,7 +24,7 @@ fn loop_sound_bytecode_follows_the_vanilla_layout() {
     assert_eq!(
         c.bytecode.len(),
         46 + 2 * 9,
-        "длина у ванили — 46 + 2·длина имени"
+        "in vanilla the length is 46 + 2·name length"
     );
     assert!(c.variables.is_empty());
     assert_eq!(c.shorts, 0);
@@ -35,7 +35,7 @@ fn loop_sound_bytecode_follows_the_vanilla_layout() {
         c.text
     );
 
-    // Контроль: другое имя меняет обе длины и оба вхождения, остальное — нет.
+    // Control: another name changes both lengths and both occurrences, nothing else.
     let other = compile(&loop_sound("obls_Wind_2", "ob_W_3")).unwrap();
     assert_eq!(other.bytecode.len(), 46 + 2 * 6);
     assert_eq!(other.bytecode[..16], want[..16]);
@@ -58,7 +58,7 @@ fn locals_are_declared_in_scvr_and_the_bytecode_is_a_bare_end() {
 #[test]
 fn the_record_header_counts_what_the_template_wrote() {
     let TES3Object::Script(s) = script(&loop_sound("obls_A_1", "ob_A_1")).unwrap() else {
-        panic!("не SCPT");
+        panic!("not an SCPT");
     };
     assert_eq!(s.header.bytecode_length as usize, s.bytecode.len());
     assert_eq!(s.header.variables_length, 0);
@@ -67,7 +67,7 @@ fn the_record_header_counts_what_the_template_wrote() {
         shorts: vec!["a".to_owned(), "bc".to_owned()],
     })
     .unwrap() else {
-        panic!("не SCPT");
+        panic!("not an SCPT");
     };
     assert_eq!((s.header.num_shorts, s.header.variables_length), (2, 5));
 }
@@ -78,7 +78,7 @@ fn names_that_would_break_the_script_are_rejected() {
     assert!(compile(&loop_sound("obls_A_1", "")).is_err());
     assert!(compile(&loop_sound("obls_A_1", &"x".repeat(32))).is_err());
     assert!(compile(&loop_sound(&"x".repeat(32), "ob_A_1")).is_err());
-    assert!(compile(&loop_sound("obls_A_1", "звук")).is_err());
+    assert!(compile(&loop_sound("obls_A_1", "sön")).is_err());
     assert!(
         compile(&Script::Locals {
             id: "ob_m".to_owned(),
@@ -86,6 +86,6 @@ fn names_that_would_break_the_script_are_rejected() {
         })
         .is_err()
     );
-    // Контроль: предел — ровно 31.
+    // Control: the limit is exactly 31.
     assert!(compile(&loop_sound(&"x".repeat(31), &"y".repeat(31))).is_ok());
 }

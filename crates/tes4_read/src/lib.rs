@@ -1,9 +1,8 @@
-//! Чтение плагинов TES4 (Oblivion) и TES5 (Skyrim).
+//! Reading TES4 (Oblivion) and TES5 (Skyrim) plugins.
 //!
-//! Граница, которую нельзя размывать: этот крейт **не знает про TES3 ничего**.
-//! Всё знание «как одно превращается в другое» живёт в `transform`, вся байтовая
-//! раскладка TES3 — в `tes3_out`. Проверяется тестом зависимостей, а не
-//! договорённостью.
+//! A boundary that must not be blurred: this crate **knows nothing about TES3**. All knowledge of
+//! "how one turns into the other" lives in `transform`, the whole TES3 byte layout in `tes3_out`.
+//! This is checked by a dependency test, not by an agreement.
 
 pub mod bsa;
 pub mod container;

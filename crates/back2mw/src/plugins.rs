@@ -1,12 +1,13 @@
-//! Список плагинов Oblivion из папки `Data`: оригинальные файлы и моды.
+//! The list of Oblivion plugins in the `Data` folder: original files and mods.
 //!
-//! **Порядок загрузки.** Настоящий порядок игры задают `Plugins.txt` и даты файлов; здесь порядок
-//! свой и детерминированный: `Oblivion.esm`, остальные `.esm` по имени, затем оригинальные
-//! `.esp` (в порядке [`OFFICIAL`]), затем моды по имени. Индекс в этом порядке — старший байт
-//! абсолютного `FormID`, от которого зависят строковые ID в плагине Morrowind. Значит ID стабильны,
-//! пока набор **установленных** плагинов не меняется (не набор отмеченных): установили новый мод —
-//! индексы плагинов после него сдвинулись. Это ограничение, а не свойство схемы ID.
-//! Индекс `Oblivion.esm` всегда 0, поэтому его ID не зависят ни от чего.
+//! **Load order.** The game's real order is set by `Plugins.txt` and file dates; here the order is
+//! our own and deterministic: `Oblivion.esm`, the other `.esm` files by name, then the original
+//! `.esp` files (in [`OFFICIAL`] order), then mods by name. The index in this order is the high
+//! byte of the absolute `FormID`, on which the string IDs in the Morrowind plugin depend. So the
+//! IDs are stable as long as the set of **installed** plugins does not change (not the set of
+//! ticked ones): install a new mod and the indices of the plugins after it shift. This is a
+//! limitation, not a property of the ID scheme. The index of `Oblivion.esm` is always 0, so its IDs
+//! depend on nothing.
 
 use std::fmt;
 use std::fs::File;
@@ -15,7 +16,7 @@ use std::path::Path;
 
 use tes4_read::read_header;
 
-/// Оригинальные файлы Oblivion (нижний регистр) в порядке загрузки.
+/// Original Oblivion files (lower case) in load order.
 pub const OFFICIAL: [&str; 12] = [
     "oblivion.esm",
     "dlcshiveringisles.esp",
@@ -31,7 +32,7 @@ pub const OFFICIAL: [&str; 12] = [
     "update.esp",
 ];
 
-/// Сколько байт от начала файла читаем для заголовка: запись `TES4` целиком.
+/// How many bytes from the start of the file we read for the header: the whole `TES4` record.
 const HEADER_PREFIX: u64 = 1 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,20 +50,20 @@ impl fmt::Display for Kind {
     }
 }
 
-/// Один установленный плагин.
+/// One installed plugin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginInfo {
-    /// Имя файла как на диске.
+    /// File name as on disk.
     pub name: String,
     pub kind: Kind,
     pub size: u64,
-    /// Оригинальный файл Oblivion, а не мод.
+    /// An original Oblivion file, not a mod.
     pub official: bool,
-    /// Мастера по заголовку; пусто, если заголовок не прочитался.
+    /// Masters from the header; empty if the header could not be read.
     pub masters: Vec<String>,
-    /// Заголовок не разобрался: плагин показывается, но конвертировать его нельзя.
+    /// The header did not parse: the plugin is shown but cannot be converted.
     pub error: Option<String>,
-    /// Позиция в порядке загрузки (0 — `Oblivion.esm`).
+    /// Position in the load order (0 is `Oblivion.esm`).
     pub load_index: usize,
 }
 
@@ -76,7 +77,7 @@ fn official_rank(name: &str) -> Option<usize> {
     OFFICIAL.iter().position(|o| o.eq_ignore_ascii_case(name))
 }
 
-/// Плагины `Data`: `*.esm` и `*.esp`, в порядке загрузки (см. заголовок модуля).
+/// Plugins in `Data`: `*.esm` and `*.esp`, in load order (see the module header).
 pub fn list(data_dir: &Path) -> std::io::Result<Vec<PluginInfo>> {
     let mut out = Vec::new();
     for entry in std::fs::read_dir(data_dir)? {
@@ -134,7 +135,7 @@ fn read_masters(path: &Path) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Позиция мастера в порядке загрузки, `None` — мастер не установлен.
+/// The master's position in the load order; `None` means the master is not installed.
 pub fn index_of(plugins: &[PluginInfo], name: &str) -> Option<usize> {
     plugins
         .iter()
@@ -142,9 +143,10 @@ pub fn index_of(plugins: &[PluginInfo], name: &str) -> Option<usize> {
         .map(|p| p.load_index)
 }
 
-/// Абсолютный `FormID` записи плагина `plugin`: старший байт файла — индекс в его списке
-/// мастеров (или сам плагин, если индекс равен числу мастеров) → позиция в порядке загрузки.
-/// `None`, если нужный мастер не установлен или позиция не влезает в байт.
+/// Absolute `FormID` of a record of plugin `plugin`: the file's high byte is an index into its
+/// master list (or the plugin itself, if the index equals the number of masters) → position in the
+/// load order. `None` if the needed master is not installed or the position does not fit into a
+/// byte.
 pub fn absolute_form_id(
     plugins: &[PluginInfo],
     plugin: &PluginInfo,

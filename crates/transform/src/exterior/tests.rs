@@ -132,7 +132,8 @@ fn lookup(base: u32) -> BaseObject {
 #[test]
 fn a_tree_reference_takes_the_variant_of_its_seed_index() {
     let mut s = source();
-    // У каждого дерева своя точка: два одинаковых варианта в одной точке — дубль, он не ставится.
+    // Each tree has its own point: two identical variants at one point are a duplicate and are not
+    // placed.
     let seeded = |form_id: u32, seed: Option<u8>| Placement {
         tree_seed: seed,
         ..place(
@@ -142,7 +143,8 @@ fn a_tree_reference_takes_the_variant_of_its_seed_index() {
             0.0,
         )
     };
-    // `XSED` 4 при трёх семенах — вариант 1; без `XSED` — по `FormID`: 9 mod 3 = 0, 11 mod 3 = 2.
+    // `XSED` 4 with three seeds gives variant 1; without `XSED` — by `FormID`: 9 mod 3 = 0, 11 mod
+    // 3 = 2.
     s.placements = vec![
         seeded(1, Some(4)),
         seeded(9, None),
@@ -168,7 +170,7 @@ fn a_tree_reference_takes_the_variant_of_its_seed_index() {
         .flat_map(|c| c.references.iter().map(|r| (r.index, r.id.clone())))
         .collect();
     placed.sort();
-    // Индексы ссылок идут по `FormID`: 1, 9, 11, 12.
+    // Reference indices follow `FormID`: 1, 9, 11, 12.
     assert_eq!(
         placed,
         [
@@ -198,11 +200,11 @@ fn cells_merge_two_by_two_with_offset_even_below_zero() {
     )
     .unwrap();
     let grids: Vec<(i32, i32)> = out.cells.iter().map(|c| c.grid).collect();
-    // (-1,-1) и (-2,-1) — одна целевая (-1,-1); (0,0) — своя.
+    // (-1,-1) and (-2,-1) are one target (-1,-1); (0,0) is its own.
     assert_eq!(grids, [(99, 4), (100, 5)]);
     assert_eq!(out.lands.len(), 2);
     assert_eq!(out.report.bounds, Some((99, 4, 100, 5)));
-    // Высота сохранилась: смещение VHGT — высота первой вершины / 8.
+    // The height is preserved: the VHGT offset is the first vertex height / 8.
     assert_eq!(out.lands[0].height_offset, 10.0);
 }
 
@@ -229,8 +231,8 @@ fn references_are_filtered_offset_and_indexed() {
         child,
         inverted_child,
         big,
-        place(4, 0xB1, 0.0, 0.0), // маркер
-        place(2, 0xEE, 0.0, 0.0), // уровневый список
+        place(4, 0xB1, 0.0, 0.0), // marker
+        place(2, 0xEE, 0.0, 0.0), // leveled list
     ];
     let out = convert_exterior(
         &s,
@@ -255,7 +257,7 @@ fn references_are_filtered_offset_and_indexed() {
                 .map(move |r| (&c.grid, r.index, r.position, r.scale))
         })
         .collect();
-    // Индексы — по FormID: 3 раньше 7. x −10 + 81920 → ячейка 9; y 9000 → ячейка 1.
+    // Indices follow FormID: 3 before 7. x −10 + 81920 → cell 9; y 9000 → cell 1.
     assert_eq!(
         placed,
         [
@@ -265,8 +267,9 @@ fn references_are_filtered_offset_and_indexed() {
     );
 }
 
-/// NPC из временной ссылки движок ставит без «живой» части: не ходит, разговор роняет игру
-/// (`SEWorld`, 2026-09-30). Ссылка актёра — постоянная, остальные — временные, как у ванили.
+/// The engine places an NPC from a temporary reference without the "live" part: it does not walk,
+/// and talking to it crashes the game (`SEWorld`, 2026-09-30). An actor reference is persistent,
+/// the others are temporary, as in vanilla.
 #[test]
 fn actor_references_are_persistent_and_others_are_not() {
     let mut s = source();
@@ -308,12 +311,12 @@ fn region_with_weather_wins_and_map_name_names_the_cell() {
         .iter()
         .find(|r| Some(&r.id) == mania.region.as_ref())
         .unwrap();
-    // Туман 40 (по таблице) и ModMist 40 (класс «облачно») → 50/50.
+    // Fog 40 (from the table) and ModMist 40 (the "cloudy" class) → 50/50.
     assert_eq!((region.weather.foggy, region.weather.cloudy), (50, 50));
     assert_eq!(region.map_color, [136, 0, 0]);
     assert_eq!(region.name, "Realm of Sheogorath");
     assert_eq!(out.report.weather_by_class, ["ModMist"]);
-    // Ячейка без регионов — регион климата.
+    // A cell without regions gets the climate region.
     let climate = out
         .regions
         .iter()
@@ -321,7 +324,7 @@ fn region_with_weather_wins_and_map_name_names_the_cell() {
         .unwrap();
     assert_eq!(climate.weather.clear, 100);
     assert_eq!(out.cells[1].name, "");
-    // Звуки (T10.2): у региона-источника — ссылки по ID региона, у климата звуков нет.
+    // Sounds (T10.2): the source region has references by region ID, the climate has no sounds.
     assert_eq!(
         out.region_sounds.get(&region.id).map(Vec::len),
         Some(1),
@@ -329,14 +332,14 @@ fn region_with_weather_wins_and_map_name_names_the_cell() {
         out.region_sounds
     );
     assert_eq!(out.region_sounds.len(), 1);
-    assert!(region.sounds.is_empty(), "ID звуков ставит конвейер");
+    assert!(region.sounds.is_empty(), "the pipeline sets the sound IDs");
 }
 
 #[test]
 fn land_textures_get_indices_and_quadrants_their_patches() {
     let mut s = source();
     let mut l = land(0.0);
-    // Квадрант 1 (юго-восток) восточной ячейки нижнего ряда — мох целиком.
+    // Quadrant 1 (south-east) of the eastern cell of the lower row is entirely moss.
     l.quadrants[1] = LandQuadrant {
         base: None,
         layers: vec![LandLayer {
@@ -359,9 +362,9 @@ fn land_textures_get_indices_and_quadrants_their_patches() {
     assert_eq!(geo.len(), VTEX_SIDE);
     for (y, row) in geo.iter().enumerate() {
         for (x, &value) in row.iter().enumerate() {
-            // VTEX = индекс LTEX + 1: мох — 2, умолчание — 1.
+            // VTEX = LTEX index + 1: moss is 2, the default is 1.
             let want = if x >= 12 && y < 4 { 2 } else { 1 };
-            assert_eq!(value, want, "патч ({x}, {y})");
+            assert_eq!(value, want, "patch ({x}, {y})");
         }
     }
 }
@@ -383,15 +386,15 @@ fn at(mut p: Placement, z: f32) -> Placement {
 fn a_city_copy_of_an_island_object_is_dropped_but_a_near_neighbour_is_not() {
     let island = vec![place(1, 0xB0, 100.0, 100.0), place(2, 0xB0, 900.0, 100.0)];
     let city = vec![
-        // Та же скала на том же месте — копия.
+        // The same rock at the same place is a copy.
         place(10, 0xB0, 100.0, 100.0),
-        // На полюнита рядом — тоже копия, даже через границу клетки поиска.
+        // Half a unit away is also a copy, even across the lookup cell boundary.
         place(11, 0xB0, 899.6, 100.0),
-        // Такой же объект в 5 юнитах (ближайшая не-копия на SEWorld — 5.3) остаётся.
+        // The same object 5 units away (the closest non-copy on SEWorld is 5.3) stays.
         place(12, 0xB0, 105.0, 100.0),
-        // Другой объект на том же месте остаётся.
+        // Another object at the same place stays.
         place(13, 0xB1, 100.0, 100.0),
-        // Та же точка на плане, но выше — остаётся.
+        // The same point on the plan, but higher — it stays.
         at(place(14, 0xB0, 100.0, 100.0), 500.0),
     ];
     let (out, report) = merge_children(island, vec![("SENSBliss".into(), city)]);
@@ -431,10 +434,10 @@ fn gates_between_merged_worlds_go_both_ends_and_outer_doors_stay() {
         island,
         vec![("SENSBliss".into(), city), ("SENSPalace".into(), palace)],
     );
-    // Дверь 2 ведёт наружу (в интерьер или другой worldspace) — стоит.
+    // Door 2 leads outside (to an interior or another worldspace) — it stays.
     assert_eq!(out.iter().map(|p| p.form_id).collect::<Vec<_>>(), [2]);
     assert_eq!(report.gates, 4);
-    // Без детей ворота не трогаются: вести им есть куда — в город.
+    // Without children the gates are not touched: they have somewhere to lead — into the city.
     let (alone, report) = merge_children(vec![door(1, 10)], vec![]);
     assert_eq!(alone.len(), 1);
     assert_eq!(report, MergeReport::default());
@@ -454,8 +457,8 @@ fn a_ref_whose_enable_parent_was_a_dropped_copy_follows_the_kept_one() {
     assert_eq!(out[1].enable_parent.map(|e| e.parent), Some(1));
 }
 
-/// Плагин: остров 0x10 с ячейкой (0, 0), город 0x20 с `WNAM` на остров и посторонний
-/// worldspace 0x30 без родителя.
+/// A plugin: the island 0x10 with cell (0, 0), the city 0x20 with a `WNAM` pointing to the island,
+/// and an unrelated worldspace 0x30 without a parent.
 fn plugin_with_a_city() -> Vec<u8> {
     use tes4_read::GameFormat::Tes4 as F;
     use tes4_read::synth;
@@ -476,7 +479,7 @@ fn plugin_with_a_city() -> Vec<u8> {
             .concat(),
         )
     };
-    // Сетка из одной точки.
+    // A grid of one point.
     let pgrd = |id: u32| {
         let mut point = [0u8; 16].to_vec();
         point[0..4].copy_from_slice(&100.0f32.to_le_bytes());
@@ -553,7 +556,7 @@ fn read_merges_children_by_wnam_and_leaves_other_worlds_alone() {
     assert_eq!(ids, [0x100, 0x201]);
     assert_eq!(source.merged.children, ["City"]);
     assert_eq!(source.merged.duplicates, 1);
-    // Ячейки и земля — только родителя, а сетки путей — и города.
+    // Cells and ground come only from the parent, but path grids also from the city.
     assert_eq!(source.cells.len(), 1);
     let grids: Vec<(usize, (i32, i32))> = source
         .path_grids
@@ -563,7 +566,7 @@ fn read_merges_children_by_wnam_and_leaves_other_worlds_alone() {
     assert_eq!(grids, [(0, (0, 0)), (1, (0, 0))]);
     assert_eq!(source.path_grids[1].grid.points, [[100.0, 0.0, 0.0]]);
 
-    // Город сам по себе читается как раньше: своих детей у него нет.
+    // The city on its own reads as before: it has no children of its own.
     let city = ExteriorSource::read(&plugin, "City", Some)
         .unwrap()
         .unwrap();
@@ -581,7 +584,7 @@ fn a_half_turned_by_pi_is_not_a_copy_but_minus_pi_equals_pi() {
         vec![turned(1, 0.0)],
         vec![(
             "SENSBliss".into(),
-            // Половинка, развёрнутая на π, — своя; −π против π у острова — та же.
+            // A half turned by π is its own; −π versus π on the island is the same.
             vec![turned(10, std::f32::consts::PI), turned(11, 0.0)],
         )],
     );
@@ -621,21 +624,24 @@ fn a_second_identical_reference_in_a_cell_is_not_placed() {
     s.cells = vec![cell((0, 0), vec![], None)];
     s.placements = vec![
         place(1, 0xB0, 100.0, 100.0),
-        // Дубль: тот же объект в той же точке — как пара тарелок `Vitharn Keep` (до 0.97 по оси).
+        // A duplicate: the same object at the same point — like the pair of plates in
+        // `Vitharn Keep` (up to 0.97 per axis).
         at(place(2, 0xB0, 100.9, 99.7), 10.9),
-        // Не дубли: сдвиг на юнит по одной оси, другой поворот, другой масштаб, другой объект.
+        // Not duplicates: a shift of one unit on one axis, another rotation, another scale, another
+        // object.
         place(3, 0xB0, 101.0, 100.0),
         turned(place(4, 0xB0, 100.0, 100.0), 1.52),
         scaled(place(5, 0xB0, 100.0, 100.0), 1.5),
         place(6, 0xAC, 100.0, 100.0),
-        // Поворот в пределах допуска — дубль; −π против π — один поворот.
+        // A rotation within the tolerance is a duplicate; −π versus π is one rotation.
         turned(place(7, 0xB0, 100.0, 100.0), 1.495),
         turned(place(8, 0xB0, 500.0, 0.0), std::f32::consts::PI),
         turned(place(9, 0xB0, 500.0, 0.0), -std::f32::consts::PI),
-        // В соседней ячейке Morrowind та же точка относительно ячейки — своя ссылка.
+        // In the neighboring Morrowind cell the same point relative to the cell is its own
+        // reference.
         place(10, 0xB0, 100.0 + 8192.0, 100.0),
     ];
-    // Интерьеры: в каждом своя ссылка в той же точке, а в одном — она же дважды.
+    // Interiors: each has its own reference at the same point, and one has it twice.
     s.interiors = vec![
         house(
             0x50,
@@ -665,7 +671,8 @@ fn a_second_identical_reference_in_a_cell_is_not_placed() {
         .iter()
         .flat_map(|c| c.references.iter().map(|r| r.index))
         .collect();
-    // Поставлены 1, 3, 4, 5, 6, 8 и 10 — номера ссылок идут подряд, без дыр от дублей.
+    // Placed: 1, 3, 4, 5, 6, 8 and 10 — reference numbers go in a row, without holes from
+    // duplicates.
     assert_eq!(outside, [1, 2, 3, 4, 5, 6, 7]);
     let inside: Vec<Vec<u32>> = out
         .interiors
@@ -710,14 +717,14 @@ fn house(form_id: u32, name: &str, placements: Vec<Placement>) -> SourceInterior
 fn doors_lead_outside_with_offset_and_inside_by_cell_name() {
     let mut s = source();
     s.cells = vec![cell((0, 0), vec![], None)];
-    // Снаружи: дверь в дом (1 → 20), дверь в Тамриэль (2 → 0x999, её тут нет).
+    // Outside: a door into the house (1 → 20), a door to Tamriel (2 → 0x999, it is not here).
     s.placements = vec![
         door(1, 0.0, 20, [5.0, 6.0, 7.0]),
         door(2, 100.0, 0x999, [0.0; 3]),
     ];
     s.exterior_refs = [1, 2].into();
     s.interiors = vec![
-        // Дом: дверь наружу (20 → 1) и в подвал (21 → 30).
+        // The house: a door outside (20 → 1) and into the cellar (21 → 30).
         house(
             0x500,
             "Books of Bliss",
@@ -740,7 +747,7 @@ fn doors_lead_outside_with_offset_and_inside_by_cell_name() {
 
     let outside: Vec<&Reference> = out.cells.iter().flat_map(|c| &c.references).collect();
     let into_house = outside.iter().find(|r| r.index == 1).unwrap();
-    // В интерьер — координаты как есть и имя ячейки.
+    // Into an interior — coordinates as is and the cell name.
     assert_eq!(
         into_house.destination,
         Some(DoorDestination {
@@ -758,7 +765,7 @@ fn doors_lead_outside_with_offset_and_inside_by_cell_name() {
     let [hall, cellar] = &out.interiors[..] else {
         unreachable!()
     };
-    // Одинаковые имена разведены, номера ссылок продолжают внешние.
+    // Identical names are made distinct, reference numbers continue after the exterior ones.
     assert_eq!(
         (hall.name.as_str(), cellar.name.as_str()),
         ("Books of Bliss", "Books of Bliss 2")
@@ -770,7 +777,7 @@ fn doors_lead_outside_with_offset_and_inside_by_cell_name() {
         .map(|r| r.index)
         .collect();
     assert_eq!(indices, [3, 4, 5]);
-    // Наружу — со смещением (10·8192, −1·8192), без имени ячейки.
+    // Outside — with the offset (10·8192, −1·8192), without a cell name.
     assert_eq!(
         hall.references[0].destination.as_ref().unwrap(),
         &DoorDestination {
@@ -788,7 +795,7 @@ fn doors_lead_outside_with_offset_and_inside_by_cell_name() {
             .as_deref(),
         Some("Books of Bliss 2")
     );
-    // Позиция в интерьере не смещается; свет и туман.
+    // The position in an interior is not shifted; light and fog.
     assert_eq!(hall.references[0].position, [0.0, 0.0, 10.0]);
     assert_eq!(
         (hall.ambient, hall.sunlight, hall.fog_color),
@@ -811,8 +818,8 @@ fn path_grids_follow_cells_offset_names_and_interiors() {
         },
     };
     let mut s = source();
-    // (0, 0) безымянная: две ячейки источника, одна сетка. (-1, 0) названа регионом Fellmoor, её
-    // сетка — из города (мир 1).
+    // (0, 0) is unnamed: two source cells, one grid. (-1, 0) is named after the Fellmoor region,
+    // its grid comes from the city (world 1).
     s.cells = vec![
         cell((0, 0), vec![], None),
         cell((1, 1), vec![], None),
@@ -846,9 +853,9 @@ fn path_grids_follow_cells_offset_names_and_interiors() {
     assert_eq!(
         got,
         [
-            // Мировые X/Y минус угол ячейки до смещения: (-8000 + 8192, 50).
+            // World X/Y minus the cell corner before the offset: (-8000 + 8192, 50).
             ((99, 5), "Fellmoor", &[[192, 50, 5]][..]),
-            // Безымянной — имя региона (у нас — имя мира).
+            // An unnamed one gets the region name (for us — the world name).
             (
                 (100, 5),
                 "Realm of Sheogorath",
@@ -868,7 +875,8 @@ fn lock_levels_follow_owner_rules() {
         key: None,
         leveled,
     };
-    // 0 заперт у Oblivion — у Morrowind это 1; 100 остаётся; растущий — плюс 30, не выше 100.
+    // 0 is locked in Oblivion — in Morrowind it is 1; 100 stays; scaling — plus 30, no higher than 100.
+    //
     assert_eq!(lock_level(&lock(0, false)), 1);
     assert_eq!(lock_level(&lock(55, false)), 55);
     assert_eq!(lock_level(&lock(100, false)), 100);
@@ -880,7 +888,8 @@ fn lock_levels_follow_owner_rules() {
 #[test]
 fn locks_get_level_and_key_if_the_key_was_converted() {
     let mut s = source();
-    // Точки разные: три одинаковые ссылки в одной точке — дубли, поставилась бы одна.
+    // The points differ: three identical references at one point are duplicates, only one would be
+    // placed.
     let locked = |form_id: u32, key| Placement {
         lock: Some(Lock {
             level: 40,
@@ -899,7 +908,7 @@ fn locks_get_level_and_key_if_the_key_was_converted() {
         locked(2, Some(0xE2)),
         locked(3, None),
     ];
-    // Ключи тоже нужно конвертировать.
+    // The keys have to be converted too.
     assert!(s.base_objects().contains(&0xE1) && s.base_objects().contains(&0xE2));
     let keys = |base: u32| match base {
         0xE1 => BaseObject::Placed {
@@ -934,7 +943,8 @@ fn locks_get_level_and_key_if_the_key_was_converted() {
     assert_eq!((r.locks, r.locks_keyed, r.lock_keys_lost), (3, 1, 1));
 }
 
-/// Дети ячейки: размещения объектов, NPC и существ читаются одной спекой, сетка путей — нет.
+/// A cell's children: placements of objects, NPCs and creatures are read with one spec, the path
+/// grid is not.
 #[test]
 fn cell_children_give_placements_of_objects_npcs_and_creatures() {
     use tes4_read::container::{Record, RecordHeader};
@@ -962,7 +972,7 @@ fn cell_children_give_placements_of_objects_npcs_and_creatures() {
         record(b"ACRE", 5, 0xFF00_0001),
     ];
     let children: Vec<&Record> = records.iter().collect();
-    // Мастер с индексом 0xFF не установлен: ссылка на его существо выпадает.
+    // The master with index 0xFF is not installed: the reference to its creature drops out.
     let map = |f: u32| (f >> 24 == 0).then_some(f);
     let got: Vec<(u32, u32)> = placements_in(&children, &map)
         .unwrap()
@@ -972,8 +982,8 @@ fn cell_children_give_placements_of_objects_npcs_and_creatures() {
     assert_eq!(got, [(1, 0xB0), (2, 0xAC), (3, 0xC0)]);
 }
 
-/// Соглашение об углах ссылки: положительный Z — по часовой стрелке (ось +X меша уходит к −Y),
-/// затем −Y, затем −X; масштаб растягивает.
+/// The reference angle convention: a positive Z is clockwise (the mesh's +X axis goes toward −Y),
+/// then −Y, then −X; scale stretches.
 #[test]
 fn reference_offset_follows_the_morrowind_rotation_convention() {
     use std::f32::consts::FRAC_PI_2;
@@ -988,13 +998,13 @@ fn reference_offset_follows_the_morrowind_rotation_convention() {
     assert!(near(y, [0.0, 0.0, 1.0]), "{y:?}");
     let x = reference_offset([FRAC_PI_2, 0.0, 0.0], 1.0, [0.0, 1.0, 0.0]);
     assert!(near(x, [0.0, 0.0, -1.0]), "{x:?}");
-    // Сначала Z, потом X: +X меша → −Y (Z) → +Z (X).
+    // First Z, then X: the mesh's +X → −Y (Z) → +Z (X).
     let zx = reference_offset([FRAC_PI_2, 0.0, FRAC_PI_2], 2.0, [1.0, 0.0, 0.0]);
     assert!(near(zx, [0.0, 0.0, 2.0]), "{zx:?}");
 }
 
-/// T2.6b: у двери с перенесённой петлёй начало координат меша уехало в петлю — ссылка едет за
-/// ним, и дверь стоит там же, где стояла. Прочие ссылки не трогаются.
+/// T2.6b: for a door with a moved hinge the mesh origin moved to the hinge — the reference follows
+/// it, and the door stands where it stood. Other references are not touched.
 #[test]
 fn a_reference_to_a_rehinged_door_moves_with_the_mesh_origin() {
     use std::f32::consts::FRAC_PI_2;
@@ -1022,8 +1032,8 @@ fn a_reference_to_a_rehinged_door_moves_with_the_mesh_origin() {
         .flat_map(|c| &c.references)
         .map(|r| (r.id.as_str(), r.position))
         .collect();
-    // Петля (40, 2) в кадре меша; ссылка повёрнута на +90° по часовой и растянута в 1.5:
-    // (40, 2) → (2, −40) · 1.5 = (3, −60).
+    // Hinge (40, 2) in the mesh frame; the reference is rotated by +90° clockwise and scaled by
+    // 1.5: (40, 2) → (2, −40) · 1.5 = (3, −60).
     assert_eq!(refs[0].0, "ob_Door_1");
     let [x, y, z] = refs[0].1;
     assert!(

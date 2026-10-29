@@ -1,44 +1,45 @@
-//! Рисованный лист карты мира Oblivion → прямоугольник в мире Morrowind.
+//! The painted Oblivion world map sheet → a rectangle in the Morrowind world.
 //!
-//! Карта мира Morrowind — одна на всю игру и кончается у ванили на ячейке x = 28 (с патчем
-//! Morrowind Code Patch — на x = 51), а перенесённый worldspace стоит восточнее. Сам движок
-//! показать его не может, поэтому конвертер кладёт рядом с плагином лист карты из записи `WRLD`
-//! и описание, где этот лист лежит в мире; показывает его дополнение на MWSE-Lua
-//! (`back2mw::world_map`).
+//! The Morrowind world map is one for the whole game and ends in vanilla at cell x = 28 (with
+//! Morrowind Code Patch at x = 51), while the carried-over worldspace stands further east. The
+//! engine itself cannot show it, so the converter puts the map sheet from the `WRLD` record next to
+//! the plugin along with a description of where the sheet lies in the world; an MWSE-Lua add-on
+//! shows it (`back2mw::world_map`).
 //!
-//! **Как лист лежит на ячейках** (замер 2026-10-02 по береговой линии `SEWorld` и `Tamriel`,
-//! `docs/ru/formats/tes4.md`, «Карта мира»):
+//! **How the sheet lies on the cells** (measured 2026-10-02 against the coastlines of `SEWorld` and
+//! `Tamriel`, `docs/en/formats/tes4.md`, "World map"):
 //!
-//! * ячейки на листе квадратные; сторона ячейки в пикселях — «полезная» ширина из `MNAM`,
-//!   делённая на число ячеек от западной до восточной включительно (`SEWorld`: 1024 / 64 = 16,
-//!   `Tamriel`: 2055 / 119 = 17.27);
-//! * левый край файла — западный край северо-западной ячейки;
-//! * «полезная» высота отсчитывается вверх от южного края юго-восточной ячейки — так находится
-//!   верхний край файла. Северная ячейка из `MNAM` для этого не годится: у `SEWorld` поле
-//!   называет y = 33, а лист кончается на y = 35 (у `Tamriel` оба счёта сходятся);
-//! * файл не растянут под «полезный» размер: у `Tamriel` он 2048×2048 при «полезных» 2055×1830,
-//!   и всё, что правее и ниже, — те же 17.27 пикселя на ячейку.
+//! * cells on the sheet are square; a cell's side in pixels is the "useful" width from `MNAM`
+//!   divided by the number of cells from the western to the eastern one inclusive (`SEWorld`: 1024
+//!   / 64 = 16, `Tamriel`: 2055 / 119 = 17.27);
+//! * the left edge of the file is the western edge of the north-western cell;
+//! * the "useful" height is counted upward from the southern edge of the south-eastern cell — this
+//!   gives the top edge of the file. The northern cell from `MNAM` does not work for this: for
+//!   `SEWorld` the field says y = 33, while the sheet ends at y = 35 (for `Tamriel` both counts
+//!   agree);
+//! * the file is not stretched to the "useful" size: for `Tamriel` it is 2048×2048 with a "useful"
+//!   2055×1830, and everything to the right and below has the same 17.27 pixels per cell.
 
 use tes4_read::MapSize;
 
 use crate::exterior::Offset;
 use crate::land::CELL_SIZE_UNITS;
 
-/// Сторона ячейки Morrowind, юнитов.
+/// Side of a Morrowind cell, units.
 const TARGET_CELL_UNITS: f64 = CELL_SIZE_UNITS as f64;
 
-/// Сторона ячейки Oblivion, юнитов: половина ячейки Morrowind.
+/// Side of an Oblivion cell, units: half a Morrowind cell.
 const SOURCE_CELL_UNITS: f64 = TARGET_CELL_UNITS / 2.0;
 
-/// Лист карты worldspace источника: файл и какие ячейки он покрывает.
+/// The source worldspace's map sheet: the file and which cells it covers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceMap {
-    /// Путь листа относительно `Textures\`, как в `ICON`.
+    /// The sheet path relative to `Textures\`, as in `ICON`.
     pub texture: String,
     pub size: MapSize,
 }
 
-/// Прямоугольник в мировых координатах Morrowind (юниты, после смещения).
+/// A rectangle in Morrowind world coordinates (units, after the offset).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SheetRect {
     pub left: f64,
@@ -47,9 +48,9 @@ pub struct SheetRect {
     pub top: f64,
 }
 
-/// Какой прямоугольник мира Morrowind покрывает **файл** листа размером `file` (ширина, высота в
-/// пикселях) после смещения `offset`. `None` — `MNAM` не описывает ни одной ячейки (восточная
-/// ячейка западнее западной) или файл пуст.
+/// Which rectangle of the Morrowind world the sheet **file** of size `file` (width, height in
+/// pixels) covers after offset `offset`. `None` means `MNAM` describes no cells (the eastern cell
+/// is west of the western one) or the file is empty.
 pub fn sheet_rect(size: &MapSize, file: (u32, u32), offset: Offset) -> Option<SheetRect> {
     let cells_across = i32::from(size.south_east.0) - i32::from(size.north_west.0) + 1;
     if cells_across <= 0 || size.width == 0 || file.0 == 0 || file.1 == 0 {
@@ -83,7 +84,7 @@ mod tests {
 
     #[test]
     fn se_world_sheet_is_sixteen_pixels_per_cell_from_its_south_west_corner() {
-        // Без смещения: ячейки Oblivion x −32…32, y −29…35 (замер по береговой линии).
+        // Without the offset: Oblivion cells x −32…32, y −29…35 (measured against the coastline).
         let r = sheet_rect(&SE_WORLD, (1024, 1024), Offset::default()).unwrap();
         assert_eq!(
             (r.left, r.bottom, r.right, r.top),
@@ -102,9 +103,9 @@ mod tests {
 
     #[test]
     fn tamriel_file_is_not_stretched_to_the_usable_size() {
-        // «Полезные» 2055×1830 на ячейки x −59…59, y −58…47; файл — 2048×2048. Замер по воде:
-        // левый край −58.75, верхний 47.75, 17.3 пикселя на ячейку (шаг подбора — четверть
-        // ячейки и 0.1 пикселя).
+        // A "useful" 2055×1830 over cells x −59…59, y −58…47; the file is 2048×2048. Measured
+        // against the water: left edge −58.75, top 47.75, 17.3 pixels per cell (the fitting step is
+        // a quarter cell and 0.1 pixel).
         let tamriel = MapSize {
             width: 2055,
             height: 1830,
@@ -117,7 +118,7 @@ mod tests {
         assert!((pixels_per_cell - 2055.0 / 119.0).abs() < 1e-9);
         assert_eq!(cell(r.left), -59.0);
         assert!((cell(r.top) - 47.97).abs() < 0.01, "{}", cell(r.top));
-        // Клетки квадратные: по высоте файл покрывает столько же ячеек, сколько по ширине.
+        // The cells are square: vertically the file covers as many cells as horizontally.
         assert!(((r.top - r.bottom) - (r.right - r.left)).abs() < 1e-6);
         assert!((cell(r.bottom) + 70.63).abs() < 0.01, "{}", cell(r.bottom));
     }

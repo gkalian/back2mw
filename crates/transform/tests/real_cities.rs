@@ -1,12 +1,12 @@
-//! Города `SEWorld`: дочерние worldspace, их дубли, ворота и ландшафт. Требует
+//! The cities of `SEWorld`: child worldspaces, their duplicates, gates and landscape. Needs
 //! `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p transform --test real_cities -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Города: дочерние worldspace», и в документации
-//! `transform::exterior::merge_children`.
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Cities: child worldspaces", and in the
+//! documentation of `transform::exterior::merge_children`.
 
 mod common;
 
@@ -45,22 +45,22 @@ fn world(plugin: &Plugin, name: &str) -> World {
     out
 }
 
-/// Высота ближайшей вершины под точкой, если у ячейки есть `LAND`.
+/// Height of the nearest vertex under a point, if the cell has a `LAND`.
 fn ground(heights: &BTreeMap<(i32, i32), SourceHeights>, x: f32, y: f32) -> Option<f32> {
-    #[expect(clippy::cast_possible_truncation, reason = "ячейки ±300")]
+    #[expect(clippy::cast_possible_truncation, reason = "cells are ±300")]
     let grid = ((x / CELL).floor() as i32, (y / CELL).floor() as i32);
     let h = heights.get(&grid)?;
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         clippy::cast_precision_loss,
-        reason = "зажато в 0…32"
+        reason = "clamped to 0…32"
     )]
     let vertex = |v: f32, g: i32| ((v - g as f32 * CELL) / STEP).round().clamp(0.0, 32.0) as usize;
     Some(h[vertex(y, grid.1)][vertex(x, grid.0)])
 }
 
-/// Как в `merge_children`: углы равны с точностью до оборота.
+/// As in `merge_children`: angles are equal up to a full turn.
 fn same_rotation(a: [f32; 3], b: [f32; 3]) -> bool {
     use std::f32::consts::TAU;
     (0..3).all(|k| {
@@ -77,7 +77,7 @@ fn distance(a: &Placement, b: &Placement) -> f32 {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn seworld_cities() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -94,14 +94,15 @@ fn seworld_cities() {
         .filter(|(_, w)| w.parent == Some(se_id))
         .map(|(_, w)| w.editor_id.clone())
         .collect();
-    println!("дети SEWorld: {children:?}");
+    println!("SEWorld children: {children:?}");
 
     let island = world(&plugin, "SEWorld");
     let (mut exact, mut nearest_other, mut rotated_near) = (0usize, f32::INFINITY, 0usize);
     let (mut buried_island, mut buried_own) = (0usize, 0usize);
     for name in &children {
         let city = world(&plugin, name);
-        // Ландшафт: сколько LAND города отличается от острова и на сколько на краях.
+        // Landscape: how many of a city's LAND differ from the island's, and by how much at the
+        // edges.
         let (mut differ, mut worst_edge) = (0usize, 0f32);
         for (grid, h) in &city.heights {
             let i = &island.heights[grid];
@@ -114,7 +115,7 @@ fn seworld_cities() {
                 }
             }
         }
-        // Зарыто на 100+ юнитов под землёй острова и под своей.
+        // Buried 100+ units under the island's ground and under its own.
         let (mut bi, mut bo) = (0usize, 0usize);
         for p in &city.refs {
             let [x, y, z] = p.position;
@@ -126,8 +127,9 @@ fn seworld_cities() {
             bi += usize::from(isl > z + 100.0);
             bo += usize::from(own > z + 100.0);
         }
-        // Копии: тот же базовый объект у острова на том же месте и с тем же поворотом. Пары с
-        // другим поворотом (половинки, развёрнутые на π) — не копии, считаются отдельно.
+        // Copies: the same base object as on the island at the same place with the same rotation.
+        // Pairs with another rotation (halves turned by π) are not copies and are counted
+        // separately.
         let mut here = 0usize;
         for p in &city.refs {
             for q in island.refs.iter().filter(|q| q.base == p.base) {
@@ -145,17 +147,17 @@ fn seworld_cities() {
         buried_island += bi;
         buried_own += bo;
         println!(
-            "{name}: REFR {}, LAND {} (не как у острова {differ}, край до {worst_edge:.0}), \
-             копий острова до бита {here}, зарыто под землёй острова {bi}, под своей {bo}",
+            "{name}: REFR {}, LAND {} (unlike the island {differ}, edge up to {worst_edge:.0}), \
+             island copies to the bit {here}, buried under the island's ground {bi}, under its own {bo}",
             city.refs.len(),
             city.heights.len()
         );
-        assert!(differ > 0, "{name}: весь LAND как у острова");
+        assert!(differ > 0, "{name}: all LAND is like the island's");
     }
     println!(
-        "копий до бита {exact}; ближайшая не-копия {nearest_other:.2}; в той же точке, но с другим поворотом {rotated_near}; зарыто: остров {buried_island}, свой LAND {buried_own}"
+        "copies to the bit {exact}; nearest non-copy {nearest_other:.2}; at the same point but with another rotation {rotated_near}; buried: island {buried_island}, own LAND {buried_own}"
     );
-    // Допуск дублей отделяет копии от соседей с запасом.
+    // The duplicate tolerance separates copies from neighbors with a margin.
     assert!(nearest_other > DUPLICATE_TOLERANCE * 4.0);
 
     let source = ExteriorSource::read(&plugin, "SEWorld", Some)
@@ -163,13 +165,13 @@ fn seworld_cities() {
         .unwrap();
     let m = &source.merged;
     println!(
-        "слияние: {:?}, дублей {}, ворот {}, размещений {}",
+        "merge: {:?}, duplicates {}, gates {}, placements {}",
         m.children,
         m.duplicates,
         m.gates,
         source.placements.len()
     );
     assert_eq!(m.children, children);
-    assert!(m.duplicates >= exact, "каждая копия острова выброшена");
+    assert!(m.duplicates >= exact, "every island copy is dropped");
     assert!(m.gates > 0);
 }

@@ -1,6 +1,6 @@
 [package]
 name = "back2mw"
-description = "Конвертер содержимого Oblivion в формат Morrowind."
+description = "Converter of Oblivion content into the Morrowind format."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,20 +15,20 @@ name = "back2mw"
 path = "src/main.rs"
 
 [dependencies]
-# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+# Message language: shared by all crates, has no dependencies itself.
 lang = { path = "../lang" }
 mesh_convert = { path = "../mesh_convert" }
 tes3_out = { path = "../tes3_out" }
 tes4_read = { path = "../tes4_read" }
 transform = { path = "../transform" }
-# Разбор config.toml (T1.1): оба крейта разрешены планом, MIT/Apache.
+# Parsing config.toml (T1.1): both crates are allowed by the plan, MIT/Apache.
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-# Упаковка loose-файлов в zip (T1.10): MIT, только deflate.
+# Packing loose files into a zip (T1.10): MIT, deflate only.
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-# Читаем записанный плагин библиотекой, которой он записан: сквозной тест T1.8.
+# We read the written plugin with the library it was written with: end-to-end test T1.8.
 tes3 = { workspace = true, features = ["esp", "bsa"] }
 
 [lints]

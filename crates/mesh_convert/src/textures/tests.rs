@@ -40,7 +40,7 @@ fn the_extension_is_kept_from_the_source() {
 #[test]
 fn bad_paths_are_errors() {
     assert!(matches!(
-        target_of("textures\\скала.dds"),
+        target_of("textures\\rocher_é.dds"),
         Err(TextureError::NotAscii { .. })
     ));
     assert!(matches!(
@@ -66,7 +66,7 @@ fn normal_maps_are_never_taken() {
             "{path}"
         );
     }
-    // Суффикс _n внутри имени — не карта нормалей.
+    // A _n suffix inside the name is not a normal map.
     assert!(target_of("textures\\a\\wall_new.dds").is_ok());
     assert!(target_of("textures\\a_n\\wall.dds").is_ok());
 }
@@ -92,7 +92,7 @@ fn different_paths_with_one_flattened_name_collide() {
             second: "textures\\a\\b_c.dds".to_owned(),
         }
     );
-    assert_eq!(reg.len(), 1, "коллизия ничего не перезаписала");
+    assert_eq!(reg.len(), 1, "the collision overwrote nothing");
 }
 
 #[test]

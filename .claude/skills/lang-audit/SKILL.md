@@ -12,7 +12,7 @@ window text — goes through the `lang` crate with Russian and English side by s
 - `lang::trw!(f, "русский", "english", …)` instead of `write!` in `Display`
 - `lang::tr("русский", "english")` for strings without placeholders, including `&'static str` fields of errors
 
-Not user-visible, stay Russian only: `expect`/`assert!`/`unreachable!` messages, code comments, test names.
+Not user-visible, written in English only: `expect`/`assert!`/`unreachable!` messages, code comments, test names. Cyrillic outside the Russian half of a `lang` pair (and outside tests of Russian output) is a finding.
 
 ## What to look for
 

@@ -1,28 +1,28 @@
-//! Уровневые списки предметов: `LVLI` Oblivion → `LEVI` Morrowind (T2.5).
+//! Leveled item lists: Oblivion `LVLI` → Morrowind `LEVI` (T2.5).
 //!
-//! Решения владельца (2026-09-27), числа — `docs/ru/formats/tes4.md`, «Уровневые списки»:
-//! - у строки `LEVI` числа нет: число строки Oblivion больше 1 становится 1, с замечанием;
-//! - исключение — золото: `Gold001` ×N ложится на самую крупную ванильную монету ≤ N
-//!   (`Gold_005`…`Gold_100`), так теряется меньше всего;
-//! - флаг «брать все» (`LVLF` 0x04) раскрывается в строки контейнера, который ссылается на
-//!   список прямо; внутри другого списка он теряется, и список выбирает как обычный;
-//! - шанс «ничего» больше 100 (5 списков старого формата — 128) зажимается в 100.
+//! Owner's decisions (2026-09-27), numbers in `docs/en/formats/tes4.md`, "Leveled lists":
+//! - a `LEVI` row has no count: an Oblivion row count above 1 becomes 1, with a note;
+//! - the exception is gold: `Gold001` ×N maps onto the largest vanilla coin ≤ N
+//!   (`Gold_005`…`Gold_100`), which loses the least;
+//! - the "use all" flag (`LVLF` 0x04) is expanded into the rows of a container that references the
+//!   list directly; inside another list it is lost, and the list picks as usual;
+//! - a "nothing" chance above 100 (5 old-format lists have 128) is clamped to 100.
 
 use std::collections::{BTreeSet, HashMap};
 
 use tes3_out::{LeveledItem, Object};
 use tes4_read::{LEVELED_ALL_LEVELS, LEVELED_EACH_ITEM, LEVELED_USE_ALL, LeveledList};
 
-/// `FormID` золота Oblivion (`Gold001`, `MISC` в `Oblivion.esm`, 2026-09-27). Движок знает его по
-/// номеру, поэтому и мы: золото из любого плагина — одно и то же.
+/// `FormID` of Oblivion gold (`Gold001`, a `MISC` in `Oblivion.esm`, 2026-09-27). The engine knows
+/// it by number, and so do we: gold from any plugin is the same thing.
 pub const GOLD_FORM_ID: u32 = 0x0000_000F;
 
-/// Монета Morrowind, на которую ложится золото.
+/// The Morrowind coin gold maps onto.
 pub const GOLD: &str = "Gold_001";
 
-/// Ванильные монеты `Morrowind.esm` (esmtool, 2026-09-27): у всех имя «Gold», `Value` — номинал.
-/// Что подобранная монета становится номиналом × `Gold_001`, известно по OpenMW, в ванили не
-/// проверено.
+/// Vanilla coins of `Morrowind.esm` (esmtool, 2026-09-27): all are named "Gold", `Value` is the
+/// denomination. That a picked-up coin becomes denomination × `Gold_001` is known from OpenMW, not
+/// verified in vanilla.
 const GOLD_PILES: [(i16, &str); 5] = [
     (100, "Gold_100"),
     (25, "Gold_025"),
@@ -31,7 +31,7 @@ const GOLD_PILES: [(i16, &str); 5] = [
     (1, GOLD),
 ];
 
-/// Самая крупная монета не больше `count` и совпадает ли номинал с `count`.
+/// The largest coin not exceeding `count`, and whether the denomination equals `count`.
 pub fn gold_pile(count: i16) -> (&'static str, bool) {
     let (value, id) = GOLD_PILES
         .iter()
@@ -41,19 +41,19 @@ pub fn gold_pile(count: i16) -> (&'static str, bool) {
     (id, value == count.max(1))
 }
 
-/// Список цели и что при переносе потерялось.
+/// The target list and what was lost in the conversion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConvertedList {
     pub list: LeveledItem,
-    /// У списка с «брать все» — строки с числами источника: контейнер раскрывает список в них.
+    /// A list with "use all" — rows with the source counts: a container expands the list into them.
     pub use_all: Option<Vec<(i32, String)>>,
-    /// Строки, чей предмет не нашёлся: они выброшены.
+    /// Rows whose item was not found: they are dropped.
     pub unresolved: usize,
     pub notes: Vec<String>,
 }
 
-/// `LVLI` → `LEVI`. `resolve` переводит `FormID` строки (как в файле) в ID цели; `None` — предмета
-/// нет (не переносится, не сконвертировался, из не выбранного плагина).
+/// `LVLI` → `LEVI`. `resolve` turns a row's `FormID` (as in the file) into the target ID; `None`
+/// means there is no item (not carried over, failed to convert, from an unselected plugin).
 pub fn convert_list(
     source: &LeveledList,
     id: String,
@@ -140,9 +140,9 @@ pub fn convert_list(
     }
 }
 
-/// Содержимое контейнера: список с «брать все» (`use_all`, ключ — ID в нижнем регистре)
-/// заменяется своими строками, число контейнера умножается на число строки. Знак (пополняемое)
-/// сохраняется. Раскрытие на один уровень: вложенный список остаётся ссылкой.
+/// Container contents: a list with "use all" (`use_all`, the key is the ID in lower case) is
+/// replaced by its rows, the container's count multiplied by the row's count. The sign (restocking)
+/// is kept. Expansion goes one level deep: a nested list stays a reference.
 pub fn expand_use_all(
     items: Vec<(i32, String)>,
     use_all: &HashMap<String, Vec<(i32, String)>>,
@@ -161,20 +161,20 @@ pub fn expand_use_all(
     out
 }
 
-/// Сколько ссылок убрала [`prune_references`].
+/// How many references [`prune_references`] removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Pruned {
-    /// Предметов из контейнеров.
+    /// Items from containers.
     pub container_items: usize,
-    /// Строк из списков.
+    /// Rows from lists.
     pub list_entries: usize,
-    /// Списков, оставшихся пустыми: они не пишутся.
+    /// Lists left empty: they are not written.
     pub lists: usize,
 }
 
-/// Убирает ссылки на отсутствующие записи (`missing`) из контейнеров и списков. Пустой список
-/// тоже отсутствует: движку не из чего выбирать, а ссылка на него в другом списке или контейнере
-/// становится битой — поэтому до неподвижной точки.
+/// Removes references to missing records (`missing`) from containers and lists. An empty list is
+/// missing too: the engine has nothing to choose from, and a reference to it in another list or
+/// container becomes broken — hence iterating to a fixed point.
 pub fn prune_references(
     objects: &mut [Object],
     lists: &mut Vec<LeveledItem>,

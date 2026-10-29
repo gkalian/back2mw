@@ -2,7 +2,7 @@ use crate::container::Tag;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Тип глобальной переменной (`FNAM`): буква, как в CS и в `FNAM` Morrowind.
+/// Global variable type (`FNAM`): a letter, as in the CS and in Morrowind's `FNAM`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GlobalKind {
     /// `s`
@@ -13,11 +13,11 @@ pub enum GlobalKind {
     Float,
 }
 
-/// Глобальная переменная (`GLOB`, T11.1).
+/// A global variable (`GLOB`, T11.1).
 ///
-/// Раскладка измерена на `Oblivion.esm` (2026-10-01, `docs/ru/formats/tes4.md`, «Глобальные
-/// переменные»): у всех 94 записей ровно `EDID`, `FNAM` (1 байт), `FLTV` (`f32`). Значение
-/// хранится числом с плавающей точкой при любом типе — как у Morrowind.
+/// The layout was measured on `Oblivion.esm` (2026-10-01, `docs/en/formats/tes4.md`, "Global
+/// variables"): all 94 records have exactly `EDID`, `FNAM` (1 byte), `FLTV` (`f32`). The value is
+/// stored as a floating-point number whatever the type — as in Morrowind.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Global {
     pub editor_id: String,

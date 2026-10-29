@@ -115,8 +115,8 @@ fn the_cli_reads_the_same_file() {
     assert_eq!(c.source_data, Path::new("D:\\Games\\Oblivion\\Data"));
     assert_eq!(c.selected_plugins, ["Oblivion.esm", "Mod A.esp"]);
     assert!(c.pack_bsa);
-    assert!(c.morrowind_prices, "ключ окна доходит и до консоли");
-    assert!(c.lua_map, "и галочка карты мира");
+    assert!(c.morrowind_prices, "the window key reaches the console too");
+    assert!(c.lua_map, "and so does the world map checkbox");
 }
 
 #[test]

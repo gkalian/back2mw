@@ -1,11 +1,11 @@
-//! Актёры `Oblivion.esm` (T7.1): спеки `RACE`, `CLAS`, `FACT`, `NPC_` на всех записях. Требует
+//! Actors of `Oblivion.esm` (T7.1): the `RACE`, `CLAS`, `FACT`, `NPC_` specs on all records. Needs
 //! `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p tes4_read --test real_actors -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Актёры».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Actors".
 
 mod common;
 
@@ -33,7 +33,7 @@ fn all<T: FromFields>(plugin: &Plugin, tag: &[u8; 4]) -> Vec<(u32, T)> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_actor_record_of_oblivion_parses() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -53,7 +53,7 @@ fn every_actor_record_of_oblivion_parses() {
         (15, 111, 476, 2482)
     );
 
-    // Коды навыков классов и рас — в 12…32.
+    // Class and race skill codes are in 12…32.
     let skill = |av: u32| (SKILL_AV_FIRST..SKILL_AV_FIRST + 21).contains(&av);
     assert!(
         classes
@@ -66,12 +66,12 @@ fn every_actor_record_of_oblivion_parses() {
             .all(|(_, r)| { r.skill_bonuses.iter().all(|&(s, _)| skill(u32::from(s))) })
     );
 
-    // Лица (фаза 8): причёски, глаза, части голов рас, коэффициенты FaceGen.
+    // Faces (phase 8): hair, eyes, race head parts, FaceGen coefficients.
     let hair: Vec<(u32, tes4_read::Hair)> = all(&plugin, b"HAIR");
     let eyes: Vec<(u32, tes4_read::Eyes)> = all(&plugin, b"EYES");
     let parts: Vec<usize> = races.iter().map(|(_, r)| r.head_parts.len()).collect();
     println!(
-        "HAIR {}, EYES {}; частей головы у рас: {parts:?}",
+        "HAIR {}, EYES {}; race head parts: {parts:?}",
         hair.len(),
         eyes.len()
     );
@@ -86,11 +86,11 @@ fn every_actor_record_of_oblivion_parses() {
     assert!(npcs.iter().all(|(_, n)| full(&n.face)));
     assert!(races.iter().all(|(_, r)| full(&r.face)));
     let colored = npcs.iter().filter(|(_, n)| n.hair_color.is_some()).count();
-    println!("NPC с HCLR: {colored}");
+    println!("NPCs with HCLR: {colored}");
 
     let count = |f: u32| npcs.iter().filter(|(_, n)| n.flags & f != 0).count();
     println!(
-        "NPC_: женщин {}, важных {}, autocalc {}, от уровня игрока {}",
+        "NPC_: female {}, essential {}, autocalc {}, relative to player level {}",
         count(NPC_FEMALE),
         count(NPC_ESSENTIAL),
         count(NPC_AUTOCALC),
@@ -107,7 +107,7 @@ fn every_actor_record_of_oblivion_parses() {
         *offsets.entry(n.level).or_default() += 1;
     }
     println!(
-        "от уровня игрока: calcMax = 0 у {no_max}; смещения {offsets:?}; calcMin…calcMax, первые: {:?}",
+        "relative to player level: calcMax = 0 in {no_max}; offsets {offsets:?}; calcMin…calcMax, first: {:?}",
         offset
             .iter()
             .take(8)
@@ -121,13 +121,13 @@ fn every_actor_record_of_oblivion_parses() {
     {
         *fixed.entry(n.level).or_default() += 1;
     }
-    println!("постоянный уровень: {fixed:?}");
+    println!("fixed level: {fixed:?}");
     let multi = npcs.iter().filter(|(_, n)| n.factions.len() > 1).count();
     let no_class = npcs.iter().filter(|(_, n)| n.class.is_none()).count();
     let services = npcs.iter().filter(|(_, n)| n.ai.services != 0).count();
     println!(
-        "во многих фракциях {multi}, без класса {no_class}, с услугами {services}, \
-         рангов у фракций до {}",
+        "in several factions {multi}, without a class {no_class}, with services {services}, \
+         faction ranks up to {}",
         factions.iter().map(|(_, f)| f.ranks.len()).max().unwrap()
     );
 }

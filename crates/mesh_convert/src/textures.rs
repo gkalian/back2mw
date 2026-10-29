@@ -1,56 +1,54 @@
-//! Имена текстур в выходных мешах и список файлов для копирования, T1.6.
+//! Texture names in output meshes and the list of files to copy, T1.6.
 //!
-//! В NIF Morrowind текстура задаётся голым именем файла из `Textures\`: каталога нет
-//! (проверено на всех NIF ванили: 22 021 ссылка, 0 с разделителем, `docs/ru/formats/tes3.md`).
-//! Текстуры Oblivion лежат в дереве каталогов, поэтому при выкладывании в один каталог
-//! пути приходится сплющивать, а имена — разводить так, чтобы два разных файла не
-//! слились в один.
+//! In a Morrowind NIF a texture is given by a bare file name from `Textures\`: there is no
+//! directory (checked on all vanilla NIFs: 22,021 references, 0 with a separator,
+//! `docs/en/formats/tes3.md`). Oblivion textures live in a directory tree, so when laying them out
+//! into one directory the paths have to be flattened, and the names kept apart so that two
+//! different files do not merge into one.
 //!
-//! **Схема** (часть совместимости вывода, как схема ID в `transform::ids`): путь
-//! относительно `textures\`, нижний регистр, `\` → `_`, префикс `ob_`, расширение как в
-//! источнике. `textures\architecture\anvil\anvilwall01.dds` →
-//! `ob_architecture_anvil_anvilwall01.dds`.
+//! **Scheme** (part of output compatibility, like the ID scheme in `transform::ids`): the path
+//! relative to `textures\`, lower case, `\` → `_`, prefix `ob_`, extension as in the source.
+//! `textures\architecture\anvil\anvilwall01.dds` → `ob_architecture_anvil_anvilwall01.dds`.
 //!
-//! Схема **не инъективна**: `a_b\c.dds` и `a\b_c.dds` дают одно имя. Поэтому реестр
-//! [`TextureRegistry`] запоминает, какому исходному пути принадлежит имя, и второй
-//! другой путь с тем же именем — ошибка, а не перезапись. Суффиксов для разведения
-//! коллизий не придумываем: такая схема стала бы частью совместимости с уже собранными
-//! мешами.
+//! The scheme is **not injective**: `a_b\c.dds` and `a\b_c.dds` give the same name. So the
+//! [`TextureRegistry`] remembers which source path a name belongs to, and a second, different path
+//! with the same name is an error, not an overwrite. We do not invent suffixes to separate
+//! collisions: such a scheme would become part of compatibility with meshes already built.
 //!
-//! Расширение остаётся из источника (у Oblivion `.dds`). Что ванильный движок ищет `.dds`
-//! при `.tga` в NIF — установлено на ванили, но игрой не проверялось.
+//! The extension stays from the source (`.dds` in Oblivion). That the vanilla engine looks for
+//! `.dds` when the NIF has `.tga` is established from vanilla but not checked in the game.
 
 use std::collections::HashMap;
 use std::fmt;
 
-/// Префикс имён конвертированных текстур: с него не начинается ни одно имя ванили.
+/// Name prefix of converted textures: no vanilla name starts with it.
 pub const PREFIX: &str = "ob_";
 
-/// Один файл к копированию: откуда взять в BSA источника и как назвать в `Textures\`.
+/// One file to copy: where to take it from in the source BSA and what to call it in `Textures\`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextureCopy {
-    /// Путь в архиве источника, нижний регистр, с `textures\` в начале.
+    /// Path in the source archive, lower case, with `textures\` at the start.
     pub source_path: String,
-    /// Имя файла в `Textures\` Morrowind.
+    /// File name in Morrowind's `Textures\`.
     pub target_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextureError {
-    /// Имя или путь не ASCII: в NIF и в файловой системе Morrowind им делать нечего.
+    /// The name or path is not ASCII: it has no place in a NIF or in Morrowind's file system.
     NotAscii { path: String },
-    /// От пути ничего не осталось (пусто или один `textures\`).
+    /// Nothing is left of the path (empty or just `textures\`).
     Empty { path: String },
-    /// В пути есть сегмент `..`.
+    /// The path has a `..` segment.
     ParentSegment { path: String },
-    /// Два разных исходных пути дали одно имя.
+    /// Two different source paths gave the same name.
     Collision {
         name: String,
         first: String,
         second: String,
     },
-    /// Карта нормалей (`*_n.dds`) в слоте, который переносится: копировать её не
-    /// положено, а ссылку без файла оставлять нельзя.
+    /// A normal map (`*_n.dds`) in a slot that is carried over: it is not supposed to be copied,
+    /// and a reference without a file must not be left behind.
     NormalMap { path: String },
 }
 
@@ -94,7 +92,7 @@ impl fmt::Display for TextureError {
 
 impl std::error::Error for TextureError {}
 
-/// Приводит путь источника к виду `(путь в архиве, имя в Textures\)`. Чистая функция.
+/// Converts a source path into the form `(path in archive, name in Textures\)`. A pure function.
 pub fn target_of(source: &str) -> Result<TextureCopy, TextureError> {
     if !source.is_ascii() {
         return Err(TextureError::NotAscii {
@@ -127,17 +125,17 @@ pub fn target_of(source: &str) -> Result<TextureCopy, TextureError> {
     })
 }
 
-/// Карта нормалей по соглашению об именах Oblivion: `<имя>_n.<расширение>`.
+/// A normal map by the Oblivion naming convention: `<name>_n.<extension>`.
 pub(crate) fn is_normal_map(lower: &str) -> bool {
     let stem = lower.rsplit_once('.').map_or(lower, |(stem, _)| stem);
     stem.ends_with("_n")
 }
 
-/// Реестр выданных имён. Один на весь прогон: коллизия между текстурами **разных**
-/// мешей — тоже коллизия.
+/// The registry of issued names. One for the whole run: a collision between textures of
+/// **different** meshes is a collision too.
 #[derive(Debug, Clone, Default)]
 pub struct TextureRegistry {
-    /// Имя в `Textures\` → путь в архиве.
+    /// Name in `Textures\` → path in archive.
     by_name: HashMap<String, String>,
 }
 
@@ -146,7 +144,7 @@ impl TextureRegistry {
         Self::default()
     }
 
-    /// Имя для текстуры источника. Повторный запрос того же пути — то же имя.
+    /// The name for a source texture. A repeated request for the same path gives the same name.
     pub fn register(&mut self, source: &str) -> Result<TextureCopy, TextureError> {
         let copy = target_of(source)?;
         match self.by_name.get(&copy.target_name) {
@@ -174,8 +172,7 @@ impl TextureRegistry {
         self.by_name.is_empty()
     }
 
-    /// Все зарегистрированные текстуры по имени файла: порядок не зависит от порядка
-    /// регистрации.
+    /// All registered textures by file name: the order does not depend on the registration order.
     pub fn copies(&self) -> Vec<TextureCopy> {
         let mut out: Vec<TextureCopy> = self
             .by_name

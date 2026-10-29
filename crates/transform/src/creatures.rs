@@ -1,19 +1,22 @@
-//! Существа: `CREA` Oblivion → `CREA` Morrowind на модели ванильного существа-донора (T11.3).
+//! Creatures: Oblivion `CREA` → Morrowind `CREA` on the model of a vanilla donor creature (T11.3).
 //!
-//! Решения владельца 2026-10-01 (`docs/ru/types/crea.md`): у существа Oblivion, чей вид есть в
-//! `Morrowind.esm`, — модель и звуки донора (`CNAM` — сам донор), его душа, кровь и то, что умеет его
-//! анимация (двуногое, оружие и щит, плавает, летает, ходит); остальное — числа Oblivion: здоровье,
-//! магия (базовые очки заклинаний `ACBS`), усталость, атрибуты, навыки, уровень (как у NPC), урон —
-//! все три атаки `(⌈D/3⌉, D)`. Какой вид у какого донора — контент, он в `data/creatures.tsv`; ключ —
-//! папка модели (`creatures\<папка>\…`).
+//! Owner's decisions 2026-10-01 (`docs/en/types/crea.md`): an Oblivion creature whose kind exists
+//! in `Morrowind.esm` gets the donor's model and sounds (`CNAM` is the donor itself), its soul,
+//! blood and what its animation can do (biped, weapon and shield, swims, flies, walks); the rest
+//! are Oblivion's numbers: health, magicka (the base spell points of `ACBS`), fatigue, attributes,
+//! skills, level (as for NPCs), damage — all three attacks `(⌈D/3⌉, D)`. Which kind gets which
+//! donor is content, it lives in `data/creatures.tsv`; the key is the model folder
+//! (`creatures\<folder>\…`).
 //!
-//! Существо без донора получает **свою модель** (T11.5e): меш собирается из его скелета и частей
-//! тела `NIFZ`, анимация — из клипов папки (`mesh_convert::creature`); здесь — запись и то, из чего
-//! стадия мешей соберёт модель ([`CreatureModel`]). Донора нет, поэтому то, что давал донор, берётся
-//! у Oblivion: душа — по размеру камня (`data/creature_souls.tsv`, решение владельца 2026-10-02:
-//! существо ловится в тот же камень Morrowind), «ходит / плавает / летает» — флаги `ACBS`; звуков
-//! (`CNAM`) — свои `SNDG` по звукам записи (T11.6, [`sound_gens`]); кровь красная, не двуногое, без оружия. Запись без частей тела и без
-//! донора не переносится: показать её нечем.
+//! A creature without a donor gets **its own model** (T11.5e): the mesh is built from its skeleton
+//! and the `NIFZ` body parts, the animation from the folder's clips (`mesh_convert::creature`);
+//! here are the record and what the meshes stage builds the model from ([`CreatureModel`]). There
+//! is no donor, so what the donor gave is taken from Oblivion: the soul by gem size
+//! (`data/creature_souls.tsv`, owner's decision 2026-10-02: the creature is caught in the same
+//! Morrowind gem), "walks / swims / flies" from the `ACBS` flags; sounds (`CNAM`) — its own `SNDG`
+//! from the record's sounds (T11.6, [`sound_gens`]); the blood is red, not biped, no weapon. A
+//! record without body parts and without a donor is not carried over: there is nothing to show it
+//! with.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
@@ -33,23 +36,25 @@ use crate::npcs::{
 use crate::paths::creature_mesh_path;
 use crate::weapons::display_name;
 
-/// `data/creatures.tsv`, встроенный в сборку.
+/// `data/creatures.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/creatures.tsv");
 
-/// Встроенная таблица, разобранная один раз на прогон.
+/// The built-in table, parsed once per run.
 pub static DONORS: LazyLock<DonorTable> = LazyLock::new(|| {
-    DonorTable::parse(TABLE).expect("data/creatures.tsv встроена в сборку и проверена тестом")
+    DonorTable::parse(TABLE)
+        .expect("data/creatures.tsv is built into the binary and checked by a test")
 });
 
-/// `data/creature_souls.tsv`, встроенный в сборку.
+/// `data/creature_souls.tsv`, built into the binary.
 const SOULS_TABLE: &str = include_str!("../../../data/creature_souls.tsv");
 
-/// Размер души Oblivion (0…5) → число души Morrowind.
+/// Oblivion soul size (0…5) → Morrowind soul value.
 pub static SOULS: LazyLock<Vec<u32>> = LazyLock::new(|| {
-    parse_souls(SOULS_TABLE).expect("data/creature_souls.tsv встроена в сборку и проверена тестом")
+    parse_souls(SOULS_TABLE)
+        .expect("data/creature_souls.tsv is built into the binary and checked by a test")
 });
 
-/// Разбирает таблицу душ: размеры идут подряд с нуля, число души не убывает.
+/// Parses the soul table: the sizes go in a row from zero, the soul value does not decrease.
 pub fn parse_souls(text: &str) -> Result<Vec<u32>, String> {
     let mut out: Vec<u32> = Vec::new();
     for (i, line) in text.lines().enumerate() {
@@ -82,7 +87,7 @@ pub fn parse_souls(text: &str) -> Result<Vec<u32>, String> {
     Ok(out)
 }
 
-/// Число души Morrowind для размера души Oblivion; размер за пределами таблицы — последняя строка.
+/// The Morrowind soul value for an Oblivion soul size; a size beyond the table gives the last row.
 pub fn soul_of(size: u8) -> u32 {
     SOULS
         .get(usize::from(size))
@@ -91,29 +96,32 @@ pub fn soul_of(size: u8) -> u32 {
         .unwrap_or(0)
 }
 
-/// Сколько раз идти по `CSCR` (существо, чьи звуки берутся): цепочка длиннее — цикл в данных.
+/// How many times to follow `CSCR` (the creature whose sounds are taken): a longer chain is a cycle
+/// in the data.
 const SOUND_SOURCE_DEPTH: usize = 8;
 
-/// Звук существа без донора (T11.6), ещё без `SOUN` плагина: его выдаёт стадия звуков.
+/// A sound of a creature without a donor (T11.6), not yet with the plugin's `SOUN`: the sounds
+/// stage issues it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatureSoundGen {
-    /// Абсолютный `FormID` существа-источника: по нему стадия находит его ID.
+    /// Absolute `FormID` of the source creature: the stage finds its ID by it.
     pub creature: u32,
-    /// Вид `SNDG` Morrowind: 0 левая нога, 1 правая, 4 Moan, 5 Roar, 6 Scream.
+    /// Morrowind `SNDG` kind: 0 left foot, 1 right, 4 Moan, 5 Roar, 6 Scream.
     pub kind: u8,
-    /// Абсолютный `FormID` `SOUN` источника.
+    /// Absolute `FormID` of the source `SOUN`.
     pub sound: u32,
 }
 
-/// Вид `SNDG` Morrowind ← слоты `CSDT` Oblivion по убыванию предпочтения. Задние лапы (2, 3) идут
-/// на ту же ногу, что и передние, но только если передних нет (метки ленты делают так же —
-/// `data/creature_marks.tsv`). Простой (4), смерть (8) и оружие (9) пары не имеют: Scream у
-/// ванили звучит при ударе по существу, а играет ли движок его при смерти, не проверено.
+/// Morrowind `SNDG` kind ← Oblivion `CSDT` slots in decreasing preference. Hind feet (2, 3) go to
+/// the same foot as the front ones, but only if there are no front ones (the tape text keys do the
+/// same — `data/creature_marks.tsv`). Idle (4), death (8) and weapon (9) have no counterpart: in
+/// vanilla Scream plays when the creature is hit, and whether the engine plays it on death is not
+/// verified.
 const SOUND_SLOTS: [(u8, &[u32]); 5] =
     [(0, &[0, 2]), (1, &[1, 3]), (4, &[5]), (5, &[6]), (6, &[7])];
 
-/// Звуки Morrowind по звукам Oblivion: `(вид, FormID SOUN)` по возрастанию вида. Из нескольких
-/// звуков слота берётся с наибольшим шансом (при равных — первый в записи).
+/// Morrowind sounds from Oblivion sounds: `(kind, SOUN FormID)` by ascending kind. Of several
+/// sounds in a slot, the one with the highest chance is taken (the first in the record when equal).
 pub fn sound_gens(sounds: &[CreatureSound]) -> Vec<(u8, u32)> {
     let mut out = Vec::new();
     for (kind, slots) in SOUND_SLOTS {
@@ -131,7 +139,8 @@ pub fn sound_gens(sounds: &[CreatureSound]) -> Vec<(u8, u32)> {
     out
 }
 
-/// Звуки записи `id`: свои, а если их нет — существа из `CSCR` (и так по цепочке).
+/// The sounds of record `id`: its own, and if there are none — those of the creature from `CSCR`
+/// (and so on along the chain).
 fn inherited_sounds(
     id: u32,
     table: &HashMap<u32, (Vec<CreatureSound>, Option<u32>)>,
@@ -152,20 +161,21 @@ fn inherited_sounds(
     &[]
 }
 
-/// Своя модель существа (T11.5e): из чего стадия мешей соберёт три файла.
+/// A custom creature model (T11.5e): what the meshes stage builds the three files from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatureModel {
-    /// Путь меша в плагине (относительно `Meshes\`); пара `x…` — `paths::creature_pair`.
+    /// Mesh path in the plugin (relative to `Meshes\`); the `x…` pair is `paths::creature_pair`.
     pub mesh: String,
-    /// Скелет: `MODL` записи в нормальной форме (относительно `Meshes\`).
+    /// The skeleton: the record's `MODL` in normal form (relative to `Meshes\`).
     pub skeleton: String,
-    /// Папка модели: в ней лежат части и клипы.
+    /// The model folder: the parts and clips live in it.
     pub folder: String,
-    /// Части тела `NIFZ`: имена файлов в папке, в порядке записи.
+    /// `NIFZ` body parts: file names in the folder, in record order.
     pub parts: Vec<String>,
 }
 
-/// Модель записи без донора; `None` — частей тела нет или путь не представим.
+/// The model of a record without a donor; `None` means there are no body parts or the path is not
+/// representable.
 fn own_model(c: &Creature) -> Option<CreatureModel> {
     if c.body_parts.is_empty() {
         return None;
@@ -185,12 +195,12 @@ fn own_model(c: &Creature) -> Option<CreatureModel> {
     })
 }
 
-/// Запись переносится: у её папки есть донор или у неё есть части тела для своей модели.
+/// The record is carried over: its folder has a donor or it has body parts for its own model.
 fn convertible(c: &Creature) -> bool {
     c.model.as_deref().and_then(|m| DONORS.donor(m)).is_some() || own_model(c).is_some()
 }
 
-/// Папка модели Oblivion (в нижнем регистре) → ID существа-донора Morrowind.
+/// Oblivion model folder (lower case) → Morrowind donor creature ID.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DonorTable {
     rows: HashMap<String, String>,
@@ -231,18 +241,19 @@ impl DonorTable {
         Ok(Self { rows })
     }
 
-    /// Донор для модели (`MODL` записи), если папка есть в таблице.
+    /// The donor for a model (the record's `MODL`), if the folder is in the table.
     pub fn donor(&self, model: &str) -> Option<&str> {
         self.rows.get(&model_folder(model)?).map(String::as_str)
     }
 
-    /// ID доноров таблицы — для сверки с мастером.
+    /// Donor IDs of the table — for checking against the master.
     pub fn donors(&self) -> impl Iterator<Item = &str> {
         self.rows.values().map(String::as_str)
     }
 }
 
-/// Папка модели существа: `Creatures\Rat\Skeleton.NIF` → `rat`. Модель не в `creatures\` — `None`.
+/// A creature's model folder: `Creatures\Rat\Skeleton.NIF` → `rat`. A model outside `creatures\`
+/// gives `None`.
 pub fn model_folder(model: &str) -> Option<String> {
     let lower = model.to_ascii_lowercase().replace('/', "\\");
     let rest = lower.strip_prefix("creatures\\")?;
@@ -250,16 +261,16 @@ pub fn model_folder(model: &str) -> Option<String> {
     (!folder.is_empty()).then(|| folder.to_owned())
 }
 
-/// Три атаки Morrowind из урона Oblivion: `(⌈D/3⌉, D)` — соотношение 1:3, как у ванили.
+/// Three Morrowind attacks from Oblivion damage: `(⌈D/3⌉, D)` — a 1:3 ratio, as in vanilla.
 pub fn attack(damage: u16) -> (u32, u32) {
     let d = u32::from(damage);
     (d.div_ceil(3), d)
 }
 
-/// Предметы инвентаря существ из набора (абсолютные `FormID`) и всё, что достижимо из них через
-/// `LVLI`: с `--worldspace` их нужно конвертировать, даже если в мире они не лежат, — как
-/// инвентарь NPC (`crate::npcs::inventory_of`). Существа, которые не переносятся (нет ни донора,
-/// ни частей тела), предметов не дают.
+/// Inventory items of the set's creatures (absolute `FormID`s) and everything reachable from them
+/// through `LVLI`: with `--worldspace` they have to be converted even if they do not lie in the
+/// world — like NPC inventory (`crate::npcs::inventory_of`). Creatures that are not carried over
+/// (neither a donor nor body parts) give no items.
 pub fn inventory_of(
     plugin: &Plugin,
     map: impl Fn(u32) -> Option<u32>,
@@ -279,42 +290,43 @@ pub fn inventory_of(
     reachable_items(plugin, &map, start)
 }
 
-/// Итог по плагину.
+/// Result for a plugin.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConvertedCreatures {
-    /// Абсолютный `FormID` источника и существо, в порядке файла.
+    /// The source's absolute `FormID` and the creature, in file order.
     pub creatures: Vec<(u32, OutCreature)>,
-    /// Свои модели существ без донора, без повторов, в порядке первой встречи: записи с одним
-    /// скелетом и набором частей делят модель.
+    /// Custom models of creatures without a donor, without repeats, in order of first appearance:
+    /// records with the same skeleton and set of parts share a model.
     pub models: Vec<CreatureModel>,
-    /// Звуки существ со своей моделью (T11.6): `SNDG` без `SOUN`, в порядке существ.
+    /// Sounds of creatures with their own model (T11.6): `SNDG` without `SOUN`, in creature order.
     pub sound_gens: Vec<CreatureSoundGen>,
     pub report: CreaturesReport,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreaturesReport {
-    /// `CREA` источника, которые просили перенести.
+    /// Source `CREA` that were requested to be carried over.
     pub seen: usize,
     pub converted: usize,
-    /// Из них со своей моделью (без донора).
+    /// Of them with their own model (without a donor).
     pub own_models: usize,
-    /// Не перенесены — нет ни донора, ни частей тела: папка модели → число записей.
+    /// Not carried over — neither a donor nor body parts: model folder → number of records.
     pub without_model: BTreeMap<String, usize>,
-    /// Донор из таблицы, которого нет у мастера.
+    /// A donor from the table that the master lacks.
     pub donor_missing: BTreeSet<String>,
     pub items_lost: usize,
     pub spells_lost: usize,
-    /// Существа со своей моделью и хотя бы одним звуком Morrowind (T11.6).
+    /// Creatures with their own model and at least one Morrowind sound (T11.6).
     pub with_sounds: usize,
-    /// Со скриптом (`SCRI`): скрипты не переносятся, существа — да.
+    /// With a script (`SCRI`): scripts are not carried over, the creatures are.
     pub dropped_scripts: usize,
 }
 
-/// То, что записи даёт модель: у существа на доноре — донор, у своей модели — запись Oblivion.
+/// What the model gives the record: for a creature on a donor — the donor, for its own model — the
+/// Oblivion record.
 struct Look {
     mesh: String,
-    /// `CNAM`; у существа со своими звуками (T11.6) пусто — ставится его собственный ID.
+    /// `CNAM`; empty for a creature with its own sounds (T11.6) — its own ID is set.
     sound: String,
     own_sounds: bool,
     soul: u32,
@@ -326,8 +338,9 @@ struct Look {
     blood_type: u8,
 }
 
-/// Существа плагина. `wanted` — какие (`None` — все); `vanilla` — существа мастера; `item` и
-/// `spell` — ID уже выданных предметов и заклинаний (что не найдётся, теряется с подсчётом).
+/// The plugin's creatures. `wanted` says which (`None` means all); `vanilla` are the master's
+/// creatures; `item` and `spell` are the IDs of already issued items and spells (whatever is not
+/// found is lost and counted).
 pub fn convert_creatures(
     plugin: &Plugin,
     map: impl Fn(u32) -> Option<u32>,
@@ -344,7 +357,7 @@ pub fn convert_creatures(
     let mut packages: HashMap<u32, Package> = HashMap::new();
     let mut spell_lists: HashMap<u32, SpellList> = HashMap::new();
     let mut sources: Vec<(u32, Creature)> = Vec::new();
-    // Звуки всех `CREA` плагина (T11.6): `CSCR` может указывать на существо вне набора.
+    // Sounds of all `CREA` of the plugin (T11.6): `CSCR` can point to a creature outside the set.
     let mut sound_table: HashMap<u32, (Vec<CreatureSound>, Option<u32>)> = HashMap::new();
     for r in plugin.records() {
         let Some(id) = map(r.header.form_id) else {
@@ -364,7 +377,7 @@ pub fn convert_creatures(
                 packages.insert(id, p);
             }
             b"LVSP" => {
-                // Раскладка та же, что у `LVLI`, как у NPC (`npcs::convert_actors`).
+                // The same layout as for `LVLI`, as for NPCs (`npcs::convert_actors`).
                 let list = tes4_read::Fields::parse(&r.data, "LVSP")
                     .and_then(|f| tes4_read::LeveledList::from_fields(&f))
                     .map_err(|e| ActorError::Read(format!("{:08X}: {e}", r.header.form_id)))?;
@@ -392,7 +405,8 @@ pub fn convert_creatures(
     for (form_id, c) in sources {
         out.report.seen += 1;
         let folder = c.model.as_deref().and_then(model_folder);
-        // Что даёт модель: у донора — он сам, у своей модели — запись Oblivion.
+        // What the model gives: for a donor — the donor itself, for its own model — the Oblivion
+        // record.
         let look = match c.model.as_deref().and_then(|m| DONORS.donor(m)) {
             Some(donor_id) => {
                 let Some(donor) = donors.get(&donor_id.to_ascii_lowercase()) else {
@@ -451,7 +465,7 @@ pub fn convert_creatures(
                     weapon_and_shield: false,
                     swims,
                     flies,
-                    // Существо, которому не задано ни одного способа движения, ходит.
+                    // A creature given no way of moving walks.
                     walks: c.flags & CREATURE_WALKS != 0 || !(swims || flies),
                     blood_type: 0,
                 };
@@ -487,13 +501,13 @@ pub fn convert_creatures(
             name: display_name(c.name.as_deref().unwrap_or(&c.editor_id), MAX_FIELD_LEN).0,
             mesh: look.mesh,
             sound,
-            // У Morrowind 0…3; лошадь и великан Oblivion — обычные существа.
+            // Morrowind has 0…3; Oblivion's horse and giant are normal creatures.
             kind: if c.stats.kind <= CREATURE_TYPE_HUMANOID {
                 c.stats.kind
             } else {
                 0
             },
-            level: u32::try_from(level).expect("level_of не ниже 1"),
+            level: u32::try_from(level).expect("level_of is at least 1"),
             attributes: c.stats.attributes,
             health: u32::from(c.stats.health),
             magicka: u32::from(c.base_spell),

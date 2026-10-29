@@ -1,10 +1,10 @@
-//! T1.3: ридер блоков на реальных мешах `STAT` из `Oblivion - Meshes.bsa`.
+//! T1.3: the block reader on real `STAT` meshes from `Oblivion - Meshes.bsa`.
 //!
-//! Берёт каждый меш 20.0.0.x, все типы блоков которого входят в набор M1, и требует
-//! разобрать его целиком: курсор — ровно в конце файла. Печатает числа для
-//! `docs/ru/formats/nif-oblivion.md`. Синтетика блоков — в `read::tests`.
+//! Takes every 20.0.0.x mesh all of whose block types are in the M1 set and requires it to be
+//! parsed in full: the cursor exactly at the end of the file. Prints the numbers for
+//! `docs/en/formats/nif-oblivion.md`. Synthetic block tests are in `read::tests`.
 //!
-//! Запуск (PowerShell):
+//! Running (PowerShell):
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
 //! cargo test -p mesh_convert --test real_blocks -- --ignored --nocapture
@@ -19,19 +19,18 @@ use std::io::BufReader;
 use mesh_convert::read::{Block, Error, SourceNif, parse, parse_header};
 use tes4_read::{BsaIndex, FromFields, Plugin, Stat};
 
-/// Всё, что умеет читать `read_block` (набор M1 и расширения T1.5, T1.3w).
+/// Everything `read_block` can read (the M1 set and the T1.5, T1.3w extensions).
 const M1_TYPES: &[&str] = mesh_convert::read::SUPPORTED_TYPES;
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_m1_mesh_of_stat_parses_to_the_last_byte() {
     let esm = common::game_file("Oblivion.esm");
-    let bytes = std::fs::read(&esm).unwrap_or_else(|e| panic!("не прочитать {esm:?}: {e}"));
+    let bytes = std::fs::read(&esm).unwrap_or_else(|e| panic!("cannot read {esm:?}: {e}"));
     let plugin = Plugin::parse(&bytes).unwrap_or_else(|e| panic!("Plugin::parse: {e}"));
 
-    let mut reader = BufReader::new(
-        File::open(common::game_file("Oblivion - Meshes.bsa")).expect("открыть BSA"),
-    );
+    let mut reader =
+        BufReader::new(File::open(common::game_file("Oblivion - Meshes.bsa")).expect("open BSA"));
     let index = BsaIndex::read_from(&mut reader).unwrap_or_else(|e| panic!("BsaIndex: {e}"));
 
     let mut paths = std::collections::BTreeSet::new();
@@ -50,13 +49,13 @@ fn every_m1_mesh_of_stat_parses_to_the_last_byte() {
     let mut failures: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut blocks_by_kind: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut texture_names: BTreeMap<String, usize> = BTreeMap::new();
-    let mut externals = (0usize, 0usize); // внешние / внутренние текстуры
+    let mut externals = (0usize, 0usize); // external / internal textures
 
     for path in &paths {
-        let entry = index.find(path).expect("путь из индекса");
-        let nif = index.extract(&mut reader, entry).expect("извлечь");
+        let entry = index.find(path).expect("the path comes from the index");
+        let nif = index.extract(&mut reader, entry).expect("extract");
         let Ok(header) = parse_header(&nif) else {
-            continue; // не 20.0.0.x — вне этой задачи
+            continue; // not 20.0.0.x — outside this task
         };
         let only_m1 = header
             .block_type_index
@@ -80,7 +79,7 @@ fn every_m1_mesh_of_stat_parses_to_the_last_byte() {
                 let kind = match &e {
                     Error::InBlock {
                         type_name, source, ..
-                    } => format!("в блоке {type_name}: {}", short(source)),
+                    } => format!("in block {type_name}: {}", short(source)),
                     other => short(other),
                 };
                 failures
@@ -91,41 +90,41 @@ fn every_m1_mesh_of_stat_parses_to_the_last_byte() {
         }
     }
 
-    println!("=== Ридер блоков на мешах STAT (только набор M1, 20.0.0.x) ===");
-    println!("  кандидатов:                  {candidates}");
-    println!("  разобрано до последнего байта: {parsed}");
-    println!("  отказов:                     {}", candidates - parsed);
+    println!("=== Block reader on STAT meshes (M1 set only, 20.0.0.x) ===");
+    println!("  candidates:                  {candidates}");
+    println!("  parsed to the last byte:     {parsed}");
+    println!("  failures:                    {}", candidates - parsed);
     for (kind, list) in &failures {
         println!("    {} × {kind}", list.len());
         for line in list.iter().take(3) {
             println!("      {line}");
         }
     }
-    println!("  блоков по типам (в разобранных):");
+    println!("  blocks by type (in parsed meshes):");
     for (kind, count) in &blocks_by_kind {
         println!("    {count:>8}  {kind}");
     }
     println!(
-        "  NiSourceTexture: внешних {}, внутренних {}",
+        "  NiSourceTexture: external {}, internal {}",
         externals.0, externals.1
     );
-    println!("  разных имён текстур: {}", texture_names.len());
+    println!("  distinct texture names: {}", texture_names.len());
 
-    assert!(candidates > 0, "не нашлось ни одного меша набора M1");
+    assert!(candidates > 0, "no mesh of the M1 set was found");
     assert!(
         failures.is_empty(),
-        "не разобралось {} мешей из {candidates}",
+        "{} meshes of {candidates} did not parse",
         candidates - parsed
     );
 }
 
-/// Короткая метка вида ошибки без позиций, чтобы одинаковые отказы сгруппировались.
+/// A short label of the error kind without positions, so identical failures group together.
 fn short(e: &Error) -> String {
     match e {
-        Error::Truncated { .. } => "данные кончились".to_owned(),
-        Error::InvalidBool { value, .. } => format!("булево = {value}"),
-        Error::InvalidRef { value, .. } => format!("ссылка {value}"),
-        Error::TrailingData { .. } => "курсор не в конце файла".to_owned(),
+        Error::Truncated { .. } => "data ended".to_owned(),
+        Error::InvalidBool { value, .. } => format!("boolean = {value}"),
+        Error::InvalidRef { value, .. } => format!("reference {value}"),
+        Error::TrailingData { .. } => "cursor not at the end of the file".to_owned(),
         other => other.to_string(),
     }
 }

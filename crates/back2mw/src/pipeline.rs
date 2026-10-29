@@ -1,32 +1,32 @@
-//! Прогон `all`: выбранные плагины Oblivion → готовый мод в `output/`.
+//! The `all` run: the chosen Oblivion plugins → a finished mod in `output/`.
 //!
-//! Стадии `read`, `transform`, `meshes` и `write` идут одним проходом в памяти внутри
-//! `all`; на диск ложатся только распакованное (`work/`) и результат (`output/`). Раздельный
-//! запуск стадий с промежуточным результатом на диске требует формата промежуточных данных —
-//! это отдельное решение, здесь его нет.
+//! The `read`, `transform`, `meshes` and `write` stages run as one in-memory pass inside `all`;
+//! only the unpacked files (`work/`) and the result (`output/`) go to disk. Running the stages
+//! separately with an intermediate result on disk needs a format for the intermediate data — that
+//! is a separate decision, not made here.
 //!
-//! Результат (раскладка — `package`):
+//! The result (layout — `package`):
 //!
 //! ```text
-//! output/<имя плагина источника>             свой плагин Morrowind на каждый (T1.15)
-//! output/Meshes/ob/<имя>_<хеш>.nif          короткий путь, transform::paths
-//! output/Icons/ob/<имя>_<хеш>.dds           иконки предметов
-//! output/BookArt/ob_<имя>_<хеш>.dds         картинки из текста книг
-//! output/Textures/ob_<путь текстуры через _>.dds
-//! output/back2mw-assets.tsv                 какой ассет какому плагину (для BSA)
+//! output/<source plugin name>               its own Morrowind plugin for each (T1.15)
+//! output/Meshes/ob/<name>_<hash>.nif        short path, transform::paths
+//! output/Icons/ob/<name>_<hash>.dds         item icons
+//! output/BookArt/ob_<name>_<hash>.dds       images from book text
+//! output/Textures/ob_<texture path joined by _>.dds
+//! output/back2mw-assets.tsv                 which asset belongs to which plugin (for BSA)
 //! ```
 //!
-//! **Плагины не сливаются.** `Mod1.esp` Oblivion даёт `Mod1.esp` Morrowind. Мастера плагина —
-//! `Morrowind.esm` плюс те его мастера Oblivion, что конвертируются в этом же прогоне
-//! (плагины обходятся в порядке загрузки, мастер пишется раньше зависимого, размер берётся с
-//! диска). Переопределение записи мастера остаётся в переопределяющем плагине с тем же ID
-//! (`transform::objects`), и Morrowind сливает их по ID, как ванильные.
+//! **Plugins are not merged.** Oblivion's `Mod1.esp` gives Morrowind's `Mod1.esp`. The plugin's
+//! masters are `Morrowind.esm` plus those of its Oblivion masters that are converted in the same
+//! run (plugins are walked in load order, a master is written before its dependent, the size is
+//! taken from disk). An override of a master's record stays in the overriding plugin with the same
+//! ID (`transform::objects`), and Morrowind merges them by ID, like vanilla ones.
 //!
-//! **Политика отказов.** Объект, чей меш не нашёлся в архиве или не конвертируется (ридер
-//! знает пока не все типы блоков — T1.3w), в плагин не попадает: запись без меша была бы
-//! битой. Такие записи перечисляются в отчёте. Если набор ограничен флагом `--only` и хоть
-//! одна запрошенная запись не прошла — прогон завершается ошибкой. Без `--only` счётчик
-//! пропущенных — информация, не отказ.
+//! **Failure policy.** An object whose mesh is not found in the archive or cannot be converted (the
+//! reader does not know all block types yet — T1.3w) does not go into the plugin: a record without
+//! a mesh would be broken. Such records are listed in the report. If the set is limited by the
+//! `--only` flag and even one requested record fails, the run ends with an error. Without `--only`
+//! the skipped count is information, not a failure.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -64,11 +64,11 @@ pub const TARGET_MASTER: &str = "Morrowind.esm";
 
 #[derive(Debug)]
 pub enum PipelineError {
-    /// Любая ошибка стадии с готовым текстом.
+    /// Any stage error with a ready text.
     Failed(String),
-    /// `validate` нашёл брак: по строке на проблему.
+    /// `validate` found defects: one line per problem.
     Validation(Vec<String>),
-    /// `--only` запросил записи, которые не удалось довести до результата.
+    /// `--only` requested records that could not be carried through to the result.
     Unresolved(Vec<String>),
 }
 
@@ -104,27 +104,27 @@ fn failed<E: fmt::Display>(context: &str) -> impl FnOnce(E) -> PipelineError + '
     move |e| PipelineError::Failed(format!("{context}: {e}"))
 }
 
-/// Куда переместиться консолью Morrowind, чтобы оказаться в конвертированном мире: ячейка метки
-/// начала Oblivion (`XMarkerHeading`) или, если метки нет, первая ячейка с объектами.
+/// Where to move with the Morrowind console to land in the converted world: the cell of Oblivion's
+/// start marker (`XMarkerHeading`) or, if there is no marker, the first cell with objects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartHint {
-    /// Мир-источник (`--worldspace`).
+    /// The source world (`--worldspace`).
     pub world: String,
     pub cell: StartTarget,
-    /// Положение метки в мире Morrowind, целыми; у запасной ячейки — `None`.
+    /// The marker's position in the Morrowind world, as integers; `None` for the fallback cell.
     pub position: Option<[i32; 3]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartTarget {
-    /// Внешняя ячейка по сетке Morrowind.
+    /// An exterior cell on the Morrowind grid.
     Exterior(i32, i32),
-    /// Интерьер по имени.
+    /// An interior by name.
     Interior(String),
 }
 
 impl StartHint {
-    /// Строка журнала с командой консоли (`~` в игре) для плагина `plugin`.
+    /// A log line with the console command (`~` in the game) for plugin `plugin`.
     pub fn line(&self, plugin: &str) -> String {
         let source = if self.position.is_some() {
             lang::tr("метка начала Oblivion", "Oblivion start marker")
@@ -153,14 +153,11 @@ impl StartHint {
     }
 }
 
-/// Подсказка для консоли по конвертированному миру: метка начала, иначе первая ячейка с объектами.
+/// Console hint for the converted world: the start marker, otherwise the first cell with objects.
 fn start_hint(world: &str, converted: &ConvertedExterior) -> Option<StartHint> {
     use transform::exterior::StartCell;
     let rounded = |p: [f32; 3]| {
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "подсказка: целые юниты мира"
-        )]
+        #[expect(clippy::cast_possible_truncation, reason = "a hint: whole world units")]
         p.map(|v| v.round() as i32)
     };
     if let Some(start) = &converted.report.start {
@@ -195,170 +192,175 @@ fn start_hint(world: &str, converted: &ConvertedExterior) -> Option<StartHint> {
     })
 }
 
-/// Итог по одному плагину.
+/// Result for one plugin.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginOutcome {
-    /// Куда переместиться консолью после установки (`--worldspace`).
+    /// Where to move with the console after installation (`--worldspace`).
     pub start: Option<StartHint>,
-    /// Имя файла — одинаковое у источника и результата.
+    /// File name — the same for the source and the result.
     pub name: String,
     pub statics: usize,
     pub weapons: usize,
     pub armor: usize,
     pub clothing: usize,
-    /// Записи `BODY` (части тела брони и одежды).
+    /// `BODY` records (body parts of armor and clothing).
     pub bodies: usize,
-    /// Предметы: `MISC`, `BOOK`, `ALCH`, `INGR`, `APPA`.
+    /// Items: `MISC`, `BOOK`, `ALCH`, `INGR`, `APPA`.
     pub items: usize,
-    /// Объекты мира: `ACTI`, `DOOR`, `CONT`, `LIGH` (T2.2).
+    /// World objects: `ACTI`, `DOOR`, `CONT`, `LIGH` (T2.2).
     pub world: usize,
-    /// Уровневые списки `LEVI` (T2.5).
+    /// `LEVI` leveled lists (T2.5).
     pub leveled: usize,
-    /// Зачарования `ENCH` и заклинания `SPEL` (T9.4).
+    /// `ENCH` enchantments and `SPEL` spells (T9.4).
     pub enchantments: usize,
     pub spells: usize,
-    /// Звуки `SOUN` (T10.1).
+    /// `SOUN` sounds (T10.1).
     pub sounds: usize,
-    /// Глобальные переменные `GLOB` (T11.1).
+    /// `GLOB` global variables (T11.1).
     pub globals: usize,
-    /// Существа `CREA` (T11.3).
+    /// `CREA` creatures (T11.3).
     pub creatures: usize,
-    /// Списки существ `LEVC` (T11.4).
+    /// `LEVC` creature lists (T11.4).
     pub creature_lists: usize,
-    /// Внешние ячейки и `LAND` (`--worldspace`).
+    /// Exterior cells and `LAND` (`--worldspace`).
     pub cells: usize,
     pub lands: usize,
-    /// Внутренних ячеек.
+    /// Interior cells.
     pub interiors: usize,
-    /// NPC (`NPC_`, фаза 7).
+    /// NPCs (`NPC_`, phase 7).
     pub npcs: usize,
-    /// Темы `DIAL` и реплики `INFO` (T10.6).
+    /// `DIAL` topics and `INFO` responses (T10.6).
     pub topics: usize,
     pub infos: usize,
-    /// Мастера плагина Morrowind, кроме `Morrowind.esm`.
+    /// Masters of the Morrowind plugin, except `Morrowind.esm`.
     pub masters: Vec<String>,
 }
 
-/// Итог прогона.
+/// Run result.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Outcome {
-    /// Записанные плагины в порядке загрузки.
+    /// Written plugins in load order.
     pub plugins: Vec<PluginOutcome>,
-    /// Объектов (`STAT` и `WEAP`) к конвертации, по всем плагинам.
+    /// Objects (`STAT` and `WEAP`) to convert, across all plugins.
     pub statics_seen: usize,
-    /// Записей `STAT` во всех плагинах.
+    /// `STAT` records in all plugins.
     pub statics_written: usize,
-    /// Записей `WEAP` во всех плагинах.
+    /// `WEAP` records in all plugins.
     pub weapons_written: usize,
-    /// Записей `ARMO`, `CLOT` и `BODY` во всех плагинах.
+    /// `ARMO`, `CLOT` and `BODY` records in all plugins.
     pub armor_written: usize,
     pub clothing_written: usize,
     pub bodies_written: usize,
     pub items_written: usize,
     pub world_written: usize,
-    /// Записей `LEVI` во всех плагинах.
+    /// `LEVI` records in all plugins.
     pub leveled_written: usize,
-    /// Записей `GLOB` во всех плагинах (T11.1).
+    /// `GLOB` records in all plugins (T11.1).
     pub globals_written: usize,
-    /// Записей `CREA` во всех плагинах (T11.3).
+    /// `CREA` records in all plugins (T11.3).
     pub creatures_written: usize,
-    /// Записей `LEVC` во всех плагинах (T11.4).
+    /// `LEVC` records in all plugins (T11.4).
     pub creature_lists_written: usize,
-    /// Записей `ENCH` и `SPEL` во всех плагинах.
+    /// `ENCH` and `SPEL` records in all plugins.
     pub enchantments_written: usize,
     pub spells_written: usize,
-    /// Записей `SOUN` во всех плагинах и их файлов (T10.1).
+    /// `SOUN` records in all plugins and their files (T10.1).
     pub sounds_written: usize,
     pub sound_files_copied: usize,
-    /// Из них сведено из стерео в моно.
+    /// Of those, mixed down from stereo to mono.
     pub sound_files_mixed: usize,
-    /// Файлов голоса реплик (T10.8) — склеек mp3.
+    /// Response voice files (T10.8) — mp3 joins.
     pub voice_files_written: usize,
-    /// Файлы звуков, которых нет ни свободными, ни в архивах, или пустой каталог.
+    /// Sound files that are neither loose nor in the archives, or an empty directory.
     pub sound_files_missing: Vec<String>,
-    /// Объекты, не попавшие в плагин, с причиной.
+    /// Objects that did not go into the plugin, with the reason.
     pub statics_skipped: Vec<String>,
-    /// Пустых слотов вещей снято: из их мешей убрана кожа Oblivion, видно тело Morrowind.
+    /// Empty item slots removed: Oblivion skin is cut out of their meshes, and the Morrowind body
+    /// shows.
     pub worn_slots_unhidden: usize,
     pub meshes_written: usize,
-    /// Системы частиц Oblivion в мешах прогона (T2.7): стали эмиттерами Morrowind, из них с
-    /// потерями, и выброшенные (эффекты по событию, частицы-меши).
+    /// Oblivion particle systems in the run's meshes (T2.7): those that became Morrowind emitters,
+    /// those of them with losses, and the dropped ones (event effects, mesh particles).
     pub particles_converted: usize,
     pub particles_lossy: usize,
     pub particles_dropped: usize,
     pub textures_copied: usize,
-    /// Текстур, сделанных конвертером (кожа лиц, T8.8).
+    /// Textures made by the converter (face skin, T8.8).
     pub textures_generated: usize,
-    /// Текстуры, которых нет в архиве текстур (меш на них всё равно ссылается).
+    /// Textures missing from the texture archive (the mesh still references them).
     pub textures_missing: Vec<String>,
     pub icons_copied: usize,
-    /// Иконки, которых нет в архивах (оружие в плагине есть, но в инвентаре без картинки).
+    /// Icons missing from the archives (the weapon is in the plugin but has no picture in the
+    /// inventory).
     pub icons_missing: Vec<String>,
     pub book_art_copied: usize,
-    /// Картинки книг, которых нет в архивах (ссылка в тексте есть, картинки в книге не будет).
+    /// Book images missing from the archives (the text has the link, the book will have no image).
     pub book_art_missing: Vec<String>,
-    /// Камни душ Oblivion, отображённые на ванильные камни Morrowind (записи не пишутся).
+    /// Oblivion soul gems mapped to vanilla Morrowind soul gems (the records are not written).
     pub soul_gems_mapped: usize,
-    /// Цены, поднятые до Morrowind (оружие и броня), если просили.
+    /// Prices raised to Morrowind levels (weapons and armor), if requested.
     pub prices_raised: usize,
-    /// Листов карты мира с описанием для мода MWSE-Lua (`--lua-map`).
+    /// World map sheets with a description for the MWSE-Lua mod (`--lua-map`).
     pub world_maps_written: usize,
     pub extract_meshes: ExtractReport,
     pub extract_textures: ExtractReport,
-    /// `STAT` и `WEAP`, насчитанные `esmtool` по всем плагинам.
+    /// `STAT` and `WEAP` counted by `esmtool` across all plugins.
     pub plugin_stat_records: usize,
     pub plugin_weapon_records: usize,
     pub meshes_validated: usize,
-    /// Плагины источника, которые удалось прочитать.
+    /// Source plugins that were read successfully.
     pub plugins_read: usize,
-    /// Замечания, не останавливающие прогон (плагин не читается, запись не представима и т. п.).
+    /// Notes that do not stop the run (a plugin cannot be read, a record cannot be represented, and
+    /// so on).
     pub problems: Vec<String>,
 }
 
-/// Записи одного плагина и их происхождение.
+/// Records of one plugin and their origin.
 struct PluginWork<'a> {
     info: &'a PluginInfo,
     objects: Vec<Object>,
     origins: Vec<ObjectOrigin>,
-    /// Уровневые списки (T2.5): у них нет меша, поэтому не в `objects`.
+    /// Leveled lists (T2.5): they have no mesh, so they are not in `objects`.
     leveled: Vec<LeveledItem>,
-    /// Глобальные переменные (T11.1): свои записи; легшие на ванильные здесь не появляются.
+    /// Global variables (T11.1): our own records; those mapped onto vanilla ones do not appear
+    /// here.
     globals: Vec<tes3_out::Global>,
-    /// Существа-доноры (T11.3): модель ванильного существа, числа Oblivion. С абсолютным
-    /// `FormID` источника — по нему ставятся ссылки `ACRE` (T11.4).
+    /// Donor creatures (T11.3): a vanilla creature's model, Oblivion's numbers. With the source's
+    /// absolute `FormID` — `ACRE` references are placed by it (T11.4).
     creatures: Vec<(u32, tes3_out::Creature)>,
-    /// Свои модели существ без донора (T11.5e): из чего стадия мешей соберёт три файла.
+    /// Custom creature models without a donor (T11.5e): what the meshes stage will build three
+    /// files from.
     creature_models: Vec<transform::creatures::CreatureModel>,
-    /// Списки существ (T11.4), тоже с `FormID`: в мире список стоит ссылкой.
+    /// Creature lists (T11.4), also with `FormID`: in the world a list stands as a reference.
     creature_lists: Vec<(u32, LeveledCreature)>,
-    /// Зачарования и заклинания (T9.4): тоже без меша.
+    /// Enchantments and spells (T9.4): also without a mesh.
     enchantments: Vec<Enchantment>,
     spells: Vec<Spell>,
-    /// Звуки (T10.1) и откуда брать их файлы (тот же порядок).
+    /// Sounds (T10.1) and where to take their files from (the same order).
     sounds: Vec<Sound>,
     sound_origins: Vec<SoundOrigin>,
-    /// Звуки существ со своей моделью (T11.6): `SNDG`; их `SOUN` — в `sounds`.
+    /// Sounds of creatures with their own model (T11.6): `SNDG`; their `SOUN` are in `sounds`.
     sound_gens: Vec<tes3_out::SoundGen>,
-    /// Все `SOUN` плагина по абсолютному `FormID` (ID и источник): для звуков регионов (T10.2).
+    /// All of the plugin's `SOUN` by absolute `FormID` (ID and source): for region sounds (T10.2).
     sound_sources: BTreeMap<u32, (String, tes4_read::Sound)>,
-    /// Скрипты петель звука (T10.3): у активаторов со звуком и у маркеров размещённых звуков.
+    /// Sound loop scripts (T10.3): for activators with a sound and for markers of placed sounds.
     scripts: Vec<Script>,
-    /// Невидимые активаторы размещённых `SOUN` (T10.3): меш ванильный, поэтому не в `objects`
-    /// (там у каждой записи меш источника).
+    /// Invisible activators of placed `SOUN` (T10.3): the mesh is vanilla, so they are not in
+    /// `objects` (every record there has a source mesh).
     sound_markers: Vec<Activator>,
-    /// Worldspace этого плагина, если прогон с `--worldspace`.
+    /// This plugin's worldspace, if the run has `--worldspace`.
     world: Option<WorldWork>,
-    /// NPC, стоящие в worldspace, и всё, на что они ссылаются (фаза 7).
+    /// NPCs standing in the worldspace and everything they reference (phase 7).
     actors: Option<ConvertedActors>,
-    /// Темы и приветствия для NPC (T10.6).
+    /// Topics and greetings for the NPCs (T10.6).
     topics: Vec<tes3_out::dialogue::Topic>,
-    /// Файлы голоса реплик (T10.8): `SNAM` → mp3 ответов в архивах по порядку.
+    /// Response voice files (T10.8): `SNAM` → mp3 of the responses in the archives, in order.
     voices: BTreeMap<String, Vec<String>>,
 }
 
 impl PluginWork<'_> {
-    /// Имя плагина Morrowind: как у источника, а при переносе worldspace — `<EDID>.esp` (из
-    /// `Oblivion.esm` иначе вышел бы `Oblivion.esm` с одним островом внутри).
+    /// Name of the Morrowind plugin: as in the source, and when carrying over a worldspace,
+    /// `<EDID>.esp` (otherwise `Oblivion.esm` would give an `Oblivion.esm` with one island inside).
     fn output_name(&self) -> String {
         match &self.world {
             Some(w) => format!("{}.esp", w.source.editor_id),
@@ -367,28 +369,28 @@ impl PluginWork<'_> {
     }
 }
 
-/// Worldspace к переносу и что про его размещения известно.
+/// The worldspace to carry over and what is known about its placements.
 struct WorldWork {
     source: ExteriorSource,
-    /// Тип записи каждого базового объекта размещений — для отчёта о непоставленном.
+    /// Record type of every base object of the placements — for the report on what was not placed.
     base_kinds: HashMap<u32, String>,
-    /// Базовые объекты, отображённые на ванильные записи (камни душ).
+    /// Base objects mapped onto vanilla records (soul gems).
     vanilla: HashMap<u32, String>,
     converted: Option<ConvertedExterior>,
-    /// Смещение, с которым мир перенесён: по нему лист карты ложится на мир (`--lua-map`).
+    /// The offset the world was moved by: the map sheet is laid onto the world by it (`--lua-map`).
     offset: Offset,
 }
 
-/// Внешние ячейки ванили (`Morrowind.esm`, `Tribunal.esm`, `Bloodmoon.esm`): x −29…23,
-/// y −19…28 (2026-09-25, `tes3_out/tests/real_vanilla_grid.rs`).
+/// Vanilla exterior cells (`Morrowind.esm`, `Tribunal.esm`, `Bloodmoon.esm`): x −29…23, y −19…28
+/// (2026-09-25, `tes3_out/tests/real_vanilla_grid.rs`).
 pub const VANILLA_EXTERIOR: (i32, i32, i32, i32) = (-29, -19, 23, 28);
 
-/// Зазор между ванилью и worldspace, ячеек.
+/// Gap between vanilla and the worldspace, in cells.
 pub const WORLD_GAP: i32 = 8;
 
-/// Смещение по умолчанию: западный край worldspace — через [`WORLD_GAP`] ячеек восточнее ванили,
-/// южный — на уровне южного края ванили. Сканера занятых ячеек модов ещё нет (фаза 5), поэтому
-/// Tamriel Rebuilt и прочие соседи не учитываются.
+/// Default offset: the worldspace's western edge is [`WORLD_GAP`] cells east of vanilla, the
+/// southern edge is level with vanilla's southern edge. There is no scanner of cells occupied by
+/// mods yet (phase 5), so Tamriel Rebuilt and other neighbors are not taken into account.
 pub fn default_offset(source: &ExteriorSource) -> Offset {
     let min_x = source.cells.iter().map(|c| c.grid.0.div_euclid(2)).min();
     let min_y = source.cells.iter().map(|c| c.grid.1.div_euclid(2)).min();
@@ -398,7 +400,7 @@ pub fn default_offset(source: &ExteriorSource) -> Offset {
     }
 }
 
-/// Распаковка из «свободных» файлов `Data` и архивов источника (`extract::extract_all`).
+/// Unpacking from the "loose" files of `Data` and the source archives (`extract::extract_all`).
 fn extract_sources(
     config: &Config,
     archives: &[PathBuf],
@@ -407,31 +409,32 @@ fn extract_sources(
     extract::extract_all(&config.source_data, archives, wanted, &config.work_dir)
 }
 
-/// Результат конвертации одного меша.
+/// Result of converting one mesh.
 pub(crate) struct MeshResult {
     pub(crate) bytes: Vec<u8>,
     pub(crate) textures: Vec<mesh_convert::textures::TextureCopy>,
-    /// Текстуры, сделанные конвертером (кожа лица, T8.8): имя в `Textures\` → байты DDS. Их не
-    /// распаковывают, а пишут как есть.
+    /// Textures made by the converter (face skin, T8.8): name in `Textures\` → DDS bytes. They are
+    /// not unpacked but written as is.
     pub(crate) generated: Vec<(String, Vec<u8>)>,
-    /// Меш на теле: слоты `INDX`, где из меша убрана кожа Oblivion и должно быть видно тело
-    /// Morrowind (`bodies::convert`). Вещь такие слоты не прячет.
+    /// A body mesh: the `INDX` slots where Oblivion skin is cut out of the mesh and the Morrowind
+    /// body must show (`bodies::convert`). The item does not hide such slots.
     pub(crate) exposed_slots: BTreeSet<u8>,
 }
 
-/// Меш к записи: путь в плагине, по чему он опознаётся для проверки столкновений, результат.
+/// The mesh for a record: the path in the plugin, what identifies it for the collision check, the
+/// result.
 struct MeshEntry {
-    /// Путь относительно `Meshes\`.
+    /// Path relative to `Meshes\`.
     rel: String,
-    /// Модель источника (с меткой половины и пола у мешей на теле).
+    /// Source model (with the half and sex label for body meshes).
     source: String,
     result: Result<MeshResult, String>,
 }
 
-/// Ключ меша записи: мировая модель — по пути источника, меш на теле — по пути результата (одна
-/// модель источника даёт несколько: мужской, женский, половины). Дерево — тоже по пути
-/// результата: у одной `.spt` бывают разные семена и листва. Дверь — тоже: её меш собирается
-/// отдельно от меша той же модели у статики (T2.6b).
+/// A record's mesh key: a world model — by the source path, a body mesh — by the result path (one
+/// source model gives several: male, female, halves). A tree — also by the result path: one `.spt`
+/// can have different seeds and foliage. A door — likewise: its mesh is built separately from the
+/// mesh of the same model used by a static (T2.6b).
 fn mesh_key(origin: &ObjectOrigin) -> String {
     match (&origin.body, &origin.tree, &origin.door) {
         (Some(body), _, _) => format!("@{}", body.mesh),
@@ -441,21 +444,21 @@ fn mesh_key(origin: &ObjectOrigin) -> String {
     }
 }
 
-/// Что стадия мешей узнала о двери (T2.6): её участь и, если петля перенесена, — на сколько
-/// сдвинуто начало координат меша (на столько же сдвигаются ссылки).
+/// What the meshes stage learned about a door (T2.6): its fate and, if the hinge was moved, how far
+/// the mesh origin was shifted (the references are shifted by the same amount).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct DoorInfo {
     fate: mesh_convert::door::DoorFate,
     pivot: Option<[f32; 3]>,
-    /// Открывается против часовой стрелки: у Morrowind — в другую сторону.
+    /// Opens counterclockwise: in Morrowind it opens the other way.
     counter_clockwise: bool,
 }
 
-/// Убирает из контейнеров и уровневых списков предметы, чьи записи не попали ни в один плагин
-/// (меш не сконвертировался): ссылка на несуществующий ID в `NPCO` или `INAM` — битая запись.
-/// Опустевший список тоже не пишется, и ссылки на него уходят — в том числе из других плагинов
-/// прогона, поэтому круги до неподвижной точки. Ванильные ID (камни душ, золото из
-/// `Morrowind.esm`) — без нашего префикса, их не трогаем.
+/// Removes from containers and leveled lists the items whose records went into no plugin (the mesh
+/// did not convert): a reference to a nonexistent ID in `NPCO` or `INAM` is a broken record. An
+/// emptied list is not written either, and references to it go away — including from other plugins
+/// of the run, hence the rounds until a fixed point. Vanilla IDs (soul gems, gold from
+/// `Morrowind.esm`) have no prefix of ours; we leave them alone.
 fn prune_contents(works: &mut [PluginWork<'_>], outcome: &mut Outcome) {
     let ours = |id: &str| {
         id.to_ascii_lowercase()
@@ -488,8 +491,8 @@ fn prune_contents(works: &mut [PluginWork<'_>], outcome: &mut Outcome) {
             break;
         }
     }
-    // Инвентарь и заклинания NPC: те же правила, что у контейнеров. Круги не нужны — NPC ни на
-    // что, что можно выбросить, не ссылаются.
+    // NPC inventory and spells: the same rules as for containers. No rounds needed — NPCs reference
+    // nothing that can be dropped.
     let written: BTreeSet<String> = works
         .iter()
         .flat_map(|w| {
@@ -526,7 +529,7 @@ fn prune_contents(works: &mut [PluginWork<'_>], outcome: &mut Outcome) {
             ));
         }
     }
-    // Существа (T11.3) — по тем же правилам, что NPC.
+    // Creatures (T11.3) — by the same rules as NPCs.
     for work in works.iter_mut() {
         let (mut items, mut spells) = (0usize, 0usize);
         for (_, c) in &mut work.creatures {
@@ -543,9 +546,9 @@ fn prune_contents(works: &mut [PluginWork<'_>], outcome: &mut Outcome) {
             ));
         }
     }
-    // Списки существ (T11.4): строка на существо, NPC или список, которых нет ни в одном плагине
-    // прогона (чужой плагин не выбран, запись не получилась), уходит; опустевший список тоже —
-    // и ссылки на него из других плагинов, поэтому круги.
+    // Creature lists (T11.4): a line for a creature, NPC or list that is in no plugin of the run
+    // (the other plugin is not chosen, the record did not work out) goes away; an emptied list does
+    // too — and so do references to it from other plugins, hence the rounds.
     let mut list_totals = vec![transform::creature_lists::PrunedLists::default(); works.len()];
     loop {
         let written: BTreeSet<String> = works
@@ -601,10 +604,10 @@ fn prune_contents(works: &mut [PluginWork<'_>], outcome: &mut Outcome) {
     }
 }
 
-/// ID частей тела, на которые ссылается вещь.
-/// Снимает с вещей пустые «прячущие» слоты там, где из их мешей убрана кожа Oblivion: там должно
-/// быть видно тело Morrowind (решение владельца 2026-09-30). Слот части тела вещи не трогается.
-/// Возвращает число снятых слотов.
+/// IDs of the body parts an item references.
+/// Removes empty "hiding" slots from items where Oblivion skin is cut out of their meshes: the
+/// Morrowind body must show there (owner's decision 2026-09-30). The slot of the item's body part
+/// is left alone. Returns the number of removed slots.
 fn unhide_exposed(
     objects: &mut [Object],
     origins: &[ObjectOrigin],
@@ -636,8 +639,9 @@ fn unhide_exposed(
         .sum()
 }
 
-/// Снимает пустые слоты вещи, открытые хоть одной её частью тела (`exposed`: ID `BODY` → слоты).
-/// Части с телом не трогаются, даже если их слот открыт другой частью. Возвращает число снятых.
+/// Removes the item's empty slots exposed by at least one of its body parts (`exposed`: `BODY` ID →
+/// slots). Parts with a body are left alone, even if their slot is exposed by another part. Returns
+/// the number removed.
 fn unhide_parts(
     parts: &mut Vec<tes3_out::WornPart>,
     exposed: &HashMap<String, BTreeSet<u8>>,
@@ -667,7 +671,7 @@ fn referenced_bodies(object: &Object) -> Vec<&str> {
         .collect()
 }
 
-/// `dir` + путь с `\`-разделителями (`ob\a\b.nif`).
+/// `dir` + a path with `\` separators (`ob\a\b.nif`).
 fn join_backslash(dir: &Path, path: &str) -> PathBuf {
     let mut out = dir.to_owned();
     for segment in path.split('\\').filter(|s| !s.is_empty()) {
@@ -676,38 +680,37 @@ fn join_backslash(dir: &Path, path: &str) -> PathBuf {
     out
 }
 
-/// Путь ассета относительно `Data Files` с `/`: `Meshes` + `ob\a.nif` → `Meshes/ob/a.nif`.
+/// Asset path relative to `Data Files` with `/`: `Meshes` + `ob\a.nif` → `Meshes/ob/a.nif`.
 fn asset_relative(dir: &str, path: &str) -> String {
     format!("{dir}/{}", path.replace('\\', "/"))
 }
 
-/// Что конвертировать и как.
+/// What to convert and how.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
-    /// Плагины Oblivion (имена файлов в `source_data`); пусто — только `Oblivion.esm`.
+    /// Oblivion plugins (file names in `source_data`); empty means only `Oblivion.esm`.
     pub plugins: Vec<String>,
-    /// `EDID` (без учёта регистра); пусто — все `STAT`.
+    /// `EDID` (case-insensitive); empty means all `STAT`s.
     pub only: Vec<String>,
-    /// Прогнать `esmtool` и `niftest`. Нужны пути к ним в конфигурации.
+    /// Run `esmtool` and `niftest`. Their paths must be in the configuration.
     pub validate: bool,
-    /// Брать модели не только у `STAT`, но и у предметов, оружия, брони, мебели и т. д.
-    /// (`transform::MODEL_RECORDS`): моды Oblivion почти не содержат `STAT`.
+    /// Take models not only from `STAT` but also from items, weapons, armor, furniture and so on
+    /// (`transform::MODEL_RECORDS`): Oblivion mods contain almost no `STAT`.
     pub all_models: bool,
-    /// `EDID` worldspace: перенести его ячейки, ландшафт, регионы и размещения. Объекты тогда
-    /// берутся только те, что в нём стоят, а плагин называется `<EDID>.esp`.
+    /// Worldspace `EDID`: carry over its cells, landscape, regions and placements. Only the objects
+    /// standing in it are taken then, and the plugin is called `<EDID>.esp`.
     pub worldspace: Option<String>,
-    /// Смещение worldspace в ячейках Morrowind; `None` — по умолчанию
-    /// ([`default_offset`]).
+    /// Worldspace offset in Morrowind cells; `None` means the default ([`default_offset`]).
     pub offset: Option<(i32, i32)>,
-    /// Подтянуть цены оружия и брони к Morrowind (`transform::prices`): только вверх.
+    /// Bring weapon and armor prices in line with Morrowind (`transform::prices`): upward only.
     pub morrowind_prices: bool,
-    /// Положить лист карты мира и мод MWSE-Lua, который его показывает (`crate::world_map`).
-    /// Имеет смысл только с `worldspace`.
+    /// Add the world map sheet and the MWSE-Lua mod that shows it (`crate::world_map`). Makes sense
+    /// only with `worldspace`.
     pub lua_map: bool,
 }
 
 impl Request {
-    /// Срез M1 / CLI: только `Oblivion.esm`, `validate` включён.
+    /// The M1 slice / CLI: only `Oblivion.esm`, `validate` is on.
     pub fn oblivion(only: &[String]) -> Self {
         Self {
             plugins: Vec::new(),
@@ -722,8 +725,8 @@ impl Request {
     }
 }
 
-/// Запускает прогон по `Oblivion.esm`. `only` — `EDID` (без учёта регистра); пусто — все `STAT`.
-/// `log` получает строки прогресса.
+/// Runs the conversion of `Oblivion.esm`. `only` is `EDID`s (case-insensitive); empty means all
+/// `STAT`s. `log` receives progress lines.
 pub fn run_all(
     config: &Config,
     only: &[String],
@@ -732,9 +735,9 @@ pub fn run_all(
     run(config, &Request::oblivion(only), log)
 }
 
-/// Файл начинается сигнатурой BSA Oblivion (`BSA\0`). Архивы Morrowind (magic `00 01 00 00`)
-/// в `Data` Oblivion бывают — например, в наборе тестовых данных, где лежат обе игры, — и
-/// читать их как источник нельзя.
+/// The file starts with the Oblivion BSA signature (`BSA\0`). Morrowind archives (magic
+/// `00 01 00 00`) do occur in Oblivion's `Data` — for example in a test data set holding both games
+/// — and must not be read as a source.
 fn is_oblivion_bsa(path: &Path) -> bool {
     let mut magic = [0u8; 4];
     fs::File::open(path)
@@ -742,14 +745,15 @@ fn is_oblivion_bsa(path: &Path) -> bool {
         .is_ok_and(|()| &magic == b"BSA\0")
 }
 
-/// Архивы источника в порядке приоритета: моды, потом дополнения, потом `Oblivion*`. Звуки
-/// нужны с T10.1; архивы голосов — отдельно ([`voice_archives`]): в них 48 тысяч mp3, и обыскивать
-/// их ради мешей и текстур незачем. Архивы не Oblivion (см. [`is_oblivion_bsa`]) пропускаются.
+/// Source archives in priority order: mods, then expansions, then `Oblivion*`. Sounds are needed
+/// since T10.1; voice archives are separate ([`voice_archives`]): they hold 48 thousand mp3 files,
+/// and there is no point searching them for meshes and textures. Non-Oblivion archives (see
+/// [`is_oblivion_bsa`]) are skipped.
 pub fn source_archives(source_data: &Path) -> Vec<PathBuf> {
     archives_of(source_data, false)
 }
 
-/// Архивы голосов источника (`*Voices*.bsa`, T10.8) в том же порядке приоритета.
+/// Source voice archives (`*Voices*.bsa`, T10.8) in the same priority order.
 pub fn voice_archives(source_data: &Path) -> Vec<PathBuf> {
     archives_of(source_data, true)
 }
@@ -779,7 +783,8 @@ fn archives_of(source_data: &Path, voices: bool) -> Vec<PathBuf> {
     list.into_iter().map(|(_, _, p)| p).collect()
 }
 
-/// Пути к `esmtool` и `niftest`, если нужна проверка. Узнаём об их отсутствии до долгой работы.
+/// Paths to `esmtool` and `niftest`, if the check is needed. We learn they are missing before the
+/// long work.
 fn tools(config: &Config, request: &Request) -> Result<Option<(PathBuf, PathBuf)>, PipelineError> {
     if !request.validate {
         return Ok(None);
@@ -803,7 +808,7 @@ fn tools(config: &Config, request: &Request) -> Result<Option<(PathBuf, PathBuf)
     )))
 }
 
-/// Читает и преобразует выбранные плагины, по одному результату на плагин, в порядке загрузки.
+/// Reads and transforms the chosen plugins, one result per plugin, in load order.
 fn read_plugins<'a>(
     config: &Config,
     request: &Request,
@@ -840,19 +845,19 @@ fn read_plugins<'a>(
         .iter()
         .map(|e| e.to_ascii_lowercase())
         .collect();
-    // Один распределитель на весь прогон: переопределение в моде получает ID мастера.
+    // One allocator for the whole run: an override in a mod gets the master's ID.
     let mut ids = IdAllocator::default();
     let mut works = Vec::new();
-    // `EDID` записей, отображённых на ванильные (камни душ): их нет в `origins`, но для `--only`
-    // они найдены.
+    // `EDID`s of records mapped onto vanilla ones (soul gems): they are not in `origins`, but for
+    // `--only` they count as found.
     let mut found: BTreeSet<String> = BTreeSet::new();
-    // Части тела `Morrowind.esm` (головы, тела рас) — читаются один раз, если есть NPC.
+    // Body parts of `Morrowind.esm` (heads, race bodies) — read once, if there are NPCs.
     let mut vanilla_bodies: Option<Vec<tes3_out::vanilla::VanillaBodyPart>> = None;
-    // Темы и глобальные переменные `Morrowind.esm` — тоже один раз, если есть диалоги.
+    // Topics and global variables of `Morrowind.esm` — also once, if there is dialogue.
     let mut vanilla_dialogue: Option<crate::dialogue::VanillaDialogue> = None;
-    // Глобальные переменные `Morrowind.esm` (T11.1): ключ в нижнем регистре → ID как в мастере.
+    // Global variables of `Morrowind.esm` (T11.1): key in lower case → ID as in the master.
     let mut vanilla_globals: Option<HashMap<String, String>> = None;
-    // Существа `Morrowind.esm` — доноры моделей (T11.3), тоже один раз.
+    // Creatures of `Morrowind.esm` — model donors (T11.3), also once.
     let mut vanilla_creatures: Option<Vec<tes3_out::vanilla::VanillaCreature>> = None;
     for info in selected {
         let path = config.source_data.join(&info.name);
@@ -878,9 +883,10 @@ fn read_plugins<'a>(
             }
         };
         let map = |file_form_id| plugins::absolute_form_id(installed, info, file_form_id);
-        // С `--worldspace` из плагина, где он есть, переносятся только объекты, которые в нём
-        // стоят. Плагин без него конвертируется как обычно: в окне рядом с `Oblivion.esm`
-        // отмечены моды, и молча терять их из-за выбора мира нельзя.
+        // With `--worldspace`, only the objects standing in it are carried over from the plugin
+        // that has it. A plugin without it is converted as usual: in the window, mods are ticked
+        // next to `Oblivion.esm`, and silently losing them because of the world choice is not
+        // acceptable.
         let mut world = None;
         let mut placed_edids: Option<BTreeSet<String>> = None;
         let exterior = match &request.worldspace {
@@ -889,18 +895,19 @@ fn read_plugins<'a>(
             None => None,
         };
         let mut world_npcs: BTreeSet<u32> = BTreeSet::new();
-        // Существа и списки существ мира (T11.4); без `--worldspace` — все, как прочие записи.
+        // Creatures and creature lists of the world (T11.4); without `--worldspace` — all of them,
+        // like other records.
         let mut world_creatures: Option<BTreeSet<u32>> = None;
         let mut world_creature_lists: Option<BTreeSet<u32>> = None;
         if let Some(exterior) = exterior {
             let mut bases = exterior.base_objects();
-            // Список существ стоит в мире ссылкой, а те, кого он порождает, — нет: существа и
-            // NPC из его строк (и из вложенных списков) конвертируются тоже.
+            // A creature list stands in the world as a reference, but the ones it spawns do not:
+            // creatures and NPCs from its lines (and from nested lists) are converted too.
             let spawned = transform::creature_lists::reachable(&source, map, &bases)
                 .map_err(failed(&format!("LVLC ({})", info.name)))?;
             bases.extend(spawned.actors.iter().copied());
-            // NPC стоят в мире (`ACHR`), а их инвентарь — нет: предметы из него конвертируются
-            // тоже, как ключи замков (T6.4). Так же — инвентарь существ.
+            // NPCs stand in the world (`ACHR`), but their inventory does not: items from it are
+            // converted too, like lock keys (T6.4). The same goes for creature inventory.
             world_npcs = source
                 .records_of(*b"NPC_")
                 .filter_map(|r| map(r.header.form_id))
@@ -924,10 +931,11 @@ fn read_plugins<'a>(
             let mut kinds = HashMap::new();
             let mut edids = BTreeSet::new();
             for r in source.records() {
-                // Уровневые списки не стоят в мире, но их берут стоящие контейнеры: берём все,
-                // а строки с непоставленными предметами отпадут при переводе в ID. Заклинания в
-                // мире не стоят вовсе, а понадобятся NPC (фаза 7) — тоже берём все. Зачарования
-                // фильтр не проходят: их пишут вещи, которые на них ссылаются.
+                // Leveled lists do not stand in the world, but placed containers use them: we take
+                // all of them, and lines with unplaced items fall away when translated into IDs.
+                // Spells do not stand in the world at all, but NPCs will need them (phase 7) — we
+                // take all of them too. Enchantments do not go through the filter: they are written
+                // by the items that reference them.
                 if matches!(&r.header.tag, b"LVLI" | b"SPEL") {
                     if let Some(edid) = tes4_read::Fields::parse(&r.data, "LVLI")
                         .ok()
@@ -1148,7 +1156,8 @@ fn read_plugins<'a>(
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
-        // `--only`: существо найдено, если его запись перенесена (в `origins` существ нет).
+        // `--only`: a creature counts as found if its record was carried over (creatures are not in
+        // `origins`).
         if !wanted_ids.is_empty() {
             let converted: BTreeSet<u32> = creatures.iter().map(|(f, _)| *f).collect();
             found.extend(
@@ -1164,9 +1173,9 @@ fn read_plugins<'a>(
             );
         }
         let creature_lists = if request.all_models {
-            // Цели строк: существа и NPC этого плагина — те, что получились; записи других
-            // плагинов прогона — по выданному ID (попали ли они в плагин, сверит
-            // `prune_contents`).
+            // Line targets: creatures and NPCs of this plugin — those that worked out; records of
+            // other plugins of the run — by the issued ID (`prune_contents` will check whether they
+            // made it into a plugin).
             let own: HashMap<u32, String> = creatures
                 .iter()
                 .map(|(f, c)| (*f, c.id.clone()))
@@ -1198,7 +1207,8 @@ fn read_plugins<'a>(
         if let (Some(a), Some(w)) = (&actors, &world)
             && !a.npcs.is_empty()
         {
-            // Метка переносимых NPC (решение 2 фазы 10): её `SCRI` ставит `transform::npcs`.
+            // The marker of carried-over NPCs (decision 2 of phase 10): its `SCRI` is set by
+            // `transform::npcs`.
             scripts.push(Script::Locals {
                 id: transform::dialogue::NPC_SCRIPT.to_owned(),
                 shorts: vec![transform::dialogue::NPC_VARIABLE.to_owned()],
@@ -1223,7 +1233,8 @@ fn read_plugins<'a>(
                 &info.name,
                 log,
             );
-            // Метки фракций: NPC фракции с меткой — свой скрипт с `ob_npc` и `obf_…`.
+            // Faction markers: an NPC of a faction with a marker gets its own script with `ob_npc`
+            // and `obf_…`.
             scripts.extend(
                 d.scripts
                     .into_iter()
@@ -1239,7 +1250,8 @@ fn read_plugins<'a>(
                 }
             }
         }
-        // Звуки существ (T11.6): `SOUN` под них — те же записи, что у дверей и света.
+        // Creature sounds (T11.6): the `SOUN` for them are the same records as for doors and
+        // lights.
         let mut sounds = converted.sounds;
         let mut sound_origins = converted.sound_origins;
         let creature_sounds = transform::sounds::creature_sounds(
@@ -1318,10 +1330,10 @@ fn read_plugins<'a>(
     Ok((works, ids))
 }
 
-/// Глобальные переменные плагина (T11.1). Ванильные переменные `Morrowind.esm` читаются один раз
-/// на прогон; не прочитались — движковые переменные не переносятся, остальные пишутся своими
-/// записями, с замечанием.
-#[expect(clippy::too_many_arguments, reason = "одна стадия, всё её окружение")]
+/// The plugin's global variables (T11.1). Vanilla variables of `Morrowind.esm` are read once per
+/// run; if they fail to read, engine variables are not carried over, the others are written as our
+/// own records, with a note.
+#[expect(clippy::too_many_arguments, reason = "one stage, all of its context")]
 fn read_globals(
     config: &Config,
     source: &Plugin,
@@ -1382,19 +1394,19 @@ fn read_globals(
     Ok(converted.globals)
 }
 
-/// Существа плагина с `FormID` источника и свои модели, которые им нужны.
+/// The plugin's creatures with the source `FormID` and the custom models they need.
 type CreaturesRead = (
     Vec<(u32, tes3_out::Creature)>,
     Vec<transform::creatures::CreatureModel>,
     Vec<transform::creatures::CreatureSoundGen>,
 );
 
-/// Существа плагина: на моделях доноров из `data/creatures.tsv` (T11.3) и, если донора нет, со
-/// своей моделью из скелета и частей тела (T11.5e) — её описание возвращается вторым значением,
-/// собирает модель стадия мешей. `--only` — только названные; `in_world` — только стоящие в мире
-/// и порождаемые его списками (T11.4). Нет `Morrowind.esm` — существа не переносятся, с
-/// замечанием.
-#[expect(clippy::too_many_arguments, reason = "одна стадия, всё её окружение")]
+/// The plugin's creatures: on donor models from `data/creatures.tsv` (T11.3) and, if there is no
+/// donor, with their own model from the skeleton and body parts (T11.5e) — its description is
+/// returned as the second value, and the meshes stage builds the model. `--only` — only the named
+/// ones; `in_world` — only those standing in the world and spawned by its lists (T11.4). Without
+/// `Morrowind.esm` creatures are not carried over, with a note.
+#[expect(clippy::too_many_arguments, reason = "one stage, all of its context")]
 fn read_creatures(
     config: &Config,
     source: &Plugin,
@@ -1422,7 +1434,7 @@ fn read_creatures(
             }
         }
     }
-    let vanilla = vanilla.as_deref().expect("заполнено выше или вышли");
+    let vanilla = vanilla.as_deref().expect("filled above or returned");
     let wanted = wanted_records(source, *b"CREA", map, wanted_ids, in_world);
     let known = ids.clone();
     let item = |f: u32| {
@@ -1492,8 +1504,8 @@ fn read_creatures(
     Ok((converted.creatures, converted.models, converted.sound_gens))
 }
 
-/// Какие записи типа `tag` переносить: названные в `--only` и стоящие в мире (`in_world`).
-/// `None` — фильтров нет, переносятся все.
+/// Which records of type `tag` to carry over: those named in `--only` and those standing in the
+/// world (`in_world`). `None` means no filters, everything is carried over.
 fn wanted_records(
     source: &Plugin,
     tag: [u8; 4],
@@ -1519,9 +1531,10 @@ fn wanted_records(
     )
 }
 
-/// Списки существ плагина (T11.4): `LVLC` → `LEVC`. `own` — ID перенесённых существ и NPC этого
-/// плагина по абсолютному `FormID`; `load_index` — его место в порядке загрузки.
-#[expect(clippy::too_many_arguments, reason = "одна стадия, всё её окружение")]
+/// The plugin's creature lists (T11.4): `LVLC` → `LEVC`. `own` holds IDs of this plugin's
+/// carried-over creatures and NPCs by absolute `FormID`; `load_index` is its place in the load
+/// order.
+#[expect(clippy::too_many_arguments, reason = "one stage, all of its context")]
 fn read_creature_lists(
     source: &Plugin,
     map: impl Fn(u32) -> Option<u32> + Copy,
@@ -1581,10 +1594,10 @@ fn read_creature_lists(
     Ok(converted.lists)
 }
 
-/// NPC плагина (фаза 7). Предметы и заклинания берутся по уже выданным ID: что не попадёт в
-/// плагин (меш не сконвертировался, заклинание без эффектов), вычистит `prune_contents`. Нет
-/// `Morrowind.esm` — NPC не переносятся, с замечанием.
-#[expect(clippy::too_many_arguments, reason = "одна стадия, всё её окружение")]
+/// The plugin's NPCs (phase 7). Items and spells are taken by already issued IDs: whatever does not
+/// make it into the plugin (the mesh did not convert, a spell without effects) is cleaned out by
+/// `prune_contents`. Without `Morrowind.esm` NPCs are not carried over, with a note.
+#[expect(clippy::too_many_arguments, reason = "one stage, all of its context")]
 fn read_actors(
     config: &Config,
     source: &Plugin,
@@ -1609,7 +1622,7 @@ fn read_actors(
             }
         }
     }
-    let bodies = vanilla_bodies.as_deref().expect("заполнено выше или вышли");
+    let bodies = vanilla_bodies.as_deref().expect("filled above or returned");
     let known = ids.clone();
     let item = |f: u32| {
         vanilla_items
@@ -1622,9 +1635,10 @@ fn read_actors(
         .map_err(failed(&format!("NPC ({plugin})")))
 }
 
-/// Темы и приветствия NPC плагина (T10.6) и файлы голоса их реплик (T10.8). Нет `Morrowind.esm`
-/// или реплики не разобрать — без диалогов, с замечанием: NPC переносятся и без них.
-#[expect(clippy::too_many_arguments, reason = "одна стадия, всё её окружение")]
+/// Topics and greetings of the plugin's NPCs (T10.6) and the voice files of their responses
+/// (T10.8). Without `Morrowind.esm`, or if the responses cannot be parsed — no dialogue, with a
+/// note: NPCs are carried over without it too.
+#[expect(clippy::too_many_arguments, reason = "one stage, all of its context")]
 fn read_dialogue(
     config: &Config,
     source: &Plugin,
@@ -1657,7 +1671,7 @@ fn read_dialogue(
             }
         }
     }
-    let vanilla = vanilla.as_ref().expect("заполнено выше или вышли");
+    let vanilla = vanilla.as_ref().expect("filled above or returned");
     let d = match crate::dialogue::convert_plugin(
         source,
         map,
@@ -1716,8 +1730,9 @@ fn read_dialogue(
     d
 }
 
-/// Текстуры земли worldspace: распаковать и положить в `Textures\` по путям из `LTEX`.
-/// Отсутствующая в архивах текстура — предупреждение: в игре на её месте будет заглушка.
+/// The worldspace's land textures: unpack them and put them into `Textures\` at the paths from
+/// `LTEX`. A texture missing from the archives is a warning: the game will show a placeholder in
+/// its place.
 fn write_land_textures(
     config: &Config,
     archives: &[PathBuf],
@@ -1761,9 +1776,10 @@ fn write_land_textures(
     Ok(())
 }
 
-/// Карта мира для мода MWSE-Lua (`crate::world_map`): лист из `WRLD` источника в `Textures\`,
-/// описание, где он лежит в мире Morrowind, и сам мод. Мир без листа (`ICON` и `MNAM`) или с
-/// листом, которого нет в архивах, — замечание: карты у него не будет, остальное не страдает.
+/// World map for the MWSE-Lua mod (`crate::world_map`): the sheet from the source `WRLD` into
+/// `Textures\`, a description of where it lies in the Morrowind world, and the mod itself. A world
+/// without a sheet (`ICON` and `MNAM`) or with a sheet missing from the archives is a note: it will
+/// have no map, nothing else suffers.
 fn write_world_maps(
     config: &Config,
     archives: &[PathBuf],
@@ -1852,8 +1868,8 @@ fn write_world_maps(
             let path = relative.split('/').fold(output.clone(), |p, s| p.join(s));
             write_file(&path, text.as_bytes())?;
         }
-        // Лист — обычная текстура плагина (с BSA уйдёт в архив); описание и мод всегда лежат
-        // отдельными файлами (`package::is_loose_only`).
+        // The sheet is an ordinary plugin texture (with BSA it goes into the archive); the
+        // description and the mod are always separate files (`package::is_loose_only`).
         let set = by_plugin.entry(work.output_name()).or_default();
         set.insert(format!("Textures/{}", copy.target_name));
         set.insert(json.clone());
@@ -1868,8 +1884,8 @@ fn write_world_maps(
     Ok(())
 }
 
-/// Ячейки, ландшафт, регионы и размещения worldspace. Идёт после отбраковки мешей: ссылка
-/// ставится, только если её объект попал в плагин.
+/// Cells, landscape, regions and placements of the worldspace. Runs after meshes are culled: a
+/// reference is placed only if its object made it into the plugin.
 fn convert_worlds(
     request: &Request,
     works: &mut [PluginWork<'_>],
@@ -1899,7 +1915,7 @@ fn convert_worlds(
                 markers.len()
             ));
         }
-        // ID, модель источника, актёр ли (ссылка актёра пишется постоянной).
+        // ID, source model, whether it is an actor (an actor reference is written as persistent).
         let mut placed: HashMap<u32, (String, String, bool)> = work
             .objects
             .iter()
@@ -1907,7 +1923,8 @@ fn convert_worlds(
             .filter(|(_, o)| o.body.is_none() && o.tree.is_none())
             .map(|(obj, o)| (o.form_id, (obj.id().to_owned(), o.model.clone(), false)))
             .collect();
-        // Двери с перенесённой петлёй (T2.6b): их ссылки сдвигаются вслед за началом меша.
+        // Doors with a moved hinge (T2.6b): their references are shifted along with the mesh
+        // origin.
         let pivots: HashMap<u32, [f32; 3]> = work
             .origins
             .iter()
@@ -1916,25 +1933,25 @@ fn convert_worlds(
         for (form_id, id) in &world.vanilla {
             placed.insert(*form_id, (id.clone(), String::new(), false));
         }
-        // Размещённые звуки — маркеры с ванильным мешем: модели источника нет, маркером Oblivion
-        // не считаются.
+        // Placed sounds are markers with a vanilla mesh: there is no source model, and they do not
+        // count as Oblivion markers.
         for (form_id, id) in markers {
             placed.insert(form_id, (id, String::new(), false));
         }
-        // NPC: модели у записи нет — маркером его не счесть.
+        // NPC: the record has no model — it cannot count as a marker.
         for (form_id, npc) in work.actors.iter().flat_map(|a| &a.npcs) {
             placed.insert(*form_id, (npc.id.clone(), String::new(), true));
         }
-        // Существа (`ACRE`, T11.4) — актёры, как NPC. Список существ стоит временной ссылкой,
-        // как у ванили: существо на его месте создаёт движок.
+        // Creatures (`ACRE`, T11.4) are actors, like NPCs. A creature list stands as a temporary
+        // reference, as in vanilla: the engine creates the creature in its place.
         for (form_id, c) in &work.creatures {
             placed.insert(*form_id, (c.id.clone(), String::new(), true));
         }
         for (form_id, l) in &work.creature_lists {
             placed.insert(*form_id, (l.id.clone(), String::new(), false));
         }
-        // Деревья: ID вариантов по номеру семени. Вариант, чей меш не собрался, заменяется
-        // первым уцелевшим — номера остальных не сдвигаются.
+        // Trees: variant IDs by seed number. A variant whose mesh failed to build is replaced by
+        // the first surviving one — the numbers of the others do not shift.
         let mut tree_slots: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
         for (obj, o) in work.objects.iter().zip(&work.origins) {
             if let Some(tree) = &o.tree {
@@ -2175,13 +2192,12 @@ fn convert_worlds(
     Ok(())
 }
 
-/// Размещённые звуки (T10.3): на каждый `SOUN`, который стоит в мире, — `SOUN` плагина (если
-/// на него ещё никто не сослался), скрипт петли и невидимый активатор-маркер
-/// (`transform::sounds::sound_marker`). Возвращает `FormID` звука → ID маркера, по возрастанию
-/// `FormID`.
+/// Placed sounds (T10.3): for every `SOUN` standing in the world — the plugin's `SOUN` (if nobody
+/// has referenced it yet), a loop script and an invisible marker activator
+/// (`transform::sounds::sound_marker`). Returns sound `FormID` → marker ID, by ascending `FormID`.
 #[expect(
     clippy::too_many_arguments,
-    reason = "поля одной PluginWork, занятой по частям"
+    reason = "fields of one PluginWork borrowed in parts"
 )]
 fn place_sound_markers(
     base_kinds: &HashMap<u32, String>,
@@ -2228,9 +2244,10 @@ fn place_sound_markers(
     out
 }
 
-/// Звуки регионов (T10.2): `RDSD` региона-источника → список `REGN.SNAM` и `SOUN` к нему (с
-/// вариантами по файлам каталогов, `transform::sounds::region_sounds`). `SOUN` ищется среди
-/// прочитанных в том же плагине; каталог раскрывается по свободным файлам и архивам.
+/// Region sounds (T10.2): the source region's `RDSD` → the `REGN.SNAM` list and the `SOUN` for it
+/// (with variants for the files of directories, `transform::sounds::region_sounds`). The `SOUN` is
+/// looked up among those read in the same plugin; a directory is expanded from loose files and
+/// archives.
 fn add_region_sounds(
     config: &Config,
     archives: &[PathBuf],
@@ -2258,7 +2275,7 @@ fn add_region_sounds(
             let Some(list) = converted.region_sounds.get(&region.id) else {
                 continue;
             };
-            // Файлы каталогов — до разбора, чтобы `RegionEntry` держал на них ссылки.
+            // Directory files come before parsing, so `RegionEntry` can hold references to them.
             for rs in list {
                 let Some((_, source)) = plugins::absolute_form_id(installed, work.info, rs.sound)
                     .and_then(|id| work.sound_sources.get(&id))
@@ -2332,7 +2349,7 @@ fn add_region_sounds(
     Ok(())
 }
 
-/// Основная работа: чтение плагинов, преобразование, меши, текстуры, запись, проверка.
+/// The main work: reading plugins, transforming, meshes, textures, writing, checking.
 pub fn run(
     config: &Config,
     request: &Request,
@@ -2367,17 +2384,17 @@ pub fn run(
         ));
     }
 
-    // extract: меши. Сначала «свободные» файлы в `Data\Meshes` (они перекрывают архивы), потом
-    // архивы источника.
+    // extract: meshes. First the "loose" files in `Data\Meshes` (they override archives), then the
+    // source archives.
     let archives = source_archives(&config.source_data);
-    // Пустая модель — свет без меша (T2.2): конвертировать нечего.
+    // An empty model is a light without a mesh (T2.2): nothing to convert.
     let models: BTreeSet<String> = works
         .iter()
         .flat_map(|w| &w.origins)
         .filter(|o| o.body.is_none() && o.tree.is_none() && o.door.is_none() && !o.model.is_empty())
         .map(|o| o.model.clone())
         .collect();
-    // Двери (T2.6b): ключ → (модель источника, путь меша в плагине).
+    // Doors (T2.6b): key → (source model, mesh path in the plugin).
     let door_jobs: BTreeMap<String, (String, String)> = works
         .iter()
         .flat_map(|w| &w.origins)
@@ -2388,7 +2405,8 @@ pub fn run(
         .flat_map(|w| &w.origins)
         .filter_map(|o| Some((mesh_key(o), o.body.clone()?)))
         .collect();
-    // Деревья: `.spt` лежит не в `Meshes`, а в `Trees` (путь в `model` уже с ним).
+    // Trees: the `.spt` lives not in `Meshes` but in `Trees` (the path in `model` already includes
+    // it).
     let tree_jobs: BTreeMap<String, (String, transform::TreeSource)> = works
         .iter()
         .flat_map(|w| &w.origins)
@@ -2531,14 +2549,14 @@ pub fn run(
         ));
     }
 
-    // Что попало в плагины, а что нет.
+    // What made it into the plugins and what did not.
     for work in &mut works {
         let mut objects = Vec::new();
         let mut origins = Vec::new();
         let mut dropped_bodies: BTreeSet<String> = BTreeSet::new();
         for (object, origin) in work.objects.drain(..).zip(work.origins.drain(..)) {
             if origin.body.is_none() && origin.model.is_empty() {
-                // Свет без меша: записи меш не нужен.
+                // A light without a mesh: the record does not need one.
                 objects.push(object);
                 origins.push(origin);
                 continue;
@@ -2559,8 +2577,8 @@ pub fn run(
                 }
             }
         }
-        // Вещь без своей части тела была бы невидимой на персонаже: отбрасываем и её, и
-        // оставшиеся её части.
+        // An item without its own body part would be invisible on a character: we drop it along
+        // with its remaining parts.
         let broken: BTreeSet<String> = objects
             .iter()
             .zip(&origins)
@@ -2591,7 +2609,8 @@ pub fn run(
         work.objects = kept_objects;
         work.origins = kept_origins;
         outcome.worn_slots_unhidden += unhide_exposed(&mut work.objects, &work.origins, &results);
-        // Существо, чья своя модель не собралась, было бы невидимым: в плагин оно не идёт.
+        // A creature whose own model failed to build would be invisible: it does not go into the
+        // plugin.
         let failed_models: BTreeMap<String, String> = work
             .creature_models
             .iter()
@@ -2659,7 +2678,7 @@ pub fn run(
     silence_missing_sounds(&mut works, &written.sound_files);
     silence_missing_voices(&mut works, &written.voice_files);
 
-    // write: плагины
+    // write: plugins
     let master = config.target_data.join(TARGET_MASTER);
     let master_size = fs::metadata(&master)
         .map_err(failed(&master.display().to_string()))?
@@ -2775,9 +2794,9 @@ pub fn run(
     Ok(outcome)
 }
 
-/// Лица NPC (фаза 8): распаковать части голов и причёски, запечь, добавить меши в общий список
-/// стадии мешей, а записи `BODY` — к объектам плагина. Не собрался скелет Morrowind — NPC остаются
-/// с ванильными головами (фаза 7), с замечанием.
+/// NPC faces (phase 8): unpack head parts and hair, bake them, add the meshes to the meshes stage's
+/// common list and the `BODY` records to the plugin's objects. If the Morrowind skeleton fails to
+/// build, NPCs keep vanilla heads (phase 7), with a note.
 fn bake_faces(
     config: &Config,
     archives: &[PathBuf],
@@ -2862,16 +2881,16 @@ fn bake_faces(
     Ok(())
 }
 
-/// Ключ меша своей модели существа в общем списке стадии мешей — по пути результата, как у мешей
-/// на теле и деревьев.
+/// Mesh key of a custom creature model in the meshes stage's common list — by the result path, as
+/// for body meshes and trees.
 fn creature_key(rel: &str) -> String {
     format!("@{rel}")
 }
 
-/// Свои модели существ (T11.5e): распаковать скелеты, части тела и клипы папок, собрать по три
-/// файла на модель (`<имя>.nif`, `x<имя>.nif`, `x<имя>.kf`) и добавить их в общий список стадии
-/// мешей. Модель, которая не собралась, остаётся в списке с причиной: существа с ней в плагин не
-/// попадут.
+/// Custom creature models (T11.5e): unpack skeletons, body parts and folder clips, build three
+/// files per model (`<name>.nif`, `x<name>.nif`, `x<name>.kf`) and add them to the meshes stage's
+/// common list. A model that fails to build stays in the list with the reason: creatures using it
+/// do not go into the plugin.
 fn build_creature_models(
     config: &Config,
     archives: &[PathBuf],
@@ -2889,7 +2908,8 @@ fn build_creature_models(
     if models.is_empty() {
         return Ok(());
     }
-    // Клипы — все `.kf` прямо в папке модели: какие из них нужны, решает таблица групп.
+    // Clips are all `.kf` files directly in the model folder: the group table decides which are
+    // needed.
     let mut clips: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for model in models.values() {
         if !clips.contains_key(model.folder.as_str()) {
@@ -3016,20 +3036,21 @@ fn build_creature_models(
     Ok(())
 }
 
-/// Записанные ассеты: меши для `niftest` и принадлежность плагинам для BSA.
+/// Written assets: meshes for `niftest` and plugin ownership for BSA.
 struct WrittenAssets {
     mesh_files: Vec<PathBuf>,
     by_plugin: PluginAssets,
-    /// Пути звуков в плагине (относительно `Sound\`), чей файл записан.
+    /// Sound paths in the plugin (relative to `Sound\`) whose file was written.
     sound_files: BTreeSet<String>,
-    /// Файлы голоса (`SNAM`, T10.8), которые записаны.
+    /// Voice files (`SNAM`, T10.8) that were written.
     voice_files: BTreeSet<String>,
 }
 
-/// `SOUN` без файла (в `Oblivion.esm` таких 33 — файла нет ни в архивах, ни свободным) не
-/// пишется, а двери и свет, что на него ссылались, остаются без звука: ссылка на несуществующий
-/// файл — ошибка движка при каждом открытии двери. Скрипт петли такого звука (T10.3) тоже не
-/// пишется; активаторы и маркеры остаются без скрипта (на маркер уже ссылаются ячейки).
+/// A `SOUN` without a file (`Oblivion.esm` has 33 — the file is neither in the archives nor loose)
+/// is not written, and the doors and lights that referenced it are left without a sound: a
+/// reference to a nonexistent file is an engine error every time the door opens. The loop script of
+/// such a sound (T10.3) is not written either; activators and markers are left without a script
+/// (cells already reference the marker).
 fn silence_missing_sounds(works: &mut [PluginWork<'_>], written: &BTreeSet<String>) {
     for work in works {
         let mut silent: BTreeSet<String> = BTreeSet::new();
@@ -3099,7 +3120,8 @@ fn silence_missing_sounds(works: &mut [PluginWork<'_>], written: &BTreeSet<Strin
     }
 }
 
-/// Пишет меши, текстуры и иконки в общие папки `output/` и считает, какой плагин что использует.
+/// Writes meshes, textures and icons into the shared `output/` folders and counts which plugin uses
+/// what.
 fn write_assets(
     config: &Config,
     archives: &[PathBuf],
@@ -3110,10 +3132,10 @@ fn write_assets(
 ) -> Result<WrittenAssets, PipelineError> {
     let output = &config.output_dir;
     let mut mesh_files: Vec<PathBuf> = Vec::new();
-    // Для каждого меша — его путь в `Data Files` и имена его текстур.
+    // For each mesh — its path in `Data Files` and the names of its textures.
     let mut mesh_assets: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
-    let mut textures: BTreeMap<String, String> = BTreeMap::new(); // имя → путь в архиве
-    let mut generated: BTreeMap<&str, &Vec<u8>> = BTreeMap::new(); // имя → байты
+    let mut textures: BTreeMap<String, String> = BTreeMap::new(); // name → path in archive
+    let mut generated: BTreeMap<&str, &Vec<u8>> = BTreeMap::new(); // name → bytes
     let mut short_paths: BTreeMap<String, &str> = BTreeMap::new();
     for (key, entry) in results {
         let Ok(result) = &entry.result else { continue };
@@ -3138,7 +3160,7 @@ fn write_assets(
     }
     outcome.meshes_written = mesh_files.len();
 
-    // extract + write: текстуры
+    // extract + write: textures
     let wanted: Vec<String> = textures.values().cloned().collect();
     outcome.extract_textures = extract_sources(config, archives, &wanted)
         .map_err(failed(lang::tr("extract (текстуры)", "extract (textures)")))?;
@@ -3163,7 +3185,7 @@ fn write_assets(
         copied_textures.insert(target);
         outcome.textures_copied += 1;
     }
-    // Сделанные конвертером (кожа лица): имена `obface_…` не пересекаются с копиями `ob_…`.
+    // Made by the converter (face skin): `obface_…` names do not collide with `ob_…` copies.
     for (name, bytes) in &generated {
         fs::create_dir_all(&textures_dir).map_err(failed("Textures"))?;
         let to = textures_dir.join(name);
@@ -3172,7 +3194,7 @@ fn write_assets(
         outcome.textures_generated += 1;
     }
 
-    // extract + write: иконки оружия
+    // extract + write: weapon icons
     let icons: BTreeSet<&str> = works
         .iter()
         .flat_map(|w| &w.origins)
@@ -3207,7 +3229,8 @@ fn write_assets(
             continue;
         }
         let mut bytes = fs::read(&from).map_err(failed(&from.display().to_string()))?;
-        // Иконка Oblivion 64×64 в инвентаре Morrowind вдвое крупнее ванильных 32×32.
+        // A 64×64 Oblivion icon is twice as large in the Morrowind inventory as the vanilla 32×32
+        // ones.
         match mesh_convert::icons::shrink_icon(&bytes) {
             Ok(Some(small)) => bytes = small,
             Ok(None) => {}
@@ -3221,8 +3244,8 @@ fn write_assets(
         outcome.icons_copied += 1;
     }
 
-    // extract + write: картинки книг. `src` в тексте Oblivion — относительно `Textures\Menus\`;
-    // одно и то же имя, записанное по-разному, сводится по нормальной форме.
+    // extract + write: book images. `src` in Oblivion text is relative to `Textures\Menus\`; the
+    // same name written differently is reduced to a normal form.
     let mut book_art: BTreeMap<String, String> = BTreeMap::new();
     for src in works
         .iter()
@@ -3278,7 +3301,7 @@ fn write_assets(
     let sound_assets = write_sounds(config, archives, works, outcome, log)?;
     let voice_assets = write_voices(config, works, outcome, log)?;
 
-    // Какой плагин что использует.
+    // Which plugin uses what.
     let mut by_plugin = PluginAssets::new();
     for work in works {
         let set = by_plugin.entry(work.output_name()).or_default();
@@ -3304,7 +3327,7 @@ fn write_assets(
                 set.insert(art.clone());
             }
         }
-        // Свои модели существ: три файла и текстуры тела.
+        // Custom creature models: three files and the body textures.
         for model in &work.creature_models {
             let Some((x_nif, x_kf)) = transform::paths::creature_pair(&model.mesh) else {
                 continue;
@@ -3340,17 +3363,17 @@ fn write_assets(
     })
 }
 
-/// Файлы голоса реплик (T10.8) в `output/Sound`: mp3 ответов из архивов голосов склеиваются
-/// кадрами (`mesh_convert::audio::mp3`) в один файл на реплику. Путь в плагине → путь ассета.
-/// Файл, который не собрался (нет в архиве, не тот формат mp3), — замечание; реплики с ним
-/// выбрасывает [`silence_missing_voices`].
+/// Response voice files (T10.8) in `output/Sound`: mp3 responses from the voice archives are joined
+/// frame by frame (`mesh_convert::audio::mp3`) into one file per response. Path in the plugin →
+/// asset path. A file that failed to build (missing from the archive, wrong mp3 format) is a note;
+/// [`silence_missing_voices`] drops the responses using it.
 fn write_voices(
     config: &Config,
     works: &[PluginWork<'_>],
     outcome: &mut Outcome,
     log: &mut dyn FnMut(&str),
 ) -> Result<BTreeMap<String, String>, PipelineError> {
-    // Путь в плагине → источники. Один путь у разных склеек — столкновение хеша.
+    // Path in the plugin → sources. One path for different joins is a hash collision.
     let mut wanted: BTreeMap<&str, &Vec<String>> = BTreeMap::new();
     for work in works {
         for (rel, sources) in &work.voices {
@@ -3424,8 +3447,8 @@ fn write_voices(
     Ok(assets)
 }
 
-/// Реплика голоса без файла (не собрался в [`write_voices`]) не пишется: голос без звука движок
-/// не показывает. Тема, у которой не осталось реплик, — тоже.
+/// A voiced response without a file (failed to build in [`write_voices`]) is not written: the
+/// engine does not show a voice without sound. Neither is a topic with no responses left.
 fn silence_missing_voices(works: &mut [PluginWork<'_>], written: &BTreeSet<String>) {
     for work in works {
         for topic in &mut work.topics {
@@ -3437,8 +3460,9 @@ fn silence_missing_voices(works: &mut [PluginWork<'_>], written: &BTreeSet<Strin
     }
 }
 
-/// Файлы звуков (T10.1) в `output/Sound`: путь в плагине → путь ассета. `SOUN` с каталогом
-/// получает первый `.wav` каталога по имени; стерео сводится в моно (`mesh_convert::audio`).
+/// Sound files (T10.1) in `output/Sound`: path in the plugin → asset path. A `SOUN` with a
+/// directory gets the directory's first `.wav` by name; stereo is mixed down to mono
+/// (`mesh_convert::audio`).
 fn write_sounds(
     config: &Config,
     archives: &[PathBuf],
@@ -3446,7 +3470,7 @@ fn write_sounds(
     outcome: &mut Outcome,
     log: &mut dyn FnMut(&str),
 ) -> Result<BTreeMap<String, String>, PipelineError> {
-    // Путь в плагине → источник. Один путь у двух разных источников — столкновение хеша.
+    // Path in the plugin → source. One path for two different sources is a hash collision.
     let mut sources: BTreeMap<&str, &SoundOrigin> = BTreeMap::new();
     for work in works {
         for (sound, origin) in work.sounds.iter().zip(&work.sound_origins) {
@@ -3528,7 +3552,7 @@ fn write_sounds(
     Ok(assets)
 }
 
-/// Пишет по плагину Morrowind на каждый плагин источника; возвращает пути записанного.
+/// Writes one Morrowind plugin per source plugin; returns the paths of what was written.
 fn write_plugins(
     output: &Path,
     master_size: u64,
@@ -3536,7 +3560,7 @@ fn write_plugins(
     outcome: &mut Outcome,
 ) -> Result<Vec<PathBuf>, PipelineError> {
     fs::create_dir_all(output).map_err(failed("output"))?;
-    // Размеры уже записанных плагинов: мастер пишется раньше зависимого (порядок загрузки).
+    // Sizes of already written plugins: a master is written before its dependent (load order).
     let mut sizes: BTreeMap<String, (String, u64)> = BTreeMap::new();
     let mut paths = Vec::new();
     for work in works {
@@ -3562,17 +3586,17 @@ fn write_plugins(
                 .and_then(|w| start_hint(&w.source.editor_id, w.converted.as_ref()?)),
             ..PluginOutcome::default()
         };
-        // `GLOB` — в начале, как в `Morrowind.esm` (после `GMST`, которых мы не пишем).
+        // `GLOB` comes first, as in `Morrowind.esm` (after `GMST`, which we do not write).
         for g in &work.globals {
             builder.add_global(g.clone());
         }
         result.globals = work.globals.len();
-        // `SOUN` — раньше дверей и света, как в `Morrowind.esm`.
+        // `SOUN` comes before doors and lights, as in `Morrowind.esm`.
         for s in &work.sounds {
             builder.add_sound(s.clone());
         }
         result.sounds = work.sounds.len();
-        // `SNDG` — сразу за `SOUN`, на которые ссылаются.
+        // `SNDG` right after the `SOUN` they reference.
         for g in &work.sound_gens {
             builder.add_sound_gen(g.clone());
         }
@@ -3606,7 +3630,8 @@ fn write_plugins(
             builder.add_leveled_item(list.clone());
         }
         result.leveled = work.leveled.len();
-        // ENCH раньше вещей не обязательно: движок разрешает ссылки после загрузки всех записей.
+        // ENCH does not have to precede items: the engine resolves references after loading all
+        // records.
         for e in &work.enchantments {
             builder.add_enchantment(e.clone());
         }
@@ -3615,7 +3640,7 @@ fn write_plugins(
         }
         result.enchantments = work.enchantments.len();
         result.spells = work.spells.len();
-        // NPC и то, на что они ссылаются, — до ячеек, как в `Morrowind.esm`.
+        // NPCs and what they reference come before cells, as in `Morrowind.esm`.
         if let Some(actors) = &work.actors {
             for f in &actors.factions {
                 builder.add_faction(f.clone());
@@ -3629,7 +3654,7 @@ fn write_plugins(
             for b in &actors.bodies {
                 builder.add(b.clone());
             }
-            // Части тела своих рас — тоже `BODY`: их считает сверка с `esmtool`.
+            // Body parts of our own races are also `BODY`: the `esmtool` cross-check counts them.
             result.bodies += actors.bodies.len();
             for (_, n) in &actors.npcs {
                 builder.add_npc(n.clone());
@@ -3640,12 +3665,12 @@ fn write_plugins(
             builder.add_creature(c.clone());
         }
         result.creatures = work.creatures.len();
-        // `LEVC` — после существ и NPC, до ячеек, как в `Morrowind.esm`.
+        // `LEVC` after creatures and NPCs, before cells, as in `Morrowind.esm`.
         for (_, l) in &work.creature_lists {
             builder.add_leveled_creature(l.clone());
         }
         result.creature_lists = work.creature_lists.len();
-        // Порядок как в `Morrowind.esm`: LTEX и REGN раньше ячеек, LAND и PGRD после.
+        // Order as in `Morrowind.esm`: LTEX and REGN before cells, LAND and PGRD after.
         if let Some(world) = work.world.as_ref().and_then(|w| w.converted.as_ref()) {
             for t in &world.land_textures {
                 builder.add_land_texture(t.clone());
@@ -3669,7 +3694,7 @@ fn write_plugins(
             result.lands = world.lands.len();
             result.interiors = world.interiors.len();
         }
-        // Темы — последними, как в `Morrowind.esm`.
+        // Topics last, as in `Morrowind.esm`.
         for t in &work.topics {
             result.topics += 1;
             result.infos += t.infos.len();
@@ -3684,7 +3709,7 @@ fn write_plugins(
         let size = fs::metadata(&path)
             .map_err(failed(&path.display().to_string()))?
             .len();
-        // Ключ — имя источника: по нему зависимые плагины ищут мастера.
+        // The key is the source name: dependent plugins look up their masters by it.
         sizes.insert(work.info.name.to_ascii_lowercase(), (name.clone(), size));
         outcome.statics_written += result.statics;
         outcome.weapons_written += result.weapons;
@@ -3706,7 +3731,7 @@ fn write_plugins(
     Ok(paths)
 }
 
-/// `esmtool` по каждому плагину, `niftest` по всем мешам. Любой брак валит прогон.
+/// `esmtool` on each plugin, `niftest` on all meshes. Any defect fails the run.
 fn validate_output(
     esmtool: &Path,
     niftest: &Path,
@@ -3780,9 +3805,9 @@ fn validate_output(
     }
 }
 
-/// Занимает короткий путь за исходным файлом. Два разных источника с одним коротким путём —
-/// столкновение хеша (`transform::paths`): второй файл молча затёр бы первый, поэтому это
-/// отказ прогона с именами обоих.
+/// Claims a short path for a source file. Two different sources with the same short path are a hash
+/// collision (`transform::paths`): the second file would silently overwrite the first, so the run
+/// fails, naming both.
 fn claim_short_path<'a>(
     taken: &mut BTreeMap<String, &'a str>,
     short: String,
@@ -3810,8 +3835,8 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<(), PipelineError> {
     fs::write(path, bytes).map_err(failed(&path.display().to_string()))
 }
 
-/// Читает распакованный меш, конвертирует, сериализует. Ошибка — текст для отчёта. Системы
-/// частиц становятся эмиттерами Morrowind (T2.7); счёт — в `outcome`.
+/// Reads an unpacked mesh, converts it, serializes it. The error is text for the report. Particle
+/// systems become Morrowind emitters (T2.7); the count goes into `outcome`.
 fn convert_one(
     work_dir: &Path,
     archive_path: &str,
@@ -3838,10 +3863,10 @@ fn convert_one(
     })
 }
 
-/// Меш двери (T2.6b): тот же перенос, что у прочих мешей, плюс петля. По последовательности
-/// `Open` находится створка; если она одна, на вертикальной петле и рамы в меше нет, начало
-/// координат меша переносится в петлю — туда, где дверь повернёт Morrowind. Анимация, которая
-/// не читается, — не отказ: дверь переносится в позе файла, как раньше.
+/// A door mesh (T2.6b): the same conversion as for other meshes, plus the hinge. The leaf is found
+/// from the `Open` sequence; if there is only one, on a vertical hinge, and the mesh has no frame,
+/// the mesh origin is moved to the hinge — where Morrowind will rotate the door. An animation that
+/// cannot be read is not a failure: the door is carried over in the file's pose, as before.
 fn door_one(
     work_dir: &Path,
     archive_path: &str,
@@ -3899,15 +3924,15 @@ fn door_one(
     (result, Some(info))
 }
 
-/// Прибавляет системы частиц одного меша к счёту прогона (T2.7).
+/// Adds one mesh's particle systems to the run's count (T2.7).
 fn count_particles(stats: &mesh_convert::geometry::Stats, outcome: &mut Outcome) {
     outcome.particles_converted += stats.converted_particles;
     outcome.particles_lossy += stats.lossy_particles;
     outcome.particles_dropped += stats.dropped_particles;
 }
 
-/// Итог по дверям (T2.6): строка журнала, замечание о дверях, которые поворот Morrowind не
-/// выражает, и смещения начала координат мешей с перенесённой петлёй — по `FormID` двери.
+/// Door result (T2.6): the log line, a note about doors that Morrowind's rotation cannot express,
+/// and the origin shifts of meshes with a moved hinge — by door `FormID`.
 fn report_doors(
     works: &[PluginWork<'_>],
     door_info: &BTreeMap<String, DoorInfo>,
@@ -3964,7 +3989,8 @@ fn report_doors(
     pivots
 }
 
-/// Меш дерева (T2.4): кора и листва по `.spt`, как их строит движок при семени записи.
+/// A tree mesh (T2.4): bark and foliage from the `.spt`, as the engine builds them for the record's
+/// seed.
 fn tree_one(
     work_dir: &Path,
     spt: &str,
@@ -4013,8 +4039,9 @@ mod unhide_tests {
         }
     }
 
-    /// Кираса: грудь — часть тела, плечи и бёдра спрятаны. Женский меш убрал кожу с плеч,
-    /// мужской — нет: плечи открываются для обоих (лучше тело под тканью, чем дыра), бёдра — нет.
+    /// Cuirass: the chest is a body part, the shoulders and thighs are hidden. The female mesh cut
+    /// the skin from the shoulders, the male one did not: the shoulders open for both (better a
+    /// body under the cloth than a hole), the thighs do not.
     #[test]
     fn empty_slots_opened_by_either_gender_are_unhidden_and_body_parts_stay() {
         let mut parts = vec![
@@ -4029,10 +4056,14 @@ mod unhide_tests {
         ]);
         assert_eq!(unhide_parts(&mut parts, &exposed), 2);
         let slots: Vec<u8> = parts.iter().map(|p| p.slot).collect();
-        assert_eq!(slots, [3, 21], "грудь с телом остаётся, хоть и открыта");
+        assert_eq!(
+            slots,
+            [3, 21],
+            "the chest with a body stays, even though it is exposed"
+        );
     }
 
-    /// Контрольный опыт: без открытых слотов вещь не меняется.
+    /// Control: without exposed slots the item does not change.
     #[test]
     fn nothing_exposed_changes_nothing() {
         let mut parts = vec![part(3, "obm_Shirt", ""), part(11, "", ""), part(12, "", "")];
@@ -4056,14 +4087,15 @@ mod world_tests {
             water_height: None,
             land: None,
         };
-        // Как SEWorld: x −32…31, y −44…37 → целевые x −16…15, y −22…18.
+        // Like SEWorld: x −32…31, y −44…37 → target x −16…15, y −22…18.
         let source = ExteriorSource {
             cells: vec![cell(-32, 5), cell(31, -44), cell(0, 37)],
             ..ExteriorSource::default()
         };
         let o = default_offset(&source);
         assert_eq!((o.dx, o.dy), (48, 3));
-        // Западный край — через зазор от восточного края ванили, южный — на уровне её южного.
+        // The western edge is a gap away from vanilla's eastern edge, the southern edge is level
+        // with its southern edge.
         assert_eq!(-16 + o.dx, VANILLA_EXTERIOR.2 + 1 + WORLD_GAP);
         assert_eq!(-22 + o.dy, VANILLA_EXTERIOR.1);
     }
@@ -4125,7 +4157,8 @@ mod prune_tests {
         }
     }
 
-    /// T10.1: `SOUN`, чей файл не записан, уходит из плагина, дверь теряет только этот звук.
+    /// T10.1: a `SOUN` whose file was not written leaves the plugin; the door loses only that
+    /// sound.
     #[test]
     fn a_sound_without_a_file_is_dropped_and_the_door_keeps_the_other() {
         let plugin = info("Master.esm");
@@ -4154,7 +4187,7 @@ mod prune_tests {
             sound("ob_Lost_2", "ob\\lost.wav"),
         ];
         w.sound_origins = vec![origin("fx\\open.wav"), origin("fx\\lost.wav")];
-        // T10.2: регион тоже теряет только звук без файла.
+        // T10.2: the region also loses only the sound without a file.
         let region = tes3_out::Region {
             id: "ob_region_c".to_owned(),
             name: String::new(),
@@ -4187,7 +4220,7 @@ mod prune_tests {
         assert_eq!(ids, ["ob_Open_1"]);
         assert_eq!(works[0].sound_origins.len(), 1);
         let Object::Door(d) = &works[0].objects[0] else {
-            panic!("дверь");
+            panic!("door");
         };
         assert_eq!(
             (d.open_sound.as_str(), d.close_sound.as_str()),
@@ -4207,8 +4240,9 @@ mod prune_tests {
         }
     }
 
-    /// T10.3: стоящий в мире `SOUN` → маркер со скриптом; звук, уже взятый дверью, не дублируется,
-    /// скрипт, уже взятый активатором, — тоже; `SOUN` не из плагина и не-звуки не трогаются.
+    /// T10.3: a `SOUN` standing in the world → a marker with a script; a sound already taken by a
+    /// door is not duplicated, nor is a script already taken by an activator; a `SOUN` from outside
+    /// the plugin and non-sounds are left alone.
     #[test]
     fn placed_sounds_get_markers_with_loop_scripts() {
         let kinds = HashMap::from([
@@ -4254,7 +4288,7 @@ mod prune_tests {
             ]
         );
         let ids: Vec<&str> = sounds.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, ["ob_wind_30", "ob_Drip_31"], "Wind уже был");
+        assert_eq!(ids, ["ob_wind_30", "ob_Drip_31"], "Wind was already there");
         assert!(origins[1].directory);
         let script_ids: Vec<&str> = scripts.iter().map(Script::id).collect();
         assert_eq!(script_ids, ["obls_Wind_30", "obls_Drip_31"]);
@@ -4267,8 +4301,8 @@ mod prune_tests {
         assert!(outcome.problems.is_empty(), "{:?}", outcome.problems);
     }
 
-    /// T10.3: скрипт петли звука без файла не пишется, активатор и маркер остаются без скрипта;
-    /// скрипт звука с файлом остаётся.
+    /// T10.3: the loop script of a sound without a file is not written, the activator and the
+    /// marker are left without a script; the script of a sound with a file stays.
     #[test]
     fn a_loop_script_of_a_silent_sound_is_dropped() {
         let plugin = info("Master.esm");
@@ -4303,19 +4337,19 @@ mod prune_tests {
         let ids: Vec<&str> = w.scripts.iter().map(Script::id).collect();
         assert_eq!(ids, ["obls_Kept_1"]);
         let Object::Activator(a) = &w.objects[0] else {
-            panic!("активатор");
+            panic!("activator");
         };
         assert!(a.script.is_empty());
         let on_markers: Vec<&str> = w.sound_markers.iter().map(|m| m.script.as_str()).collect();
         assert_eq!(
             on_markers,
             ["obls_Kept_1", ""],
-            "маркер остаётся: на него ссылаются ячейки"
+            "the marker stays: cells reference it"
         );
     }
 
-    /// Список мастера опустел (меш его единственного предмета не сконвертировался) — из списка
-    /// мода и из сундука мода ссылка на него уходит, хотя это другой плагин.
+    /// The master's list became empty (the mesh of its only item did not convert) — the reference
+    /// to it leaves the mod's list and the mod's chest, even though that is another plugin.
     #[test]
     fn an_emptied_list_is_removed_from_other_plugins_too() {
         let (master, module) = (info("Master.esm"), info("Mod.esp"));
@@ -4349,7 +4383,7 @@ mod prune_tests {
         assert_eq!(
             c.items,
             [(3, "Gold_001".to_owned())],
-            "ванильное не трогаем"
+            "vanilla is left alone"
         );
         assert_eq!(outcome.problems.len(), 3, "{:?}", outcome.problems);
     }
@@ -4405,9 +4439,9 @@ mod prune_tests {
         }
     }
 
-    /// T11.4: строка списка существ на запись, которой нет ни в одном плагине прогона, уходит;
-    /// опустевший список не пишется, и ссылка на него из другого плагина — тоже. Ванильное
-    /// существо (без нашего префикса) остаётся.
+    /// T11.4: a creature list line pointing at a record that is in no plugin of the run goes away;
+    /// an emptied list is not written, and neither is a reference to it from another plugin. A
+    /// vanilla creature (without our prefix) stays.
     #[test]
     fn creature_lists_lose_rows_to_unwritten_records_across_plugins() {
         let (master, module) = (info("Master.esm"), info("Mod.esp"));
@@ -4452,7 +4486,7 @@ mod prune_tests {
             outcome.problems
         );
 
-        // Контроль: когда все цели записаны, списки не меняются и замечаний нет.
+        // Control: when all targets are written, the lists do not change and there are no notes.
         let mut whole = vec![work(&master, Vec::new(), Vec::new())];
         whole[0].creatures = vec![(0x10, creature("ob_rat_a"))];
         whole[0].creature_lists = vec![(0x20, creature_list("ob_rats_b", &["ob_rat_a", "rat"]))];
@@ -4463,8 +4497,8 @@ mod prune_tests {
         assert!(outcome.problems.is_empty(), "{:?}", outcome.problems);
     }
 
-    /// T2.6: итог по дверям — смещения только у дверей с перенесённой петлёй; двери, которые
-    /// Morrowind повернёт не так, и открывающиеся в другую сторону — замечаниями.
+    /// T2.6: door result — offsets only for doors with a moved hinge; doors Morrowind will rotate
+    /// wrongly and doors opening the other way become notes.
     #[test]
     fn door_report_gives_pivots_and_notes_the_doors_morrowind_cannot_express() {
         use mesh_convert::door::DoorFate;
@@ -4485,7 +4519,7 @@ mod prune_tests {
             origin(2, Some("ob\\door2_b.nif")),
             origin(3, Some("ob\\door3_c.nif")),
             origin(4, Some("ob\\door4_d.nif")),
-            // Статика с той же моделью, что дверь 1: к дверям не относится.
+            // A static with the same model as door 1: not a door.
             origin(5, None),
         ];
         let info_of = |fate, pivot, counter_clockwise| DoorInfo {
@@ -4506,7 +4540,7 @@ mod prune_tests {
                 "@ob\\door3_c.nif".to_owned(),
                 info_of(DoorFate::Sliding, None, false),
             ),
-            // У двери 4 меш не прочитался: сведений нет, в счёт она не идёт.
+            // Door 4's mesh failed to read: no information, it is not counted.
         ]);
         let mut outcome = Outcome::default();
         let mut lines = Vec::new();
@@ -4524,16 +4558,17 @@ mod prune_tests {
         assert!(outcome.problems[0].contains("sliding (portcullises) 1"));
         assert!(outcome.problems[1].contains("open the other way than in Oblivion: 1"));
 
-        // Контроль: плагин без дверей — ни строки, ни замечаний.
+        // Control: a plugin without doors — no line, no notes.
         let mut outcome = Outcome::default();
         let empty = work(&plugin, Vec::new(), Vec::new());
         let pivots = report_doors(&[empty], &door_info, &mut outcome, &mut |_| {
-            panic!("строк быть не должно")
+            panic!("there must be no lines")
         });
         assert!(pivots.is_empty() && outcome.problems.is_empty());
     }
 
-    /// Какие записи переносить: `--only` и мир — оба фильтра вместе, без обоих — все.
+    /// Which records to carry over: `--only` and the world — both filters together, without both —
+    /// everything.
     #[test]
     fn wanted_records_combine_the_only_filter_with_the_world() {
         use tes4_read::{GameFormat, synth};
@@ -4577,7 +4612,7 @@ mod prune_tests {
         );
     }
 
-    /// Инвентарь и заклинания NPC чистятся по тем же правилам, что сундук.
+    /// NPC inventory and spells are cleaned by the same rules as a chest.
     #[test]
     fn npc_loses_unwritten_items_and_spells_but_keeps_vanilla_ones() {
         let master = info("Master.esm");
@@ -4634,8 +4669,8 @@ mod prune_tests {
         assert_eq!(outcome.problems.len(), 1, "{:?}", outcome.problems);
     }
 
-    /// T10.8: реплика с голосом, чей файл не записан, выбрасывается; тема без реплик — тоже;
-    /// реплика без голоса и с записанным голосом остаются.
+    /// T10.8: a response with a voice whose file was not written is dropped; a topic without
+    /// responses too; a response without a voice and one with a written voice stay.
     #[test]
     fn a_voice_line_without_its_file_is_dropped() {
         use tes3_out::dialogue::{Info, Topic, TopicKind};
@@ -4780,7 +4815,7 @@ mod start_hint_tests {
         );
         assert!(hint.line("SEWorld.esp").contains("coe 2 5"));
         assert_eq!(start_hint("Empty", &ConvertedExterior::default()), None);
-        // Интерьер — запасной, только когда снаружи объектов нет.
+        // An interior is the fallback, only when there are no objects outside.
         converted.cells.clear();
         converted.interiors = vec![interior("Empty", false), interior("Hall", true)];
         assert_eq!(

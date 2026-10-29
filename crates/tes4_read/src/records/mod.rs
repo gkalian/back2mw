@@ -1,4 +1,4 @@
-//! Спеки типов записей. Одна таблица полей на тип.
+//! Record type specs. One field table per type.
 
 mod actor;
 mod creature;

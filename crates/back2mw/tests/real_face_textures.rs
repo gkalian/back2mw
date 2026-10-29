@@ -1,6 +1,7 @@
-//! Карта детализации лица `Egt::detail` (T8.8) против готовых карт Oblivion
-//! `textures\faces\oblivion.esm\<FormID>_0.dds` — у 1 977 NPC `Oblivion.esm` они лежат в архиве
-//! текстур. Требует `BACK2MW_OBLIVION_DATA` — каталог `Data` с `Oblivion.esm` и BSA.
+//! The face detail map `Egt::detail` (T8.8) against Oblivion's ready-made maps
+//! `textures\faces\oblivion.esm\<FormID>_0.dds` — 1,977 NPCs of `Oblivion.esm` have them in the
+//! texture archive. Needs `BACK2MW_OBLIVION_DATA` — the `Data` directory with `Oblivion.esm` and
+//! the BSAs.
 //!
 //! ```text
 //! BACK2MW_OBLIVION_DATA='C:\path\to\Oblivion\Data' \
@@ -17,13 +18,16 @@ use tes4_read::{BsaIndex, FromFields, Npc, Plugin, Race};
 
 fn data_dir() -> PathBuf {
     PathBuf::from(
-        std::env::var_os("BACK2MW_OBLIVION_DATA").expect("BACK2MW_OBLIVION_DATA не задана"),
+        std::env::var_os("BACK2MW_OBLIVION_DATA").expect("BACK2MW_OBLIVION_DATA is not set"),
     )
 }
 
-/// Коэффициент корреляции двух рядов.
+/// Correlation coefficient of two series.
 fn correlation(x: &[f64], y: &[f64]) -> f64 {
-    #[expect(clippy::cast_precision_loss, reason = "рядов — сотни тысяч")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "series have hundreds of thousands of values"
+    )]
     let n = x.len() as f64;
     let (mx, my) = (x.iter().sum::<f64>() / n, y.iter().sum::<f64>() / n);
     let (mut sxy, mut sxx, mut syy) = (0.0, 0.0, 0.0);
@@ -35,10 +39,10 @@ fn correlation(x: &[f64], y: &[f64]) -> f64 {
     sxy / (sxx * syy).sqrt()
 }
 
-/// Коэффициенты `FGTS` NPC плюс расы дают карту, совпадающую с готовой до шума сжатия; с одними
-/// коэффициентами NPC (контроль) — заметно хуже.
+/// The NPC's `FGTS` coefficients plus the race's give a map matching the ready-made one up to
+/// compression noise; the NPC's coefficients alone (control) are noticeably worse.
 #[test]
-#[ignore = "настоящая установка Oblivion: BACK2MW_OBLIVION_DATA"]
+#[ignore = "real Oblivion install: BACK2MW_OBLIVION_DATA"]
 fn egt_detail_matches_the_shipped_face_maps() {
     let data = data_dir();
     let bytes = std::fs::read(data.join("Oblivion.esm")).unwrap();
@@ -102,12 +106,15 @@ fn egt_detail_matches_the_shipped_face_maps() {
             continue;
         }
         rs.push(r);
-        // Контроль — только там, где у расы есть свои коэффициенты: у аргониан, тёмных эльфов и
-        // др. они нулевые, и оба способа совпадают.
+        // Control only where the race has its own coefficients: for Argonians, Dark Elves and
+        // others they are zero, and both ways match.
         if race.face.texture_symmetric.iter().any(|v| *v != 0.0) {
             own_rs.push(correlation(&own, &truth));
         }
-        #[expect(clippy::cast_precision_loss, reason = "пикселей — сотни тысяч")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "hundreds of thousands of pixels"
+        )]
         errors.push(
             ours.iter()
                 .zip(&truth)
@@ -123,13 +130,13 @@ fn egt_detail_matches_the_shipped_face_maps() {
     let n = rs.len();
     let (r, own_r, err) = (median(&mut rs), median(&mut own_rs), median(&mut errors));
     println!(
-        "NPC {n}: корреляция {r:.3}, средняя ошибка {err:.2} уровня; только NPC без расы ({} NPC рас с коэффициентами) — {own_r:.3}",
+        "NPC {n}: correlation {r:.3}, mean error {err:.2} levels; NPC alone without race ({} NPCs of races with coefficients) — {own_r:.3}",
         own_rs.len()
     );
-    assert!(n > 1900, "карт с парой .egt: {n}");
-    assert!(r > 0.93 && err < 3.0, "r {r}, ошибка {err}");
+    assert!(n > 1900, "maps with a matching .egt: {n}");
+    assert!(r > 0.93 && err < 3.0, "r {r}, error {err}");
     assert!(
         own_r < r - 0.1,
-        "контроль: без коэффициентов расы — хуже ({own_r})"
+        "control: without the race coefficients it is worse ({own_r})"
     );
 }

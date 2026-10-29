@@ -1,15 +1,16 @@
-//! Классы (T7.3): `CLAS` Oblivion → `CLAS` Morrowind.
+//! Classes (T7.3): Oblivion `CLAS` → Morrowind `CLAS`.
 //!
-//! * **Поля.** Имя (`FULL`, без него — `EDID`), описание, главные атрибуты и специализация — как
-//!   есть (нумерация у игр одна: атрибуты 0…7, 0 бой / 1 магия / 2 скрытность). 7 основных навыков →
-//!   5 основных и 5 второстепенных Morrowind по `data/skills.tsv` (`SkillMap::class_skills`).
-//!   Классы непригодны для игрока.
-//! * **Услуги.** NPC Morrowind с автоподсчётом (решение владельца 2026-09-27) берёт услуги из
-//!   класса, а не из себя (OpenMW `mwclass/npc.cpp`, `getServices`; ванильный движок — по
-//!   документации сообщества, не проверено). У Oblivion услуги — у NPC (`AIDT`). Поэтому класс
-//!   пишется в варианте на каждый встреченный набор услуг NPC: `ob_Commoner_…` без услуг и,
-//!   например, `obs4001_Commoner_…` для торговца оружием с обучением.
-//! * **Биты услуг** почти совпадают ([`services`]).
+//! * **Fields.** The name (`FULL`, without it — `EDID`), description, major attributes and
+//!   specialization — as is (the games share the numbering: attributes 0…7, 0 combat / 1 magic / 2
+//!   stealth). 7 major skills → 5 major and 5 minor Morrowind skills via `data/skills.tsv`
+//!   (`SkillMap::class_skills`). Classes are not playable.
+//! * **Services.** A Morrowind NPC with auto-calculation (owner's decision 2026-09-27) takes
+//!   services from the class, not from itself (OpenMW `mwclass/npc.cpp`, `getServices`; for the
+//!   vanilla engine — per community documentation, not verified). In Oblivion services belong to
+//!   the NPC (`AIDT`). So a class is written in a variant for each set of NPC services encountered:
+//!   `ob_Commoner_…` without services and, for example, `obs4001_Commoner_…` for a weapon trader
+//!   who also trains.
+//! * **Service bits** almost match ([`services`]).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -20,11 +21,11 @@ use crate::ids::{DEFAULT_MAX_LEN, IdAllocator, IdError, variant_id};
 use crate::skills::SKILLS;
 use crate::weapons::display_name;
 
-/// Биты услуг Oblivion, у которых у Morrowind тот же бит и тот же смысл: оружие 0x1, броня 0x2,
-/// одежда 0x4, книги 0x8, ингредиенты 0x10, свет 0x80, инструменты 0x100, прочее 0x400,
-/// заклинания 0x800, магические вещи 0x1000, зелья 0x2000, обучение 0x4000, починка 0x20000
-/// (UESP «NPC_» `AIDT`; `tes3::esp::ServiceFlags`). Перезарядка Oblivion (0x10000) у Morrowind
-/// занимает бит зачарования — другая услуга, поэтому выбрасывается; перезарядки у Morrowind нет.
+/// Oblivion service bits that have the same bit and meaning in Morrowind: weapons 0x1, armor 0x2,
+/// clothing 0x4, books 0x8, ingredients 0x10, lights 0x80, apparatus 0x100, misc 0x400, spells
+/// 0x800, magic items 0x1000, potions 0x2000, training 0x4000, repair 0x20000 (UESP "NPC_" `AIDT`;
+/// `tes3::esp::ServiceFlags`). Oblivion's recharge (0x10000) takes Morrowind's enchanting bit — a
+/// different service, so it is dropped; Morrowind has no recharge.
 pub const SHARED_SERVICES: u32 = 0x1
     | 0x2
     | 0x4
@@ -39,15 +40,15 @@ pub const SHARED_SERVICES: u32 = 0x1
     | 0x4000
     | 0x2_0000;
 
-/// Услуги Morrowind по услугам Oblivion.
+/// Morrowind services from Oblivion services.
 pub fn services(oblivion: u32) -> u32 {
     oblivion & SHARED_SERVICES
 }
 
-/// Класс Morrowind без ID и услуг.
+/// A Morrowind class without an ID and services.
 fn convert(class: &Class) -> OutClass {
     let (major, minor) = SKILLS.class_skills(&class.major_skills);
-    let attribute = |a: u32| u8::try_from(a.min(7)).expect("зажато в 0…7");
+    let attribute = |a: u32| u8::try_from(a.min(7)).expect("clamped to 0…7");
     OutClass {
         id: String::new(),
         name: display_name(
@@ -57,14 +58,14 @@ fn convert(class: &Class) -> OutClass {
         .0,
         description: class.description.clone().unwrap_or_default(),
         attributes: class.attributes.map(attribute),
-        specialization: u8::try_from(class.specialization.min(2)).expect("зажато в 0…2"),
+        specialization: u8::try_from(class.specialization.min(2)).expect("clamped to 0…2"),
         major,
         minor,
         services: 0,
     }
 }
 
-/// Классы, которые понадобились NPC, — с вариантами по услугам. Пишутся только они.
+/// Classes the NPCs needed — with variants by services. Only these are written.
 #[derive(Debug, Default)]
 pub struct ClassRegistry {
     sources: HashMap<u32, Class>,
@@ -72,7 +73,7 @@ pub struct ClassRegistry {
 }
 
 impl ClassRegistry {
-    /// `sources` — классы плагина по абсолютному `FormID`.
+    /// `sources` are the plugin's classes by absolute `FormID`.
     pub fn new(sources: HashMap<u32, Class>) -> Self {
         Self {
             sources,
@@ -80,8 +81,8 @@ impl ClassRegistry {
         }
     }
 
-    /// ID класса Morrowind для NPC с классом `form_id` и услугами Oblivion `npc_services`.
-    /// `None` — класса нет в плагине.
+    /// The Morrowind class ID for an NPC with class `form_id` and Oblivion services `npc_services`.
+    /// `None` means the class is not in the plugin.
     pub fn class_for(
         &mut self,
         form_id: u32,
@@ -107,7 +108,7 @@ impl ClassRegistry {
         Ok(Some(id))
     }
 
-    /// Созданные классы по ID.
+    /// Created classes by ID.
     pub fn into_classes(self) -> Vec<OutClass> {
         self.made.into_values().collect()
     }
@@ -122,7 +123,7 @@ mod tests {
         Class {
             editor_id: "Commoner".into(),
             name: None,
-            description: Some("Простой люд".into()),
+            description: Some("Common folk".into()),
             attributes: [0, 6],
             specialization: 2,
             // Mercantile, Speechcraft, Security, Sneak, Athletics, Blade, Blunt.
@@ -144,7 +145,7 @@ mod tests {
         assert_eq!(
             services(0x20 | 0x40 | 0x200),
             0,
-            "у Oblivion таких битов нет"
+            "Oblivion has no such bits"
         );
     }
 
@@ -157,7 +158,7 @@ mod tests {
         let again = reg.class_for(0x10, 0x4001, &mut ids).unwrap().unwrap();
         assert!(plain.starts_with("ob_Commoner_"));
         assert!(trader.starts_with("obs4001_Commoner_"));
-        assert_eq!(trader, again, "перезарядка выпала — набор тот же");
+        assert_eq!(trader, again, "recharge dropped out — the set is the same");
         assert_eq!(reg.class_for(0x99, 0, &mut ids).unwrap(), None);
 
         let classes = reg.into_classes();
@@ -165,7 +166,7 @@ mod tests {
         let c = classes.iter().find(|c| c.id == trader).unwrap();
         assert_eq!(c.services, 0x4001);
         assert_eq!(c.name, "Commoner");
-        assert_eq!(c.description, "Простой люд");
+        assert_eq!(c.description, "Common folk");
         assert_eq!((c.attributes, c.specialization), ([0, 6], 2));
         assert_eq!(
             c.major,

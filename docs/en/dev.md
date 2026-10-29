@@ -66,11 +66,12 @@ is built on the same `Greatness7/tes3`.
 
 ## Code rules
 
-- Comments are in Russian; a doc comment explains **why**.
+- Comments are in English; a doc comment explains **why**. Cyrillic appears in code only as the
+  Russian half of a `lang` pair (and in tests of Russian output).
 - Everything the user sees (the log, notes, error texts, console output) is written in two languages
   through the `lang` crate: `lang::tr!("русский {x}", "english {x}")` instead of `format!`,
   `lang::trw!(f, …)` instead of `write!` in `Display`, `lang::tr("…", "…")` for strings without
-  placeholders. `expect`/`assert!` messages explain invariants to the developer and stay Russian.
+  placeholders. `expect`/`assert!` messages explain invariants to the developer and are written in English.
   A test that checks a message text compares the English one (the default language); the Russian one
   goes inside `lang::with(Lang::Ru, || …)`, not through `lang::set`: tests run in parallel in one
   process.

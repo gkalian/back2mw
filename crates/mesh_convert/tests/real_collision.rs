@@ -1,14 +1,14 @@
-//! T1.7: коллизия на реальных мешах `STAT` и проверка масштаба.
+//! T1.7: collision on real `STAT` meshes and a scale check.
 //!
-//! Множитель `HAVOK_UNITS_TO_GAME` = 7 взят из референса; здесь он проверяется данными.
-//! Для каждого меша с `RootCollisionNode` сравниваются габариты коллизии и видимой
-//! геометрии (обе — в выходном потоке, в игровых юнитах): при верном множителе отношение
-//! около 1 по каждой оси. Отдельно печатается, сколько мешей совпало бы **без**
-//! множителя, — чтобы было видно, что критерий различает 1 и 7.
+//! The factor `HAVOK_UNITS_TO_GAME` = 7 is taken from the reference; here it is checked against
+//! data. For each mesh with a `RootCollisionNode` the bounds of the collision and of the visible
+//! geometry are compared (both in the output stream, in game units): with the right factor the
+//! ratio is about 1 on every axis. It is also printed how many meshes would match **without** the
+//! factor — to show that the criterion tells 1 from 7.
 //!
-//! Что проверяет `niftest` на выходных файлах с коллизией — `real_convert.rs`.
+//! What `niftest` checks on output files with collision is in `real_convert.rs`.
 //!
-//! Запуск (PowerShell):
+//! Running (PowerShell):
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
 //! cargo test -p mesh_convert --test real_collision -- --ignored --nocapture
@@ -27,7 +27,8 @@ use tes4_read::{BsaIndex, FromFields, Plugin, Stat};
 
 const READABLE: &[&str] = mesh_convert::read::SUPPORTED_TYPES;
 
-/// Срез M1: 10 мешей из `docs/ru/formats/nif-oblivion.md` (пути в архиве, нижний регистр).
+/// The M1 slice: 10 meshes from `docs/en/formats/nif-oblivion.md` (paths in the archive, lower
+/// case).
 const SLICE: [&str; 10] = [
     "meshes/clutter/vinyard/vinyardbarrelcartstopper.nif",
     "meshes/architecture/castle/skingrad/skcastlefloor01.nif",
@@ -66,9 +67,9 @@ impl Aabb {
     }
 }
 
-/// Габарит видимой геометрии (всё, кроме `RootCollisionNode`) в системе корня.
-/// Возвращает габарит и признак «на пути были повороты», от которых зависит трактовка
-/// матрицы, ещё не проверенная на объекте с известным поворотом.
+/// Bounds of the visible geometry (everything except `RootCollisionNode`) in the root's system.
+/// Returns the bounds and a "there were rotations on the way" flag, on which the interpretation of
+/// the matrix depends — not yet verified on an object with a known rotation.
 fn visible_aabb(stream: &NiStream) -> (Aabb, bool) {
     let mut aabb = Aabb::empty();
     let mut rotated = false;
@@ -98,7 +99,7 @@ fn walk(
             let world = parent * av.transform();
             let data: &NiTriShapeData = stream
                 .get_as(shape.base.base.geometry_data)
-                .expect("данные формы");
+                .expect("shape data");
             for &v in &data.base.base.vertices {
                 aabb.add(world.transform_point3(v));
             }
@@ -112,7 +113,7 @@ fn walk(
                 rotated,
             );
         }
-        // `RootCollisionNode` — отдельный тип и сюда не попадает.
+        // `RootCollisionNode` is a separate type and does not get here.
     }
 }
 
@@ -120,10 +121,10 @@ fn collision_aabb(stream: &NiStream) -> Aabb {
     let mut aabb = Aabb::empty();
     for node in stream.objects_of_type::<tes3::nif::RootCollisionNode>() {
         for &child in &node.base.children {
-            let shape: &NiTriShape = stream.get_as(child).expect("форма коллизии");
+            let shape: &NiTriShape = stream.get_as(child).expect("collision shape");
             let data: &NiTriShapeData = stream
                 .get_as(shape.base.base.geometry_data)
-                .expect("данные формы коллизии");
+                .expect("collision shape data");
             for &v in &data.base.base.vertices {
                 aabb.add(v);
             }
@@ -143,14 +144,13 @@ fn bucket(r: f32) -> usize {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
     let esm = common::game_file("Oblivion.esm");
-    let bytes = fs::read(&esm).unwrap_or_else(|e| panic!("не прочитать {esm:?}: {e}"));
+    let bytes = fs::read(&esm).unwrap_or_else(|e| panic!("cannot read {esm:?}: {e}"));
     let plugin = Plugin::parse(&bytes).unwrap_or_else(|e| panic!("Plugin::parse: {e}"));
-    let mut reader = BufReader::new(
-        File::open(common::game_file("Oblivion - Meshes.bsa")).expect("открыть BSA"),
-    );
+    let mut reader =
+        BufReader::new(File::open(common::game_file("Oblivion - Meshes.bsa")).expect("open BSA"));
     let index = BsaIndex::read_from(&mut reader).unwrap_or_else(|e| panic!("BsaIndex: {e}"));
 
     let mut paths = std::collections::BTreeSet::new();
@@ -167,7 +167,7 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
     let (mut meshes, mut with_collision, mut skipped_meshes) = (0usize, 0usize, 0usize);
     let (mut shapes, mut triangles, mut skipped_objects) = (0usize, 0usize, 0usize);
     let (mut no_collision_at_all, mut rotated_meshes) = (0usize, 0usize);
-    // Гистограмма отношения по осям (x, y, z): <0.5, 0.5–0.9, 0.9–1.1, 1.1–2, >2.
+    // Histogram of the ratio by axis (x, y, z): <0.5, 0.5–0.9, 0.9–1.1, 1.1–2, >2.
     let mut histogram = [[0usize; 5]; 3];
     let (mut all_axes_match, mut all_axes_match_without_scale) = (0usize, 0usize);
     let (mut compared, mut compared_no_rotation, mut match_no_rotation) = (0usize, 0usize, 0usize);
@@ -176,13 +176,13 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
     let mut skinned = 0usize;
     let (mut slice_seen, mut slice_with_collision) = (0usize, 0usize);
     let (mut bodies_t, mut bodies_t_moved) = (0usize, 0usize);
-    // [только обычные тела, только тела T]: (сравнено, совпало как есть, совпало с перевёрнутым флагом)
+    // [plain bodies only, T bodies only]: (compared, matched as is, matched with the flag flipped)
     let mut experiment = [(0usize, 0usize, 0usize, 0usize, 0usize); 2];
     let (mut bodies_plain, mut bodies_plain_moved) = (0usize, 0usize);
 
     for path in &paths {
-        let entry = index.find(path).expect("путь из индекса");
-        let nif = index.extract(&mut reader, entry).expect("извлечь");
+        let entry = index.find(path).expect("the path comes from the index");
+        let nif = index.extract(&mut reader, entry).expect("extract");
         let Ok(header) = parse_header(&nif) else {
             continue;
         };
@@ -196,7 +196,7 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
         let source = match parse(&nif) {
             Ok(s) => s,
             Err(e) => {
-                failures.push(format!("{path}: чтение источника: {e}"));
+                failures.push(format!("{path}: reading the source: {e}"));
                 continue;
             }
         };
@@ -213,7 +213,7 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
                 }
             }
         }
-        // Скиннинговые меши у STAT — не статика (см. real_convert).
+        // Skinned meshes of STAT records are not statics (see real_convert).
         if source
             .blocks
             .iter()
@@ -225,7 +225,7 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
         let converted = match convert(&source) {
             Ok(c) => c,
             Err(e) => {
-                failures.push(format!("{path}: конвертация: {e}"));
+                failures.push(format!("{path}: conversion: {e}"));
                 continue;
             }
         };
@@ -268,12 +268,12 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
             histogram[axis][bucket(ratio)] += 1;
             ratios[axis].push(ratio);
             all_match &= (0.9..=1.1).contains(&ratio);
-            // Без множителя коллизия была бы в семь раз меньше.
+            // Without the factor the collision would be seven times smaller.
             all_match_raw &= (0.9..=1.1).contains(&(ratio / 7.0));
         }
-        // Опыт на решение «применять сдвиг и поворот только у bhkRigidBodyT»: те же меши,
-        // но у всех тел флаг перевёрнут. Если решение верно, у перевёрнутых совпадение
-        // габаритов ухудшится.
+        // An experiment on the decision "apply translation and rotation only for bhkRigidBodyT":
+        // the same meshes, but the flag is flipped on all bodies. If the decision is right, the
+        // bounds match will get worse for the flipped ones.
         let has_t = source
             .blocks
             .iter()
@@ -316,38 +316,38 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
         }
     }
 
-    println!("=== Коллизия STAT (набор M1 + альфа) ===");
-    println!("  мешей сконвертировано:                 {meshes}");
-    println!("  из них с RootCollisionNode:            {with_collision}");
-    println!("  без коллизии у корня:                  {no_collision_at_all}");
-    println!("  форм коллизии / треугольников:         {shapes} / {triangles}");
+    println!("=== STAT collision (M1 set + alpha) ===");
+    println!("  meshes converted:                      {meshes}");
+    println!("  of them with RootCollisionNode:        {with_collision}");
+    println!("  no collision at the root:              {no_collision_at_all}");
+    println!("  collision shapes / triangles:          {shapes} / {triangles}");
     println!(
-        "  bhkCollisionObject не у корня (пропущено): {skipped_objects} в {skipped_meshes} мешах"
+        "  bhkCollisionObject not at the root (skipped): {skipped_objects} in {skipped_meshes} meshes"
     );
-    println!("  bhkRigidBodyT: {bodies_t}, из них со сдвигом или поворотом: {bodies_t_moved}");
+    println!("  bhkRigidBodyT: {bodies_t}, of them translated or rotated: {bodies_t_moved}");
     println!(
-        "  bhkRigidBody:  {bodies_plain}, из них со сдвигом или поворотом: {bodies_plain_moved}"
+        "  bhkRigidBody:  {bodies_plain}, of them translated or rotated: {bodies_plain_moved}"
     );
     println!(
-        "  опыт с обратным флагом, меши только с обычными телами: сравнено {}, как есть совпало {}, со сдвигом совпало {}; центры: как есть {}, со сдвигом {}",
+        "  flipped-flag experiment, meshes with plain bodies only: compared {}, matched as is {}, matched with translation {}; centers: as is {}, with translation {}",
         experiment[0].0, experiment[0].1, experiment[0].2, experiment[0].3, experiment[0].4
     );
     println!(
-        "  опыт с обратным флагом, меши только с телами T: сравнено {}, как есть совпало {}, без сдвига совпало {}; центры: как есть {}, без сдвига {}",
+        "  flipped-flag experiment, meshes with T bodies only: compared {}, matched as is {}, matched without translation {}; centers: as is {}, without translation {}",
         experiment[1].0, experiment[1].1, experiment[1].2, experiment[1].3, experiment[1].4
     );
     println!(
-        "  срез M1 (10 мешей): найдено {slice_seen}, с RootCollisionNode {slice_with_collision}"
+        "  M1 slice (10 meshes): found {slice_seen}, with RootCollisionNode {slice_with_collision}"
     );
-    println!("  мешей с поворотами на пути к видимой геометрии: {rotated_meshes}");
-    println!("  сравнено (габарит видимой геометрии > 0 по всем осям): {compared}");
-    println!("  по всем осям в пределах 10%: {all_axes_match}");
-    println!("  то же, но без множителя ×7:  {all_axes_match_without_scale}");
+    println!("  meshes with rotations on the way to the visible geometry: {rotated_meshes}");
+    println!("  compared (visible geometry bounds > 0 on all axes): {compared}");
+    println!("  within 10% on all axes: {all_axes_match}");
+    println!("  the same, without the ×7 factor: {all_axes_match_without_scale}");
     println!(
-        "  без поворотов: сравнено {compared_no_rotation}, в пределах 10% {match_no_rotation}"
+        "  without rotations: compared {compared_no_rotation}, within 10% {match_no_rotation}"
     );
-    println!("  отношение габаритов коллизия/видимая геометрия по осям:");
-    println!("      ось   <0.5   0.5–0.9   0.9–1.1   1.1–2   >2      медиана");
+    println!("  collision/visible geometry bounds ratio by axis:");
+    println!("      axis  <0.5   0.5–0.9   0.9–1.1   1.1–2   >2      median");
     for (axis, name) in ["x", "y", "z"].into_iter().enumerate() {
         let mut sorted = ratios[axis].clone();
         sorted.sort_by(f32::total_cmp);
@@ -358,27 +358,34 @@ fn collision_extent_matches_visible_extent_with_the_havok_multiplier() {
             h[0], h[1], h[2], h[3], h[4]
         );
     }
-    println!("  скиннинговых (не статика, пропущены): {skinned}");
+    println!("  skinned (not statics, skipped): {skinned}");
     for line in failures.iter().take(10) {
         println!("    {line}");
     }
 
-    assert!(failures.is_empty(), "были отказы чтения или конвертации");
-    assert!(with_collision > 0, "ни одного меша с коллизией");
-    assert_eq!(slice_seen, SLICE.len(), "не все меши среза M1 найдены");
+    assert!(
+        failures.is_empty(),
+        "there were read or conversion failures"
+    );
+    assert!(with_collision > 0, "not a single mesh with collision");
+    assert_eq!(
+        slice_seen,
+        SLICE.len(),
+        "not all meshes of the M1 slice were found"
+    );
     assert_eq!(
         slice_with_collision, slice_seen,
-        "у части мешей среза M1 нет RootCollisionNode"
+        "some meshes of the M1 slice have no RootCollisionNode"
     );
     assert!(
         all_axes_match * 100 >= compared * 50,
-        "габарит коллизии не согласуется с видимым у большинства мешей: {all_axes_match} из {compared}"
+        "collision bounds disagree with the visible ones for most meshes: {all_axes_match} of {compared}"
     );
 }
 
-/// Центры габаритов совпадают: по каждой оси расхождение не больше 10% габарита видимой
-/// геометрии плюс одна игровая единица. Габарит от сдвига не зависит, центр — зависит,
-/// поэтому именно он проверяет сдвиг тела.
+/// The bounds centers match: on each axis the difference is no more than 10% of the visible
+/// geometry's size plus one game unit. The size does not depend on translation, the center does, so
+/// it is the center that checks the body's translation.
 fn center_ok(visible: &Aabb, collision: &Aabb) -> bool {
     let (vc, cc) = (
         (visible.min + visible.max) * 0.5,

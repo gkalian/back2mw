@@ -1,15 +1,15 @@
-//! Навыки: 21 навык Oblivion → 27 навыков Morrowind (T7.1).
+//! Skills: 21 Oblivion skills → 27 Morrowind skills (T7.1).
 //!
-//! Соответствие — контент, он в `data/skills.tsv`: у каждого навыка Oblivion основной навык
-//! Morrowind и, возможно, добавочные; каждый навык Morrowind встречается в таблице ровно один раз.
-//! Здесь — правила, по которым таблицей пользуются раса и класс.
+//! The mapping is content, it lives in `data/skills.tsv`: each Oblivion skill has a major Morrowind
+//! skill and possibly additional ones; each Morrowind skill occurs in the table exactly once. Here
+//! are the rules by which race and class use the table.
 
 use tes4_read::{SKILL_AV_FIRST, SKILL_NAMES};
 
-/// `data/skills.tsv`, встроенный в сборку.
+/// `data/skills.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/skills.tsv");
 
-/// Навыки Morrowind в порядке их номеров 0…26 (`ESM::Skill` OpenMW, `SkillId` `Greatness7/tes3`).
+/// Morrowind skills in their number order 0…26 (OpenMW `ESM::Skill`, `Greatness7/tes3` `SkillId`).
 pub const MW_SKILLS: [&str; 27] = [
     "Block",
     "Armorer",
@@ -40,13 +40,13 @@ pub const MW_SKILLS: [&str; 27] = [
     "HandToHand",
 ];
 
-/// Встроенная таблица, разобранная один раз на прогон.
+/// The built-in table, parsed once per run.
 pub static SKILLS: std::sync::LazyLock<SkillMap> = std::sync::LazyLock::new(SkillMap::builtin);
 
-/// Номер навыка Morrowind, 0…26.
+/// Morrowind skill number, 0…26.
 pub type MwSkill = u8;
 
-/// Разобранная таблица. Индекс — навык Oblivion в порядке [`SKILL_NAMES`].
+/// The parsed table. The index is the Oblivion skill in [`SKILL_NAMES`] order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillMap {
     pub primary: [MwSkill; 21],
@@ -57,13 +57,13 @@ fn mw_index(name: &str) -> Option<MwSkill> {
     MW_SKILLS
         .iter()
         .position(|&s| s == name)
-        .map(|i| MwSkill::try_from(i).expect("навыков 27"))
+        .map(|i| MwSkill::try_from(i).expect("there are 27 skills"))
 }
 
 impl SkillMap {
-    /// Таблица из сборки. Её корректность проверяет тест, поэтому здесь — `expect`.
+    /// The table from the build. A test checks it is correct, hence `expect` here.
     pub fn builtin() -> Self {
-        Self::parse(TABLE).expect("data/skills.tsv проверена тестом")
+        Self::parse(TABLE).expect("data/skills.tsv is checked by a test")
     }
 
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -132,24 +132,25 @@ impl SkillMap {
             ));
         }
         Ok(Self {
-            primary: primary.map(|p| p.expect("проверено выше")),
+            primary: primary.map(|p| p.expect("checked above")),
             extra,
         })
     }
 
-    /// Номер навыка Oblivion (0…20) по коду «actor value» (12…32).
+    /// Oblivion skill number (0…20) by "actor value" code (12…32).
     fn oblivion(av: u32) -> Option<usize> {
         av.checked_sub(SKILL_AV_FIRST)
             .and_then(|i| usize::try_from(i).ok())
             .filter(|&i| i < 21)
     }
 
-    /// Основной навык Morrowind по коду «actor value» навыка Oblivion (12…32); иначе `None`.
+    /// The major Morrowind skill by the "actor value" code of an Oblivion skill (12…32); otherwise
+    /// `None`.
     pub fn primary_of(&self, av: u32) -> Option<MwSkill> {
         Self::oblivion(av).map(|i| self.primary[i])
     }
 
-    /// Бонусы расы: код навыка Oblivion → основной навык Morrowind; неизвестные коды выпадают.
+    /// Race bonuses: Oblivion skill code → major Morrowind skill; unknown codes drop out.
     pub fn race_bonuses(&self, bonuses: &[(u8, i8)]) -> Vec<(MwSkill, i8)> {
         bonuses
             .iter()
@@ -157,9 +158,10 @@ impl SkillMap {
             .collect()
     }
 
-    /// Основные (5) и второстепенные (5) навыки класса по 7 основным навыкам Oblivion (коды):
-    /// основные навыки Morrowind этих семи — первые 5 основными, остальные второстепенными; затем
-    /// добавочные навыки тех же семи по порядку; не хватило — первые свободные по номеру.
+    /// The class's major (5) and minor (5) skills from the 7 Oblivion major skills (codes): the
+    /// major Morrowind skills of these seven — the first 5 as major, the rest as minor; then the
+    /// additional skills of the same seven in order; if that is not enough — the first free ones by
+    /// number.
     pub fn class_skills(&self, majors: &[u32; 7]) -> ([MwSkill; 5], [MwSkill; 5]) {
         let mut order: Vec<MwSkill> = Vec::with_capacity(10);
         let push = |s: MwSkill, order: &mut Vec<MwSkill>| {
@@ -180,13 +182,13 @@ impl SkillMap {
             push(s, &mut order);
         }
         (
-            order[0..5].try_into().expect("10 навыков"),
-            order[5..10].try_into().expect("10 навыков"),
+            order[0..5].try_into().expect("10 skills"),
+            order[5..10].try_into().expect("10 skills"),
         )
     }
 
-    /// Отложенный вариант «числа Oblivion»: значение навыка Morrowind — значение его навыка
-    /// Oblivion.
+    /// The deferred "Oblivion numbers" option: a Morrowind skill's value is the value of its
+    /// Oblivion skill.
     pub fn values(&self, oblivion: &[u8; 21]) -> [u8; 27] {
         let mut out = [0u8; 27];
         for (i, &v) in oblivion.iter().enumerate() {
@@ -224,10 +226,10 @@ mod tests {
     fn broken_tables_are_rejected() {
         assert!(
             SkillMap::parse("Armorer\tArmorer\n").is_err(),
-            "не все строки"
+            "not all rows"
         );
         let dup = TABLE.replace("Security\tSecurity", "Security\tArmorer");
-        assert!(SkillMap::parse(&dup).is_err(), "навык Morrowind дважды");
+        assert!(SkillMap::parse(&dup).is_err(), "a Morrowind skill twice");
         let bad = TABLE.replace("Sneak\tSneak", "Sneak\tSneaking");
         assert!(SkillMap::parse(&bad).is_err());
     }
@@ -246,7 +248,7 @@ mod tests {
     #[test]
     fn class_takes_five_majors_then_minors_then_extras() {
         let map = SkillMap::builtin();
-        // Как «Knight»: семь основных, у Blade и Blunt есть добавочные.
+        // Like "Knight": seven major skills, Blade and Blunt have additional ones.
         let majors = [
             "Blade",
             "Blunt",
@@ -289,7 +291,7 @@ mod tests {
         ]
         .map(av);
         let (_, minor) = map.class_skills(&majors);
-        // Restoration, Security — второстепенные; дальше свободные по номеру: Block, Armorer,
+        // Restoration, Security are minor; then the free ones by number: Block, Armorer,
         // MediumArmor.
         assert_eq!(
             minor,

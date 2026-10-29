@@ -1,11 +1,12 @@
-//! Меши на теле (броня и одежда, T9.2c): скелет Morrowind и конвертация со скиннингом.
+//! Meshes worn on the body (armor and clothing, T9.2c): the Morrowind skeleton and skinned
+//! conversion.
 //!
-//! Скелет берётся из установки Morrowind игрока (`tes3_out::vanilla`): иерархия и набор костей —
-//! `base_anim.nif` (`base_anim_female.nif`), позы привязки — тело `b\b_n_imperial_*_skins.nif`,
-//! а недостающие телу кости ног, ступней и пальцев — полная T-поза ванильной кирасы
-//! `a\a_art_cuirass_lords_c.nif`. Её позы совпадают с телом во всех общих костях, кроме пальцев
-//! (другая поза кисти) — тест `mesh_convert::real_skinning`. Почему не `base_anim` целиком: его
-//! узлы стоят в позе анимации, а не привязки.
+//! The skeleton comes from the player's Morrowind install (`tes3_out::vanilla`): the hierarchy and
+//! the bone set from `base_anim.nif` (`base_anim_female.nif`), the bind poses from the body
+//! `b\b_n_imperial_*_skins.nif`, and the leg, foot and toe bones the body lacks from the full
+//! T-pose of the vanilla cuirass `a\a_art_cuirass_lords_c.nif`. Its poses match the body in every
+//! shared bone except the fingers (a different hand pose) — test `mesh_convert::real_skinning`. Why
+//! not `base_anim` alone: its nodes stand in an animation pose, not the bind pose.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -22,7 +23,7 @@ use transform::worn::{BodyMesh, Side, bone_slots, is_body_skin_texture};
 use crate::extract::extracted_path;
 use crate::pipeline::MeshResult;
 
-/// Файлы Morrowind, из которых строится скелет: (иерархия, тело) для мужчин и женщин.
+/// Morrowind files the skeleton is built from: (hierarchy, body) for men and women.
 pub const SKELETON_FILES: [(&str, &str); 2] = [
     (
         "meshes\\base_anim.nif",
@@ -33,17 +34,17 @@ pub const SKELETON_FILES: [(&str, &str); 2] = [
         "meshes\\b\\b_n_imperial_f_skins.nif",
     ),
 ];
-/// Полная T-поза: кости, которых нет у тела.
+/// The full T-pose: bones the body does not have.
 pub const FULL_POSE_FILE: &str = "meshes\\a\\a_art_cuirass_lords_c.nif";
 
-/// Мужской и женский скелеты Morrowind.
+/// Male and female Morrowind skeletons.
 #[derive(Debug, Clone)]
 pub struct Skeletons {
     pub male: TargetSkeleton,
     pub female: TargetSkeleton,
 }
 
-/// Строит скелеты из `Data Files` Morrowind. Ошибка — текст для отчёта.
+/// Builds the skeletons from Morrowind's `Data Files`. The error is text for the report.
 pub fn load(target_data: &Path) -> Result<Skeletons, String> {
     let read = |p: &str| tes3_out::vanilla::read_file(target_data, p).map_err(|e| e.to_string());
     let full = read(FULL_POSE_FILE)?;
@@ -58,8 +59,8 @@ pub fn load(target_data: &Path) -> Result<Skeletons, String> {
     })
 }
 
-/// Конвертирует меш на теле: скиннинговый — на скелет нужного пола и, если задана сторона,
-/// только эту половину; жёсткий (шлем, щит) — как обычный меш.
+/// Converts a body mesh: a skinned one onto the skeleton of the right sex and, if a side is given,
+/// only that half; a rigid one (helmet, shield) as an ordinary mesh.
 pub fn convert(
     work_dir: &Path,
     body: &BodyMesh,
@@ -97,7 +98,7 @@ pub fn convert(
                 .to_owned());
             }
         }
-        // Кожа Oblivion — только на своём слоте части, остальное тело даёт Morrowind.
+        // Oblivion skin only on its own part slot; the rest of the body comes from Morrowind.
         let skin: BTreeSet<String> = c
             .textures
             .iter()

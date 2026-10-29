@@ -1,9 +1,11 @@
-//! Свои модели существ (T11.5e): скелет, части тела и клипы папки → три файла Morrowind.
+//! Custom creature models (T11.5e): a folder's skeleton, body parts and clips → three Morrowind
+//! files.
 //!
-//! Что собирать, решает `transform::creatures` ([`CreatureModel`]); как — `mesh_convert::creature`
-//! (тело и лента). Здесь — файловая сторона: распакованные файлы читаются, результат отдаётся
-//! стадии мешей тремя мешами: `<имя>.nif` (всё сразу), `x<имя>.nif` и `x<имя>.kf` — пара, которую
-//! движок берёт вместо полного файла (`docs/ru/formats/tes3.md`, «Модель и анимация существа»).
+//! What to build is decided by `transform::creatures` ([`CreatureModel`]); how — by
+//! `mesh_convert::creature` (the body and the tape). This is the file side: unpacked files are
+//! read, and the result is handed to the meshes stage as three meshes: `<name>.nif` (everything at
+//! once), `x<name>.nif` and `x<name>.kf` — the pair the engine takes instead of the full file
+//! (`docs/en/formats/tes3.md`, "Creature model and animation").
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -21,22 +23,22 @@ use transform::paths::creature_pair;
 use crate::extract::extracted_path;
 use crate::pipeline::MeshResult;
 
-/// Три файла модели и что о ней стоит сказать в журнале.
+/// The three model files and what is worth saying about the model in the log.
 pub(crate) struct Built {
-    /// `<имя>.nif`: скелет, формы и лента; текстуры — у него.
+    /// `<name>.nif`: skeleton, shapes and tape; the textures are referenced from it.
     pub(crate) full: MeshResult,
-    /// Пути пары относительно `Meshes\` и её файлы.
+    /// Paths of the pair relative to `Meshes\` and its files.
     pub(crate) x_nif: (String, MeshResult),
     pub(crate) x_kf: (String, MeshResult),
-    /// Части `NIFZ`, которых нет в архивах или которые не читаются: модель собрана без них.
+    /// `NIFZ` parts missing from the archives or unreadable: the model is built without them.
     pub(crate) parts_missing: Vec<String>,
-    /// Группы анимации, для которых в папке не нашлось клипа.
+    /// Animation groups for which the folder has no clip.
     pub(crate) groups_missing: Vec<String>,
-    /// Группы, не записанные оттого, что на отрезке их клипа уже лежит предел групп движка.
+    /// Groups not written because the engine's group limit already lies on their clip's segment.
     pub(crate) groups_crowded: Vec<String>,
 }
 
-/// Архивные пути всего, что нужно модели, кроме клипов: скелет и части.
+/// Archive paths of everything the model needs except clips: the skeleton and the parts.
 pub(crate) fn wanted_files(model: &CreatureModel) -> Vec<String> {
     std::iter::once(format!("meshes\\{}", model.skeleton))
         .chain(
@@ -48,7 +50,7 @@ pub(crate) fn wanted_files(model: &CreatureModel) -> Vec<String> {
         .collect()
 }
 
-/// Каталог клипов модели в архиве.
+/// The model's clip directory in the archive.
 pub(crate) fn clips_dir(model: &CreatureModel) -> String {
     format!("meshes\\{}", model.folder)
 }
@@ -69,8 +71,9 @@ fn plain(bytes: Vec<u8>) -> MeshResult {
     }
 }
 
-/// Собирает модель. `clip_paths` — архивные пути клипов её папки (уже распакованных). Ошибка —
-/// текст для отчёта: существа с этой моделью в плагин не попадут.
+/// Builds the model. `clip_paths` are the archive paths of the clips in its folder (already
+/// unpacked). The error is text for the report: creatures with this model do not go into the
+/// plugin.
 pub(crate) fn build(
     work_dir: &Path,
     model: &CreatureModel,
@@ -95,7 +98,7 @@ pub(crate) fn build(
         .to_owned());
     }
 
-    // Клипы папки. Клип, который не читается, пропускается: остальные дадут свои группы.
+    // The folder's clips. A clip that cannot be read is skipped: the others give their groups.
     let mut folder_clips: Vec<(String, Clip)> = Vec::new();
     for archive_path in clip_paths {
         let Ok(path) = extracted_path(work_dir, archive_path) else {
@@ -127,7 +130,7 @@ pub(crate) fn build(
             model.mesh
         )
     })?;
-    // Имя корня — имя файла, как у ванили (`Guar.NIF`).
+    // The root name is the file name, as in vanilla (`Guar.NIF`).
     let root_name = model.mesh.rsplit('\\').next().unwrap_or(&model.mesh);
     let mut body = build_body(root_name, &skeleton, &body_parts, registry)
         .map_err(|e| lang::tr!("тело: {e}", "body: {e}"))?;

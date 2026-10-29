@@ -1,5 +1,5 @@
-//! T1.3w: что ещё мешает мешам `STAT` конвертироваться. Только измерение, без проверок
-//! (кроме того, что всё, что ридер принял, конвертируется без отказов).
+//! T1.3w: what else stops `STAT` meshes from converting. A measurement only, without checks (except
+//! that everything the reader accepted converts without failures).
 
 mod common;
 
@@ -13,7 +13,7 @@ use mesh_convert::textures::TextureRegistry;
 use tes4_read::{BsaIndex, FromFields, Plugin, Stat};
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn what_blocks_conversion_of_stat_meshes() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
@@ -62,11 +62,11 @@ fn what_blocks_conversion_of_stat_meshes() {
         let mut data = None;
         for (r, idx) in &mut archives {
             if let Some(e) = idx.find(path) {
-                data = Some(idx.extract(r, e).expect("извлечь"));
+                data = Some(idx.extract(r, e).expect("extract"));
                 break;
             }
         }
-        let nif = data.expect("путь найден выше");
+        let nif = data.expect("the path was found above");
         let header = match parse_header(&nif) {
             Ok(h) => h,
             Err(e) => {
@@ -110,7 +110,7 @@ fn what_blocks_conversion_of_stat_meshes() {
                 Ok(mut converted) => {
                     ok += 1;
                     ok_paths.insert(path.clone());
-                    let bytes = converted.save_bytes().expect("запись NIF");
+                    let bytes = converted.save_bytes().expect("writing the NIF");
                     let file = out_dir.join(path.replace(char::from(92), "/"));
                     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
                     std::fs::write(file, bytes).unwrap();
@@ -123,19 +123,19 @@ fn what_blocks_conversion_of_stat_meshes() {
         }
     }
 
-    println!("=== Что мешает мешам STAT ===");
-    println!("  STAT с MODL: {stat_with_model}, меша нет ни в одном архиве: {missing}");
-    println!("  уникальных мешей: {}", paths.len());
-    println!("  версии: {versions:x?}");
-    println!("  конвертируются: {ok}");
+    println!("=== What stops STAT meshes ===");
+    println!("  STAT with MODL: {stat_with_model}, mesh in no archive: {missing}");
+    println!("  unique meshes: {}", paths.len());
+    println!("  versions: {versions:x?}");
+    println!("  convert: {ok}");
     println!(
-        "  не 20.0.0.4: {wrong_version}; сбой чтения: {parse_fail}; сбой конвертации: {convert_fail}"
+        "  not 20.0.0.4: {wrong_version}; read failure: {parse_fail}; conversion failure: {convert_fail}"
     );
     let blocked: usize = paths.len() - ok - wrong_version - parse_fail - convert_fail;
-    println!("  заблокированы неподдержанными типами блоков: {blocked}");
+    println!("  blocked by unsupported block types: {blocked}");
     let mut any: Vec<_> = by_type_any.iter().collect();
     any.sort_by(|a, b| b.1.cmp(a.1));
-    println!("  тип: в скольких мешах встречается / сколько мешей разблокирует он один");
+    println!("  type: in how many meshes it occurs / how many meshes it alone unblocks");
     for (t, n) in any {
         println!(
             "    {t:<34} {n:>5} / {:>5}",
@@ -144,7 +144,7 @@ fn what_blocks_conversion_of_stat_meshes() {
     }
     let mut pats: Vec<_> = patterns.iter().collect();
     pats.sort_by(|a, b| b.1.cmp(a.1));
-    println!("  самые частые наборы неподдержанных типов в меше:");
+    println!("  the most common sets of unsupported types in a mesh:");
     for (p, n) in pats.iter().take(25) {
         println!("    {n:>5}  {p}");
     }
@@ -156,13 +156,13 @@ fn what_blocks_conversion_of_stat_meshes() {
         .collect();
     let unlocked = blocked_sets.iter().filter(|s| s.is_subset(&cand)).count();
     println!(
-        "  кандидаты {cand:?} разблокируют {unlocked} из {}",
+        "  candidates {cand:?} unblock {unlocked} of {}",
         blocked_sets.len()
     );
     for line in other_errors.iter().take(15) {
         println!("    {line}");
     }
-    println!("  уникальных текстур в реестре: {}", registry.len());
+    println!("  unique textures in the registry: {}", registry.len());
     if let Some(tool) = std::env::var_os("BACK2MW_NIFTEST") {
         let out = std::process::Command::new(tool)
             .arg("-q")
@@ -178,7 +178,7 @@ fn what_blocks_conversion_of_stat_meshes() {
             .lines()
             .filter(|l| l.contains("Failed to read"))
             .count();
-        println!("  niftest по {ok} выходным мешам: отказов {bad}");
+        println!("  niftest on {ok} output meshes: failures {bad}");
     }
     let _ = std::fs::remove_dir_all(&out_dir);
 }

@@ -1,8 +1,10 @@
-//! T2.7a: перепись ванильных эмиттеров частиц Morrowind — какие блоки, флаги и свойства у
-//! систем частиц `Morrowind.bsa` (факелы, костры, дым, брызги). По ней пишется перенос частиц
-//! Oblivion: наш эмиттер должен быть устроен так же, как ванильный.
+//! T2.7a: a census of vanilla Morrowind particle emitters — which blocks, flags and properties the
+//! particle systems of `Morrowind.bsa` have (torches, campfires, smoke, spray). The conversion of
+//! Oblivion particles is written after it: our emitter must be built the same way as the vanilla
+//! one.
 //!
-//! Это измерение, синтетики нет; числа переносятся в `docs/ru/formats/tes3.md`, «Частицы».
+//! This is a measurement, there is no synthetic test; the numbers go to `docs/en/formats/tes3.md`,
+//! "Particles".
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -30,7 +32,7 @@ fn type_at(stream: &NiStream, key: NiKey) -> String {
         .map_or_else(|| "—".to_owned(), name_of)
 }
 
-/// Диапазон значений.
+/// A range of values.
 #[derive(Default)]
 struct Range(Option<(f32, f32)>);
 
@@ -57,7 +59,7 @@ fn bump(map: &mut BTreeMap<String, usize>, key: impl Into<String>) {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn census_of_vanilla_particle_systems() {
     let archive = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
     let (mut files, mut with_particles, mut systems) = (0usize, 0usize, 0usize);
@@ -89,7 +91,7 @@ fn census_of_vanilla_particle_systems() {
         }
         files += 1;
 
-        // Родитель каждого объекта сцены.
+        // The parent of each scene object.
         let mut parent_of: BTreeMap<NiKey, NiKey> = BTreeMap::new();
         for (key, object) in &stream.objects {
             let children: Option<&Vec<NiLink<NiAVObject>>> = match object {
@@ -127,9 +129,9 @@ fn census_of_vanilla_particle_systems() {
             bump(
                 &mut emitters,
                 if c.emitter.is_null() {
-                    "нет".to_owned()
+                    "none".to_owned()
                 } else if c.emitter.key == target {
-                    "сами частицы".to_owned()
+                    "the particles themselves".to_owned()
                 } else {
                     type_at(&stream, c.emitter.key)
                 },
@@ -138,13 +140,17 @@ fn census_of_vanilla_particle_systems() {
                 bump(&mut colliders, type_at(&stream, c.particle_collider.key));
             }
             if !c.emitter_modifier.is_null() {
-                bump(&mut facts, "есть emitter_modifier");
+                bump(&mut facts, "has emitter_modifier");
             }
-            // Узел частиц и узел-эмиттер: флаги, свойства, метка `sgoKeep`, где стоит эмиттер.
+            // The particle node and the emitter node: flags, properties, the `sgoKeep` mark, where
+            // the emitter stands.
             if let Some(parent) = parent_of.get(&target)
                 && let Some(av) = stream.get_as::<NiObject, NiAVObject>(NiLink::new(*parent))
             {
-                bump(&mut facts, format!("узел частиц: флаги {:#06x}", av.flags));
+                bump(
+                    &mut facts,
+                    format!("particle node: flags {:#06x}", av.flags),
+                );
                 let mut set: Vec<String> = av
                     .properties
                     .iter()
@@ -153,36 +159,36 @@ fn census_of_vanilla_particle_systems() {
                 set.sort();
                 bump(
                     &mut facts,
-                    format!("узел частиц: свойства [{}]", set.join(" + ")),
+                    format!("particle node: properties [{}]", set.join(" + ")),
                 );
                 for p in &av.properties {
                     if let Some(NiType::NiZBufferProperty(z)) = stream.objects.get(p.key) {
                         bump(
                             &mut facts,
-                            format!("NiZBufferProperty узла: флаги {:#06x}", z.base.flags),
+                            format!("the node's NiZBufferProperty: flags {:#06x}", z.base.flags),
                         );
                     }
                 }
                 let keep = matches!(stream.objects.get(av.extra_data.key),
                     Some(NiType::NiStringExtraData(s)) if s.value.eq_ignore_ascii_case("sgoKeep"));
-                bump(&mut facts, format!("узел частиц: sgoKeep {keep}"));
+                bump(&mut facts, format!("particle node: sgoKeep {keep}"));
                 let same_parent = parent_of.get(parent) == parent_of.get(&c.emitter.key);
                 bump(
                     &mut facts,
-                    format!("эмиттер — сосед узла частиц: {same_parent}"),
+                    format!("the emitter is a sibling of the particle node: {same_parent}"),
                 );
                 if let Some(e) = stream.get_as::<NiObject, NiAVObject>(c.emitter.cast()) {
-                    bump(&mut facts, format!("эмиттер: флаги {:#06x}", e.flags));
+                    bump(&mut facts, format!("emitter: flags {:#06x}", e.flags));
                     let same_place = (e.translation - av.translation).length() < 0.01;
                     bump(
                         &mut facts,
-                        format!("эмиттер стоит там же, где узел частиц: {same_place}"),
+                        format!("the emitter stands where the particle node does: {same_place}"),
                     );
                     let children = match stream.objects.get(c.emitter.key) {
                         Some(NiType::NiNode(n)) => n.children.len(),
                         _ => 99,
                     };
-                    bump(&mut facts, format!("эмиттер: детей {children}"));
+                    bump(&mut facts, format!("emitter: children {children}"));
                 }
             }
             if let Some(av) = stream.get_as::<NiObject, NiAVObject>(c.base.target.cast()) {
@@ -192,7 +198,7 @@ fn census_of_vanilla_particle_systems() {
                             bump(
                                 &mut facts,
                                 format!(
-                                    "NiAlphaProperty: флаги {:#06x}, порог {}",
+                                    "NiAlphaProperty: flags {:#06x}, threshold {}",
                                     a.base.flags, a.test_ref
                                 ),
                             );
@@ -201,7 +207,7 @@ fn census_of_vanilla_particle_systems() {
                             bump(
                                 &mut facts,
                                 format!(
-                                    "NiTexturingProperty: {:?}, флаги {:#06x}",
+                                    "NiTexturingProperty: {:?}, flags {:#06x}",
                                     t.apply_mode, t.base.flags
                                 ),
                             );
@@ -210,7 +216,7 @@ fn census_of_vanilla_particle_systems() {
                             bump(
                                 &mut facts,
                                 format!(
-                                    "материал: emissive {:?}",
+                                    "material: emissive {:?}",
                                     m.emissive_color
                                         .to_array()
                                         .map(|v| (v * 10.0).round() / 10.0)
@@ -222,14 +228,17 @@ fn census_of_vanilla_particle_systems() {
                 }
                 bump(
                     &mut facts,
-                    format!("частицы: сдвиг нулевой {}", av.translation.length() < 0.01),
+                    format!(
+                        "particles: zero translation {}",
+                        av.translation.length() < 0.01
+                    ),
                 );
             }
             let pool = c.particles.len() as f32;
             let need = c.birth_rate * (c.lifespan + c.lifespan_variation.max(0.0));
             if c.use_birth_rate {
                 ranges
-                    .entry("пул / (рождений × жизнь)")
+                    .entry("pool / (births × lifetime)")
                     .or_default()
                     .feed(pool / need.max(0.001));
             }
@@ -237,7 +246,7 @@ fn census_of_vanilla_particle_systems() {
                 .entry("emit_stop − emit_start")
                 .or_default()
                 .feed(c.emit_stop_time - c.emit_start_time);
-            // Цепочка воздействий.
+            // The modifier chain.
             let mut chain = Vec::new();
             let mut next: NiLink<NiParticleModifier> = c.particle_modifier;
             while let Some(m) = stream.get(next) {
@@ -257,7 +266,7 @@ fn census_of_vanilla_particle_systems() {
                     chain.join(" → ")
                 },
             );
-            // Геометрия частиц: флаги, свойства, данные.
+            // Particle geometry: flags, properties, data.
             if let Some(av) = stream.get_as::<NiObject, NiAVObject>(c.base.target.cast()) {
                 bump(&mut geometry_flags, format!("{:#06x}", av.flags));
                 let mut set: Vec<String> = av
@@ -282,7 +291,7 @@ fn census_of_vanilla_particle_systems() {
                     }
                     bump(
                         &mut facts,
-                        format!("контроллеры геометрии: {}", names.join(" → ")),
+                        format!("geometry controllers: {}", names.join(" → ")),
                     );
                 }
             }
@@ -301,31 +310,31 @@ fn census_of_vanilla_particle_systems() {
                 if let Some(d) = particles {
                     let g: &NiGeometryData = &d.base;
                     ranges
-                        .entry("данные: вершин")
+                        .entry("data: vertices")
                         .or_default()
                         .feed(g.vertices.len() as f32);
                     ranges
-                        .entry("данные: num_particles")
+                        .entry("data: num_particles")
                         .or_default()
                         .feed(f32::from(d.num_particles));
                     ranges
-                        .entry("данные: num_active")
+                        .entry("data: num_active")
                         .or_default()
                         .feed(f32::from(d.num_active));
                     ranges
-                        .entry("данные: particle_radius")
+                        .entry("data: particle_radius")
                         .or_default()
                         .feed(d.particle_radius);
                     for (what, yes) in [
                         (
-                            "данные: num_particles = вершин",
+                            "data: num_particles = vertices",
                             usize::from(d.num_particles) == g.vertices.len(),
                         ),
-                        ("данные: есть нормали", !g.normals.is_empty()),
-                        ("данные: есть цвета", !g.vertex_colors.is_empty()),
-                        ("данные: есть UV", !g.uv_sets.is_empty()),
-                        ("данные: есть размеры", !d.sizes.is_empty()),
-                        ("данные: num_active = 0", d.num_active == 0),
+                        ("data: has normals", !g.normals.is_empty()),
+                        ("data: has colors", !g.vertex_colors.is_empty()),
+                        ("data: has UV", !g.uv_sets.is_empty()),
+                        ("data: has sizes", !d.sizes.is_empty()),
+                        ("data: num_active = 0", d.num_active == 0),
                     ] {
                         if yes {
                             bump(&mut facts, what);
@@ -370,10 +379,13 @@ fn census_of_vanilla_particle_systems() {
                     c.compute_dynamic_bounding_volume,
                 ),
                 (
-                    "объём эмиттера не нулевой",
+                    "emitter volume is non-zero",
                     c.emitter_width + c.emitter_height + c.emitter_depth > 0.0,
                 ),
-                ("initial_normal не нулевая", c.initial_normal.length() > 0.0),
+                (
+                    "initial_normal is non-zero",
+                    c.initial_normal.length() > 0.0,
+                ),
                 (
                     "stop_time = emit_stop_time",
                     (c.base.stop_time - c.emit_stop_time).abs() < 1e-3,
@@ -399,7 +411,7 @@ fn census_of_vanilla_particle_systems() {
                         None => None,
                     })
                     .collect();
-                examples.push(format!("{path}: {c:#?}\nвоздействия: {colors:#?}"));
+                examples.push(format!("{path}: {c:#?}\nmodifiers: {colors:#?}"));
             }
         }
         if here > 0 {
@@ -408,21 +420,21 @@ fn census_of_vanilla_particle_systems() {
         }
     }
 
-    println!("NIF {files}, с частицами {with_particles}, систем {systems}");
+    println!("NIF {files}, with particles {with_particles}, systems {systems}");
     for (title, map) in [
-        ("контроллер", &controllers),
-        ("цель контроллера", &targets),
-        ("родитель частиц", &parents),
-        ("данные частиц", &data_types),
-        ("флаги контроллера", &flags),
-        ("флаги геометрии частиц", &geometry_flags),
-        ("свойства на частицах", &properties),
-        ("наборы свойств", &property_sets),
-        ("эмиттер", &emitters),
-        ("воздействия", &modifiers),
-        ("цепочки воздействий", &chains),
-        ("коллайдеры", &colliders),
-        ("факты", &facts),
+        ("controller", &controllers),
+        ("controller target", &targets),
+        ("particle parent", &parents),
+        ("particle data", &data_types),
+        ("controller flags", &flags),
+        ("particle geometry flags", &geometry_flags),
+        ("properties on particles", &properties),
+        ("property sets", &property_sets),
+        ("emitter", &emitters),
+        ("modifiers", &modifiers),
+        ("modifier chains", &chains),
+        ("colliders", &colliders),
+        ("facts", &facts),
     ] {
         println!("{title}:");
         let mut rows: Vec<(&String, &usize)> = map.iter().collect();
@@ -431,22 +443,23 @@ fn census_of_vanilla_particle_systems() {
             println!("  {n:5}  {k}");
         }
     }
-    println!("диапазоны:");
+    println!("ranges:");
     for (what, range) in &ranges {
         println!("  {what}: {range}");
     }
     for e in &examples {
         println!("---- {e}");
     }
-    assert!(systems > 0, "в Morrowind.bsa есть системы частиц");
+    assert!(systems > 0, "Morrowind.bsa has particle systems");
 }
 
-/// Все блоки одного ванильного меша с частицами, по порядку, без массивов частиц — посмотреть
-/// глазами, как устроен эмиттер. Меш — в `BACK2MW_NIF`, по умолчанию костёр `light_fire.nif`.
-/// `BACK2MW_NIF_FILE` — путь к файлу на диске вместо архива: так же печатается наш меш из
-/// `output\Meshes\ob\`, чтобы сравнить его с ванильным.
+/// All blocks of one vanilla mesh with particles, in order, without the particle arrays — to see
+/// with your own eyes how an emitter is built. The mesh is in `BACK2MW_NIF`, by default the
+/// campfire `light_fire.nif`. `BACK2MW_NIF_FILE` is a path to a file on disk instead of the
+/// archive: this way our mesh from `output\Meshes\ob\` is printed too, to compare it with the
+/// vanilla one.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn dump_one_vanilla_mesh() {
     let wanted = std::env::var("BACK2MW_NIF")
         .unwrap_or_else(|_| r"meshes\l\light_fire.nif".to_owned())
@@ -465,7 +478,7 @@ fn dump_one_vanilla_mesh() {
                     String::from_utf8_lossy(n.as_ref()).to_ascii_lowercase() == wanted
                 })
             })
-            .unwrap_or_else(|| panic!("{wanted}: нет в Morrowind.bsa"));
+            .unwrap_or_else(|| panic!("{wanted}: not in Morrowind.bsa"));
         stream.load_bytes(entry.as_bytes()).expect("NIF");
     }
     for (key, object) in &stream.objects {
@@ -474,19 +487,19 @@ fn dump_one_vanilla_mesh() {
                 let mut c = c.clone();
                 let pool = c.particles.len();
                 c.particles.clear();
-                format!("{c:?} [частиц в пуле: {pool}]")
+                format!("{c:?} [particles in the pool: {pool}]")
             }
             NiType::NiBSPArrayController(c) => {
                 let mut c = c.clone();
                 let pool = c.base.particles.len();
                 c.base.particles.clear();
-                format!("{c:?} [частиц в пуле: {pool}]")
+                format!("{c:?} [particles in the pool: {pool}]")
             }
             NiType::NiRotatingParticlesData(d) => {
                 let g = &d.base.base;
                 format!(
-                    "NiRotatingParticlesData: вершин {} (первые {:?}), нормалей {}, цветов {}, UV {}, bound {:?}; \
-                     num_particles {}, radius {}, num_active {}, sizes (первые {:?}), rotations {} (первые {:?})",
+                    "NiRotatingParticlesData: vertices {} (first {:?}), normals {}, colors {}, UV {}, bound {:?}; \
+                     num_particles {}, radius {}, num_active {}, sizes (first {:?}), rotations {} (first {:?})",
                     g.vertices.len(),
                     &g.vertices[..g.vertices.len().min(3)],
                     g.normals.len(),
@@ -504,8 +517,8 @@ fn dump_one_vanilla_mesh() {
             NiType::NiAutoNormalParticlesData(d) => {
                 let g = &d.base.base;
                 format!(
-                    "NiAutoNormalParticlesData: вершин {} (первые {:?}), нормалей {}, цветов {}, UV {}, bound {:?}; \
-                     num_particles {}, radius {}, num_active {}, sizes (первые {:?})",
+                    "NiAutoNormalParticlesData: vertices {} (first {:?}), normals {}, colors {}, UV {}, bound {:?}; \
+                     num_particles {}, radius {}, num_active {}, sizes (first {:?})",
                     g.vertices.len(),
                     &g.vertices[..g.vertices.len().min(3)],
                     g.normals.len(),
@@ -519,7 +532,7 @@ fn dump_one_vanilla_mesh() {
                 )
             }
             NiType::NiTriShapeData(d) => {
-                format!("NiTriShapeData: вершин {}", d.base.base.vertices.len())
+                format!("NiTriShapeData: vertices {}", d.base.base.vertices.len())
             }
             other => format!("{other:?}"),
         };

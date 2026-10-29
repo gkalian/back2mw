@@ -1,14 +1,14 @@
-//! CLI: стадии прогона отдельными подкомандами и `all`.
+//! CLI: the run stages as separate subcommands, plus `all`.
 //!
-//! Требования к CLI зафиксированы с самого начала, потому что GUI — тонкая обёртка над той же
-//! библиотекой, а не переписывание: шаг — отдельная подкоманда, прогресс и ошибки построчно в
-//! stdout, осмысленный код возврата, никакого интерактивного ввода.
+//! The CLI requirements were fixed from the very start, because the GUI is a thin wrapper over the
+//! same library, not a rewrite: a step is a separate subcommand, progress and errors go line by
+//! line to stdout, the exit code is meaningful, and there is no interactive input.
 //!
-//! Коды возврата: 0 — успех, 1 — прогон не удался (в том числе `validate` нашёл брак),
-//! 2 — неверные аргументы или конфигурация, 3 — стадия отдельной командой не запускается.
+//! Exit codes: 0 — success, 1 — the run failed (including `validate` finding defects), 2 — bad
+//! arguments or configuration, 3 — the stage cannot be run as a separate command.
 //!
-//! Язык сообщений (`lang`): флаг `--lang`, иначе ключ `language` из `config.toml` (его пишет
-//! окно), иначе английский.
+//! Message language (`lang`): the `--lang` flag, otherwise the `language` key from `config.toml`
+//! (the window writes it), otherwise English.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -20,10 +20,9 @@ use lang::Lang;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Стадии прогона в порядке исполнения: имя, описание по-русски и по-английски. Стадия, для
-/// которой в источнике нет материала, пропускается — это нормальное поведение, а не особый
-/// режим. Отдельной командой запускаются `validate`, `package`, `install`, `uninstall`;
-/// остальные выполняет `all`.
+/// Run stages in execution order: name, Russian and English description. A stage with no material
+/// in the source is skipped — this is normal behavior, not a special mode. `validate`, `package`,
+/// `install`, `uninstall` run as separate commands; `all` runs the rest.
 const STAGES: &[(&str, &str, &str)] = &[
     (
         "discover",
@@ -162,7 +161,7 @@ Options (override {CONFIG_FILE_NAME}):
     );
 }
 
-/// Разобранная командная строка после имени стадии.
+/// The parsed command line after the stage name.
 #[derive(Default)]
 struct Cli {
     config: Option<PathBuf>,
@@ -188,7 +187,8 @@ fn parse_flags(args: &[String]) -> Result<Cli, String> {
         };
         match name {
             "--config" => cli.config = Some(PathBuf::from(value()?)),
-            // Сам язык уже выбран в `init_language`; здесь — только проверка значения.
+            // The language itself is already chosen in `init_language`; here we only check the
+            // value.
             "--lang" => {
                 let code = value()?;
                 if Lang::from_code(&code).is_none() {
@@ -222,7 +222,7 @@ fn parse_flags(args: &[String]) -> Result<Cli, String> {
     Ok(cli)
 }
 
-/// `dx,dy` — целые, через запятую.
+/// `dx,dy` — integers separated by a comma.
 fn parse_offset(text: &str) -> Result<(i32, i32), String> {
     let bad = || {
         lang::tr!(
@@ -237,17 +237,17 @@ fn parse_offset(text: &str) -> Result<(i32, i32), String> {
     ))
 }
 
-/// Значение флага `name`, где бы он ни стоял.
+/// The value of flag `name`, wherever it stands.
 fn flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].as_str())
 }
 
-/// Выбирает язык сообщений до разбора остального: флаг `--lang`, иначе ключ `language` из
-/// `config.toml`. Раньше всего остального — чтобы и справка, и ошибки разбора флагов вышли на
-/// выбранном языке. Незнакомый код и нечитаемый файл здесь молча пропускаются: о них скажут
-/// `parse_flags` и `config::load_with`.
+/// Chooses the message language before parsing the rest: the `--lang` flag, otherwise the
+/// `language` key from `config.toml`. Before everything else, so that both the help and flag
+/// parsing errors come out in the chosen language. An unknown code and an unreadable file are
+/// silently skipped here: `parse_flags` and `config::load_with` will report them.
 fn init_language(args: &[String]) {
     let from_config = || {
         let path = flag_value(args, "--config").map_or_else(default_config_path, PathBuf::from);
@@ -261,7 +261,7 @@ fn init_language(args: &[String]) {
     }
 }
 
-/// `config.toml` рядом с бинарём; если каталог бинаря узнать нельзя — в текущем.
+/// `config.toml` next to the binary; if the binary's directory cannot be found, in the current one.
 fn default_config_path() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -294,7 +294,8 @@ fn run(stage: &str, rest: &[String]) -> ExitCode {
     match stage {
         "all" => {
             let mut log = |line: &str| println!("{line}");
-            // Плагины: флаги, иначе выбор из конфигурации (его пишет GUI), иначе срез M1.
+            // Plugins: flags, otherwise the choice from the configuration (the GUI writes it),
+            // otherwise the M1 slice.
             let plugins = if cli.plugins.is_empty() {
                 config.selected_plugins.clone()
             } else {
@@ -315,8 +316,8 @@ fn run(stage: &str, rest: &[String]) -> ExitCode {
                 }
             };
             request.worldspace.clone_from(&cli.worldspace);
-            // Смещение: флаг, иначе ключ `offset` (его пишет и окно) — чтобы повторная сборка
-            // ставила мир туда же, куда первая: от этого зависят сохранения.
+            // Offset: the flag, otherwise the `offset` key (the window writes it too) — so a
+            // rebuild puts the world where the first build did: saves depend on it.
             request.offset = cli.offset.or(config.offset);
             request.morrowind_prices = cli.morrowind_prices || config.morrowind_prices;
             request.lua_map = cli.lua_map || config.lua_map;
@@ -472,7 +473,7 @@ fn run(stage: &str, rest: &[String]) -> ExitCode {
     }
 }
 
-/// Пропущенные `STAT` по причинам: числа и первый пример, чтобы отчёт не был простынёй.
+/// Skipped `STAT`s by reason: counts and the first example, so the report is not a wall of text.
 fn print_skipped(skipped: &[String]) {
     let mut groups: std::collections::BTreeMap<String, (usize, &str)> = Default::default();
     for line in skipped {
@@ -497,7 +498,7 @@ fn print_skipped(skipped: &[String]) {
     }
 }
 
-/// Отдельная стадия `validate`: проверяет то, что лежит в `output/`.
+/// The separate `validate` stage: checks what is in `output/`.
 fn validate_output(config: &config::Config) -> ExitCode {
     let Some(esmtool) = &config.esmtool else {
         eprintln!(

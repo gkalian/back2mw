@@ -1,15 +1,16 @@
-//! Системы частиц Oblivion, прочитанные со значениями (T2.7): эмиттер, темп рождения,
-//! воздействия.
+//! Oblivion particle systems read with their values (T2.7): the emitter, the birth rate, the
+//! modifiers.
 //!
-//! Общий разбор ([`super::parse`]) читает `NiParticleSystem` и `NiPSys*` ради длины и отбрасывает
-//! (`particles.rs`): так было, пока частицы не переносились. Значения читаются вторым проходом по
-//! смещениям блоков из [`super::parse_with_offsets`] — как анимация дверей (`motion.rs`), теми же
-//! раскладками (`nif.xml`, 20.0.0.4/5 и 10.2.0.0, `BSVER` ≤ 16).
+//! The general parse ([`super::parse`]) reads `NiParticleSystem` and `NiPSys*` only for their
+//! length and drops them (`particles.rs`): that was how it worked while particles were not carried
+//! over. The values are read in a second pass over block offsets from [`super::parse_with_offsets`]
+//! — like door animation (`motion.rs`), with the same layouts (`nif.xml`, 20.0.0.4/5 and 10.2.0.0,
+//! `BSVER` ≤ 16).
 //!
-//! Из системы берётся то, что выражает эмиттер Morrowind (`crate::particles`): форма и числа
-//! эмиттера, окно и темп рождения из `NiPSysEmitterCtlr`, размер пула, воздействия роста и
-//! затухания, тяготения, вращения, цвета, порождение при смерти. Остальные воздействия только
-//! называются — чтобы посчитать, что потеряно.
+//! From a system we take what the Morrowind emitter can express (`crate::particles`): the emitter's
+//! shape and numbers, the birth window and rate from `NiPSysEmitterCtlr`, the pool size, the
+//! grow-and-fade, gravity, rotation and color modifiers, and spawning on death. The other modifiers
+//! are only named — to count what is lost.
 
 use super::common::{AvObject, BlockRef, read_ref, read_ref_list};
 use super::cursor::Cursor;
@@ -18,25 +19,25 @@ use super::geometry::{read_geometry_data, read_tri_strips};
 use super::motion::{RawSequence, raw_sequences};
 use super::{SourceNif, header};
 
-/// Система частиц: узел сцены `NiParticleSystem`.
+/// A particle system: a `NiParticleSystem` scene node.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParticleSystem {
-    /// Блок `NiParticleSystem` в источнике.
+    /// The `NiParticleSystem` block in the source.
     pub index: usize,
     pub av: AvObject,
-    /// `World Space`: частицы живут в мире, а не в кадре системы.
+    /// `World Space`: the particles live in the world, not in the system's frame.
     pub world_space: bool,
-    /// Размер пула — число вершин `NiPSysData`.
+    /// Pool size — the vertex count of `NiPSysData`.
     pub pool: u16,
-    /// Частицы — меши (`NiMeshParticleSystem`), а не спрайты.
+    /// The particles are meshes (`NiMeshParticleSystem`), not sprites.
     pub mesh_particles: bool,
     pub emitter: Option<Emitter>,
     pub emission: Option<Emission>,
-    /// Воздействия в порядке списка системы, кроме эмиттера.
+    /// Modifiers in the order of the system's list, except the emitter.
     pub modifiers: Vec<Modifier>,
 }
 
-/// Форма эмиттера.
+/// Emitter shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EmitterShape {
     Box {
@@ -51,11 +52,11 @@ pub enum EmitterShape {
     Sphere {
         radius: f32,
     },
-    /// Частицы рождаются на поверхности меша.
+    /// Particles are born on a mesh surface.
     Mesh,
 }
 
-/// `NiPSysEmitter` и его объём.
+/// `NiPSysEmitter` and its volume.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Emitter {
     pub name: String,
@@ -70,51 +71,51 @@ pub struct Emitter {
     pub radius: f32,
     pub life_span: f32,
     pub life_span_variation: f32,
-    /// Узел, в кадре которого стоит объём; пусто — сама система.
+    /// The node in whose frame the volume stands; empty means the system itself.
     pub object: BlockRef,
     pub shape: EmitterShape,
-    /// У эмиттера-меша: формы, на поверхности которых рождаются частицы.
+    /// For a mesh emitter: the shapes on whose surface particles are born.
     pub meshes: Vec<BlockRef>,
-    /// У эмиттера-меша: откуда берётся начальная скорость — 0 по нормалям, 1 случайно, 2 вдоль
-    /// оси `emission_axis`.
+    /// For a mesh emitter: where the initial velocity comes from — 0 along normals, 1 random, 2
+    /// along the `emission_axis` axis.
     pub velocity_type: u32,
     pub emission_axis: [f32; 3],
 }
 
-/// `NiPSysEmitterCtlr`: когда и как часто рождаются частицы.
+/// `NiPSysEmitterCtlr`: when and how often particles are born.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Emission {
-    /// Флаги `NiTimeController` (биты 1–2 — тип цикла, бит 3 — активен).
+    /// `NiTimeController` flags (bits 1–2 — cycle type, bit 3 — active).
     pub flags: u16,
     pub frequency: f32,
     pub phase: f32,
     pub start: f32,
     pub stop: f32,
-    /// Значение интерполятора темпа; `None` — не задано (в файле −`f32::MAX`) или его нет.
+    /// The rate interpolator's value; `None` means not set (−`f32::MAX` in the file) or absent.
     pub rate: Option<f32>,
-    /// Ключи темпа рождения: время и частиц в секунду.
+    /// Birth rate keys: time and particles per second.
     pub rate_keys: Vec<(f32, f32)>,
-    /// Темп и окно взяты из последовательности `NiControllerManager` с этим именем: у
-    /// контроллера, которым управляет менеджер, своего интерполятора нет.
+    /// The rate and window are taken from the `NiControllerManager` sequence with this name: a
+    /// controller driven by the manager has no interpolator of its own.
     pub sequence: Option<String>,
-    /// Эффект проигрывается один раз: цикл зажат (у контроллера или у последовательности).
+    /// The effect plays once: the cycle is clamped (on the controller or on the sequence).
     pub once: bool,
-    /// Темп задаёт только последовательность действия (`Forward`, `Left`, `Equip` …) или
-    /// зажатая последовательность покоя: частицы появляются по событию — ловушка сработала,
-    /// врата открылись, — а в покое их нет.
+    /// The rate is set only by an action sequence (`Forward`, `Left`, `Equip` …) or a clamped idle
+    /// sequence: particles appear on an event — a trap went off, a gate opened — and at rest there
+    /// are none.
     pub triggered: bool,
 }
 
-/// Последовательности, которые мир проигрывает сам по себе, по убыванию предпочтения (без учёта
-/// регистра): зацикленная `Idle`, затем `SpecialIdle` — так у Oblivion анимируются статика и
-/// активаторы без действий игрока. Перепись 2026-10-02 (`tests/real_particles.rs`): темп из
-/// `Idle` — у 98 систем, из `SpecialIdle` — у 93 (из них 31 зажата), из `Forward` — у 138, `Equip`
-/// — у 67, `Left` — у 38, `Unequip` — у 1.
+/// Sequences the world plays by itself, in decreasing preference (case-insensitive): the looped
+/// `Idle`, then `SpecialIdle` — this is how Oblivion animates statics and activators without player
+/// actions. Census 2026-10-02 (`tests/real_particles.rs`): the rate comes from `Idle` in 98
+/// systems, from `SpecialIdle` in 93 (31 of them clamped), from `Forward` in 138, `Equip` in 67,
+/// `Left` in 38, `Unequip` in 1.
 pub const AMBIENT_SEQUENCES: [&str; 2] = ["Idle", "SpecialIdle"];
 
 impl Emission {
-    /// Средний темп рождения за окно эмиссии: по ключам — взвешенно по времени, без ключей —
-    /// значение интерполятора.
+    /// Average birth rate over the emission window: from keys — weighted by time, without keys —
+    /// the interpolator's value.
     pub fn mean_rate(&self) -> Option<f32> {
         match self.rate_keys.as_slice() {
             [] => self.rate,
@@ -134,7 +135,7 @@ impl Emission {
     }
 }
 
-/// Воздействие на частицы.
+/// A particle modifier.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Modifier {
     pub name: String,
@@ -153,7 +154,7 @@ pub enum ModifierKind {
         axis: [f32; 3],
         decay: f32,
         strength: f32,
-        /// 0 — плоская (вдоль оси), 1 — точечная (к объекту).
+        /// 0 — planar (along an axis), 1 — point (toward an object).
         force_type: u32,
         turbulence: f32,
     },
@@ -162,7 +163,7 @@ pub enum ModifierKind {
         random_axis: bool,
         axis: [f32; 3],
     },
-    /// Ключи цвета: время (доля жизни 0…1) и RGBA.
+    /// Color keys: time (fraction of lifetime 0…1) and RGBA.
     Color {
         keys: Vec<(f32, [f32; 4])>,
     },
@@ -177,13 +178,13 @@ pub enum ModifierKind {
         speed_chaos: f32,
         direction_chaos: f32,
     },
-    /// Работа движка, у Morrowind её делает сам контроллер: позиция, границы, обновление мешей.
+    /// Engine work that in Morrowind the controller does itself: position, bounds, mesh updates.
     Housekeeping,
-    /// Воздействие без пары у Morrowind: имя типа блока.
+    /// A modifier without a Morrowind counterpart: the block type name.
     Other(&'static str),
 }
 
-/// «Не задано» у значения интерполятора.
+/// "Not set" for an interpolator value.
 fn is_unset(v: f32) -> bool {
     v <= -3.0e38
 }
@@ -201,7 +202,7 @@ fn cursor_at<'a>(
     Some(cur)
 }
 
-/// Курсор на блоке, на который ведёт ссылка, и имя его типа.
+/// A cursor on the block a reference points to, and its type name.
 fn open<'a>(
     bytes: &'a [u8],
     source: &'a SourceNif,
@@ -213,8 +214,8 @@ fn open<'a>(
     Some((name, cursor_at(bytes, source, offsets, index)?))
 }
 
-/// Все системы частиц меша в порядке файла. У версий до 10.1.0.106 контроллеры устроены иначе
-/// (данные вместо интерполяторов) — для них список пуст.
+/// All particle systems of the mesh in file order. In versions before 10.1.0.106 controllers are
+/// structured differently (data instead of interpolators) — for them the list is empty.
 pub fn systems(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<Vec<ParticleSystem>> {
     if source.header.version < header::VERSION_10_1_0_106 {
         return Ok(Vec::new());
@@ -249,8 +250,8 @@ pub fn systems(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<Ve
                 continue;
             };
             let name = cur.sized_string()?;
-            cur.u32()?; // порядок
-            read_ref(&mut cur)?; // система-владелец
+            cur.u32()?; // order
+            read_ref(&mut cur)?; // owner system
             let active = cur.bool()?;
             if kind.ends_with("Emitter") {
                 if emitter.is_none() {
@@ -294,7 +295,7 @@ pub fn systems(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<Ve
     Ok(out)
 }
 
-/// `NiPSysEmitter` после общей части воздействия и объём эмиттера.
+/// `NiPSysEmitter` after the common modifier part, and the emitter volume.
 fn read_emitter(cur: &mut Cursor<'_>, kind: &str, name: String, active: bool) -> Result<Emitter> {
     let [
         speed,
@@ -307,7 +308,7 @@ fn read_emitter(cur: &mut Cursor<'_>, kind: &str, name: String, active: bool) ->
     let color = cur.floats::<4>()?;
     let radius = cur.f32()?;
     if cur.version() >= 0x0A04_0001 {
-        cur.f32()?; // разброс радиуса
+        cur.f32()?; // radius variation
     }
     let [life_span, life_span_variation] = cur.floats::<2>()?;
     let (object, shape) = match kind {
@@ -334,11 +335,11 @@ fn read_emitter(cur: &mut Cursor<'_>, kind: &str, name: String, active: bool) ->
         }
         _ => (BlockRef::NONE, EmitterShape::Mesh),
     };
-    // `NiPSysMeshEmitter`: меши-источники, тип начальной скорости, откуда рождать, ось.
+    // `NiPSysMeshEmitter`: source meshes, initial velocity type, emission type, axis.
     let (meshes, velocity_type, emission_axis) = if kind == "NiPSysMeshEmitter" {
         let meshes = read_ref_list(cur)?;
         let velocity_type = cur.u32()?;
-        cur.u32()?; // откуда рождать: вершины, центры граней, рёбра
+        cur.u32()?; // emission type: vertices, face centers, edges
         (meshes, velocity_type, cur.floats::<3>()?)
     } else {
         (Vec::new(), 0, [0.0; 3])
@@ -364,7 +365,7 @@ fn read_emitter(cur: &mut Cursor<'_>, kind: &str, name: String, active: bool) ->
     })
 }
 
-/// Воздействие после общей части (имя, порядок, владелец, включено).
+/// A modifier after the common part (name, order, owner, active).
 fn read_modifier(
     cur: &mut Cursor<'_>,
     kind: &str,
@@ -375,7 +376,7 @@ fn read_modifier(
     Ok(match kind {
         "NiPSysGrowFadeModifier" => {
             let grow = cur.f32()?;
-            cur.u16()?; // поколение роста
+            cur.u16()?; // grow generation
             let fade = cur.f32()?;
             ModifierKind::GrowFade { grow, fade }
         }
@@ -397,8 +398,8 @@ fn read_modifier(
         "NiPSysRotationModifier" => {
             let speed = cur.f32()?;
             if cur.version() >= 0x1400_0002 {
-                cur.floats::<3>()?; // разброс скорости, угол, разброс угла
-                cur.bool()?; // случайный знак скорости
+                cur.floats::<3>()?; // speed variation, angle, angle variation
+                cur.bool()?; // random speed sign
             }
             let random_axis = cur.bool()?;
             let axis = cur.floats::<3>()?;
@@ -445,10 +446,10 @@ fn read_modifier(
     })
 }
 
-/// Темп рождения: значение интерполятора и его ключи (время, частиц в секунду).
+/// Birth rate: the interpolator's value and its keys (time, particles per second).
 type Rate = (Option<f32>, Vec<(f32, f32)>);
 
-/// Значение и ключи `NiFloatInterpolator`; не он — ничего.
+/// Value and keys of a `NiFloatInterpolator`; anything else gives nothing.
 fn read_rate(
     bytes: &[u8],
     source: &SourceNif,
@@ -470,10 +471,10 @@ fn read_rate(
     Ok(((!is_unset(value)).then_some(value), keys))
 }
 
-/// Ищет в цепочке контроллеров системы `NiPSysEmitterCtlr` эмиттера `emitter` и читает окно и
-/// темп рождения. Если своего интерполятора у контроллера нет, темп берётся из
-/// последовательности менеджера, которая этим контроллером управляет: `Idle`, а нет её — первой
-/// по файлу. `None` — такого контроллера нет.
+/// Looks in the system's controller chain for the `NiPSysEmitterCtlr` of emitter `emitter` and
+/// reads the birth window and rate. If the controller has no interpolator of its own, the rate is
+/// taken from the manager's sequence that drives this controller: `Idle`, and without it the first
+/// one in the file. `None` means there is no such controller.
 fn read_emission(
     bytes: &[u8],
     source: &SourceNif,
@@ -483,12 +484,12 @@ fn read_emission(
     emitter: &str,
 ) -> Result<Option<Emission>> {
     let mut link = first;
-    // Цепочка контроллеров коротка; предел — от зацикленного файла.
+    // The controller chain is short; the limit protects against a looped file.
     for _ in 0..64 {
         let Some((kind, mut cur)) = open(bytes, source, offsets, link) else {
             return Ok(None);
         };
-        // `NiTimeController`: следующий, флаги, частота, фаза, начало, конец, цель.
+        // `NiTimeController`: next, flags, frequency, phase, start, stop, target.
         let next = read_ref(&mut cur)?;
         if kind != "NiPSysEmitterCtlr" {
             link = next;
@@ -496,7 +497,7 @@ fn read_emission(
         }
         let flags = cur.u16()?;
         let [frequency, phase, start, stop] = cur.floats::<4>()?;
-        read_ref(&mut cur)?; // цель
+        read_ref(&mut cur)?; // target
         if (0x0A01_0068..=0x0A01_006C).contains(&cur.version()) {
             cur.bool()?; // manager controlled (10.1.0.104 … 10.1.0.108)
         }
@@ -507,7 +508,7 @@ fn read_emission(
             continue;
         }
         let (rate, rate_keys) = read_rate(bytes, source, offsets, interpolator)?;
-        // Биты 1–2 флагов `NiTimeController` — тип цикла: 0 — петля, 2 — зажать.
+        // Bits 1–2 of the `NiTimeController` flags are the cycle type: 0 — loop, 2 — clamp.
         let mut emission = Emission {
             flags,
             frequency,
@@ -521,8 +522,8 @@ fn read_emission(
             triggered: false,
         };
         if emission.mean_rate().is_none() {
-            // Контроллером управляет менеджер: интерполятор — в блоке управления
-            // последовательности, который ссылается на этот контроллер.
+            // The controller is driven by a manager: the interpolator is in the sequence's
+            // controlled block that references this controller.
             let driven: Vec<&RawSequence> = sequences
                 .iter()
                 .filter(|s| s.blocks.iter().any(|b| b.controller == link))
@@ -553,7 +554,7 @@ fn read_emission(
     Ok(None)
 }
 
-/// `KeyGroup` из `N` чисел на значение: время и значение каждого ключа; наклоны пропускаются.
+/// A `KeyGroup` of `N` numbers per value: the time and value of each key; tangents are skipped.
 fn key_group<const N: usize>(cur: &mut Cursor<'_>) -> Result<Vec<(f32, [f32; N])>> {
     let count = cur.len_u32()?;
     if count == 0 {

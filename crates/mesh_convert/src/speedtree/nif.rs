@@ -1,16 +1,16 @@
-//! Дерево → NIF 4.0.0.2 (T2.4f): кора, листва и коллизия ствола.
+//! Tree → NIF 4.0.0.2 (T2.4f): bark, foliage and trunk collision.
 //!
-//! * **Кора** — треугольники из полос веток; текстура `textures\trees\branches\<имя из 2000>`.
-//! * **Листва** — карточки (`speedtree::cards`), альфа-тест, обе стороны отдельными
-//!   треугольниками с обратными нормалями (двусторонность через стенсил в ванильном Morrowind не
-//!   проверена); текстура — `ICON` записи `TREE` из `textures\trees\leaves\`.
-//! * **Коллизия** — только ствол (полоса первой ветки) в `RootCollisionNode`: без него Morrowind
-//!   сталкивался бы со всей геометрией, включая листья. Объекты коллизии `.spt` (`12002…`) —
-//!   у 9 деревьев из 139 и без ориентации капсул — не переносятся.
+//! * **Bark** — triangles from the branch strips; texture
+//!   `textures\trees\branches\<name from 2000>`.
+//! * **Foliage** — cards (`speedtree::cards`), alpha test, both sides as separate triangles with
+//!   reversed normals (two-sidedness through the stencil in vanilla Morrowind is not verified); the
+//!   texture is the `TREE` record's `ICON` from `textures\trees\leaves\`.
+//! * **Collision** — only the trunk (the first branch's strip) in `RootCollisionNode`: without it
+//!   Morrowind would collide with all the geometry, leaves included. The `.spt` collision objects
+//!   (`12002…`) — in 9 trees of 139 and without capsule orientation — are not carried over.
 //!
-//! Формы делятся, чтобы вершин и треугольников в каждой было не больше 65 535 (`u16` у NIF
-//! Morrowind). Обход треугольника выбирается так, чтобы его нормаль смотрела туда же, куда
-//! нормали вершин.
+//! Shapes are split so each has no more than 65,535 vertices and triangles (`u16` in Morrowind
+//! NIF). The triangle winding is chosen so its normal points the same way as the vertex normals.
 
 use tes3::nif::glam::{Vec2, Vec3};
 use tes3::nif::{
@@ -26,30 +26,31 @@ use crate::geometry::strips_to_triangles;
 use crate::material::{OUT_SLOTS, SLOT_BASE};
 use crate::textures::{TextureCopy, TextureError, TextureRegistry};
 
-/// Альфа-тест без смешивания: тест включён, функция «больше», порог 128.
+/// Alpha test without blending: the test is on, the function is "greater", the threshold 128.
 const LEAF_ALPHA_FLAGS: u16 = 0x12EC;
 const LEAF_ALPHA_THRESHOLD: u8 = 128;
-/// Наибольшее число вершин и треугольников в одной форме.
+/// The largest number of vertices and triangles in one shape.
 const LIMIT: usize = 65_535;
 
-/// Пути текстур дерева в архиве источника (`textures\…`).
+/// Tree texture paths in the source archive (`textures\…`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeTextures {
     pub bark: String,
     pub leaves: Option<String>,
 }
 
-/// Меш дерева и текстуры к копированию.
+/// The tree mesh and the textures to copy.
 #[derive(Debug)]
 pub struct TreeNif {
     pub stream: NiStream,
     pub textures: Vec<TextureCopy>,
-    /// Треугольников коры и листвы (листва — с обратными сторонами).
+    /// Bark and foliage triangles (foliage with the back sides).
     pub bark_triangles: usize,
     pub leaf_triangles: usize,
 }
 
-/// Путь коры по тегу `2000`: имя файла без каталога, `.tga` → `.dds`, в `trees\branches\`.
+/// Bark path from tag `2000`: the file name without the directory, `.tga` → `.dds`, in
+/// `trees\branches\`.
 pub fn bark_texture_path(spt_bark: &str) -> String {
     let name = spt_bark.rsplit(['\\', '/']).next().unwrap_or(spt_bark);
     let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
@@ -59,7 +60,7 @@ pub fn bark_texture_path(spt_bark: &str) -> String {
     )
 }
 
-/// Путь листвы по `ICON` записи `TREE`.
+/// Foliage path from the `TREE` record's `ICON`.
 pub fn leaf_texture_path(icon: &str) -> String {
     format!("textures\\trees\\leaves\\{}", icon.to_ascii_lowercase())
 }
@@ -71,7 +72,7 @@ fn net(name: &str) -> NiObjectNET {
     }
 }
 
-/// Геометрия одной части: вершины, нормали, UV, треугольники (`u32`, до разбиения).
+/// Geometry of one part: vertices, normals, UV, triangles (`u32`, before splitting).
 struct Part {
     vertices: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
@@ -83,7 +84,7 @@ fn sub(a: [f32; 3], b: [f32; 3]) -> Vec3 {
     Vec3::from_array(a) - Vec3::from_array(b)
 }
 
-/// Обход треугольника согласуется с нормалями вершин.
+/// Triangle winding is made consistent with the vertex normals.
 fn orient(part: &mut Part) {
     for t in &mut part.triangles {
         let [a, b, c] = t.map(|i| i as usize);
@@ -103,7 +104,7 @@ fn bound(points: &[Vec3]) -> NiBound {
     if points.is_empty() {
         return NiBound::default();
     }
-    #[expect(clippy::cast_precision_loss, reason = "вершин меньше 65 536")]
+    #[expect(clippy::cast_precision_loss, reason = "fewer than 65,536 vertices")]
     let center = points.iter().copied().sum::<Vec3>() / points.len() as f32;
     let radius = points
         .iter()
@@ -112,7 +113,7 @@ fn bound(points: &[Vec3]) -> NiBound {
     NiBound { center, radius }
 }
 
-/// Делит часть на куски не больше [`LIMIT`] вершин и треугольников.
+/// Splits a part into pieces of no more than [`LIMIT`] vertices and triangles.
 fn split(part: &Part) -> Vec<(Vec<usize>, Vec<[u16; 3]>)> {
     let mut out = Vec::new();
     let mut map: std::collections::HashMap<u32, u16> = std::collections::HashMap::new();
@@ -126,7 +127,7 @@ fn split(part: &Part) -> Vec<(Vec<usize>, Vec<[u16; 3]>)> {
         let tri = t.map(|i| {
             *map.entry(i).or_insert_with(|| {
                 used.push(i as usize);
-                u16::try_from(used.len() - 1).expect("кусок меньше 65 536 вершин")
+                u16::try_from(used.len() - 1).expect("a piece has fewer than 65,536 vertices")
             })
         });
         tris.push(tri);
@@ -227,7 +228,7 @@ fn material(stream: &mut NiStream) -> NiLink<NiProperty> {
         .cast()
 }
 
-/// Собирает NIF дерева.
+/// Builds the tree NIF.
 pub fn build(
     bark: &BranchMesh,
     cards: &CardMesh,
@@ -239,7 +240,7 @@ pub fn build(
     let mut children: Vec<NiLink<NiAVObject>> = Vec::new();
     let mat = material(&mut stream);
 
-    // Кора.
+    // Bark.
     let (bark_tris, _) = strips_to_triangles(&bark.strips);
     let mut part = Part {
         vertices: bark.vertices.clone(),
@@ -258,7 +259,7 @@ pub fn build(
         }
     }
 
-    // Листва: лицевые и обратные стороны.
+    // Foliage: front and back sides.
     let mut leaf_triangles = 0;
     if let (Some(path), false) = (&textures.leaves, cards.triangles.is_empty()) {
         let copy = registry.register(path)?;
@@ -273,7 +274,7 @@ pub fn build(
                 test_ref: LEAF_ALPHA_THRESHOLD,
             })
             .cast();
-        let n = u32::try_from(cards.vertices.len()).expect("вершин меньше 4 млрд");
+        let n = u32::try_from(cards.vertices.len()).expect("fewer than 4 billion vertices");
         let mut part = Part {
             vertices: [cards.vertices.clone(), cards.vertices.clone()].concat(),
             normals: cards
@@ -312,7 +313,7 @@ pub fn build(
         }
     }
 
-    // Коллизия ствола.
+    // Trunk collision.
     if let Some(trunk) = bark.strips.first() {
         let (tris, _) = strips_to_triangles(std::slice::from_ref(trunk));
         let used: Vec<usize> = {
@@ -323,8 +324,8 @@ pub fn build(
         };
         if !used.is_empty() && used.len() <= LIMIT {
             let index = |i: u16| {
-                u16::try_from(used.binary_search(&usize::from(i)).expect("вершина ствола"))
-                    .expect("меньше 65 536")
+                u16::try_from(used.binary_search(&usize::from(i)).expect("a trunk vertex"))
+                    .expect("less than 65,536")
             };
             let vertices: Vec<Vec3> = used
                 .iter()

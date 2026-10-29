@@ -2,34 +2,35 @@ use crate::container::Tag;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Сетка путей ячейки Oblivion.
+/// The path grid of an Oblivion cell.
 ///
-/// Раскладка — замер по всем 8 228 `PGRD` `Oblivion.esm` (2026-09-27, `docs/ru/formats/tes4.md`,
-/// «Сетки путей»): `DATA` — число точек (u16); `PGRP` — точки по 16 байт; `PGRR` — номера соседей
-/// (u16) подряд, у каждой точки столько, сколько сказано в её `PGRP`, 0xFFFF — пустой слот
-/// ([`EMPTY_LINK`]); `PGRI` — связи с точками
-/// соседних ячеек по 16 байт. `PGAG` (битовая маска) и `PGRL` (связи точек с объектами) у
-/// Morrowind аналога не имеют — не читаются.
+/// The layout is from a measurement of all 8,228 `PGRD` of `Oblivion.esm` (2026-09-27,
+/// `docs/en/formats/tes4.md`, "Path grids"): `DATA` is the point count (u16); `PGRP` is points of
+/// 16 bytes; `PGRR` is neighbor numbers (u16) in a row, as many for each point as its `PGRP` says,
+/// 0xFFFF is an empty slot ([`EMPTY_LINK`]); `PGRI` is links to points of neighboring cells, 16
+/// bytes each. `PGAG` (a bit mask) and `PGRL` (links from points to objects) have no Morrowind
+/// equivalent and are not read.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PathGrid {
-    /// Точки в мировых координатах (у интерьера — в координатах ячейки).
+    /// Points in world coordinates (for an interior, in cell coordinates).
     pub points: Vec<[f32; 3]>,
-    /// Соседи каждой точки: `edges[i]` — номера точек этой же сетки.
+    /// Neighbors of each point: `edges[i]` are numbers of points of the same grid.
     pub edges: Vec<Vec<u16>>,
-    /// Связи с точками соседних ячеек.
+    /// Links to points of neighboring cells.
     pub external: Vec<ExternalEdge>,
 }
 
-/// `PGRI`: своя точка и мировые координаты точки в соседней ячейке.
+/// `PGRI`: our point and the world coordinates of a point in a neighboring cell.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExternalEdge {
     pub point: u16,
     pub target: [f32; 3],
 }
 
-/// Пустой слот в `PGRR`: связи нет. Так OpenMW (`components/esm4/loadpgrd.cpp`: `endNode == -1`
-/// пропускается); в `Oblivion.esm` это 92 115 из 2 887 675 слотов в 4 351 из 8 228 `PGRD`, других
-/// номеров вне сетки нет, а без пустых слотов все связи записаны у обоих концов (2026-09-27).
+/// An empty slot in `PGRR`: no link. That is how OpenMW treats it (`components/esm4/loadpgrd.cpp`:
+/// `endNode == -1` is skipped); in `Oblivion.esm` these are 92,115 of 2,887,675 slots in 4,351 of
+/// 8,228 `PGRD`, there are no other out-of-grid numbers, and apart from the empty slots all links
+/// are written at both ends (2026-09-27).
 pub const EMPTY_LINK: u16 = 0xFFFF;
 
 fn size_error(field: Tag, expected: usize, got: usize) -> Error {
@@ -50,11 +51,11 @@ fn bad_value(field: Tag, detail: String) -> Error {
 }
 
 fn f32_at(raw: &[u8], at: usize) -> f32 {
-    f32::from_le_bytes(raw[at..at + 4].try_into().expect("4 байта"))
+    f32::from_le_bytes(raw[at..at + 4].try_into().expect("4 bytes"))
 }
 
 fn u16_at(raw: &[u8], at: usize) -> u16 {
-    u16::from_le_bytes(raw[at..at + 2].try_into().expect("2 байта"))
+    u16::from_le_bytes(raw[at..at + 2].try_into().expect("2 bytes"))
 }
 
 impl FromFields for PathGrid {
@@ -146,7 +147,7 @@ mod tests {
             for v in xyz {
                 d.extend(v.to_le_bytes());
             }
-            // Три байта заполнения — не нули, как в реальных данных: читать их нельзя.
+            // Three padding bytes — not zeros, as in real data: they must not be read.
             d.extend([*degree, 0x98, 0x43, 0x07]);
         }
         synth::field(b"PGRP", &d)
@@ -179,7 +180,7 @@ mod tests {
                 ([7.0, 8.0, -9.0], 2),
             ]),
             synth::field(b"PGAG", &[0xFF]),
-            // Пустой слот 0xFFFF у третьей точки выпадает.
+            // The empty slot 0xFFFF of the third point drops out.
             u16s(b"PGRR", &[1, 2, EMPTY_LINK, 0]),
             pgri(&[(2, [4096.0, 8192.0, 10.0])]),
             synth::field(b"PGRL", &[0; 8]),
@@ -206,12 +207,12 @@ mod tests {
 
     #[test]
     fn inconsistent_sizes_and_indices_are_errors() {
-        // Точек в DATA больше, чем в PGRP.
+        // More points in DATA than in PGRP.
         assert!(matches!(
             parse(&[u16s(b"DATA", &[2]), pgrp(&[([0.0; 3], 0)])]),
             Err(Error::FieldSize { got: 16, .. })
         ));
-        // Связей в PGRP две, а в PGRR одна.
+        // PGRP says two links, PGRR has one.
         assert!(matches!(
             parse(&[
                 u16s(b"DATA", &[1]),
@@ -220,7 +221,7 @@ mod tests {
             ]),
             Err(Error::FieldSize { got: 2, .. })
         ));
-        // Сосед за пределами сетки.
+        // A neighbor outside the grid.
         assert!(matches!(
             parse(&[
                 u16s(b"DATA", &[1]),

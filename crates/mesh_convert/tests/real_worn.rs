@@ -1,5 +1,5 @@
-//! T9.2b: меши брони и одежды на теле (`MODL` мужская, `MOD3` женская у `ARMO`/`CLOT`
-//! `Oblivion.esm`) — читает ли их ридер, сколько со скиннингом, какие кости они используют.
+//! T9.2b: armor and clothing body meshes (`MODL` male, `MOD3` female for `ARMO`/`CLOT` of
+//! `Oblivion.esm`) — whether the reader reads them, how many are skinned, which bones they use.
 //!
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
@@ -19,7 +19,8 @@ use tes3::bsa::Archive;
 use tes3::nif::{NiGeometryData, NiSkinInstance, NiStream, NiTriShape};
 use tes4_read::{BsaIndex, Fields, Plugin};
 
-/// Скелет Morrowind: иерархия из `base_anim`, позы — тело, затем полная T-поза кирасы.
+/// The Morrowind skeleton: the hierarchy from `base_anim`, the poses from the body, then the
+/// cuirass's full T-pose.
 fn morrowind_skeleton(female: bool) -> TargetSkeleton {
     let archive = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
     let load = |p: &str| NiStream::from_bytes(archive.get(p).expect(p).as_bytes()).expect(p);
@@ -37,13 +38,13 @@ fn morrowind_skeleton(female: bool) -> TargetSkeleton {
     let hierarchy = load(anim);
     let body = load(body);
     let full = load("meshes\\a\\a_art_cuirass_lords_c.nif");
-    TargetSkeleton::from_nifs(&hierarchy, &[&body, &full]).expect("скелет")
+    TargetSkeleton::from_nifs(&hierarchy, &[&body, &full]).expect("skeleton")
 }
 
-/// Все меши на теле со скиннингом → скелет Morrowind; `niftest` по результату, если задан
-/// `BACK2MW_NIFTEST`, и проверка соглашения деформацией `tes3::nif`.
+/// All skinned body meshes → the Morrowind skeleton; `niftest` on the result if `BACK2MW_NIFTEST`
+/// is set, and a check of the convention by `tes3::nif` deformation.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA (и BACK2MW_NIFTEST)"]
+#[ignore = "real data: BACK2MW_GAME_DATA (and BACK2MW_NIFTEST)"]
 fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
@@ -54,7 +55,10 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
         archives.push((r, idx));
     }
     let skeletons = [morrowind_skeleton(false), morrowind_skeleton(true)];
-    println!("костей в скелете Morrowind: {}", skeletons[0].bones.len());
+    println!(
+        "bones in the Morrowind skeleton: {}",
+        skeletons[0].bones.len()
+    );
 
     let mut paths: BTreeMap<String, bool> = BTreeMap::new();
     for tag in [*b"ARMO", *b"CLOT"] {
@@ -62,7 +66,7 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
             if record.data.is_empty() {
                 continue;
             }
-            let fields = Fields::parse(&record.data, "ARMO").expect("поля");
+            let fields = Fields::parse(&record.data, "ARMO").expect("fields");
             for (model, female) in [(*b"MODL", false), (*b"MOD3", true)] {
                 if let Some(m) = fields.opt_zstring(model).filter(|m| !m.is_empty()) {
                     paths
@@ -84,7 +88,7 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
         let mut data = None;
         for (r, idx) in &mut archives {
             if let Some(e) = idx.find(path) {
-                data = Some(idx.extract(r, e).expect("извлечь"));
+                data = Some(idx.extract(r, e).expect("extract"));
             }
             if data.is_some() {
                 break;
@@ -122,7 +126,7 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
                         }
                     }
                     println!(
-                        "  {path}: высота Oblivion {slo:.1}..{shi:.1} → Morrowind {lo:.1}..{hi:.1}"
+                        "  {path}: Oblivion height {slo:.1}..{shi:.1} → Morrowind {lo:.1}..{hi:.1}"
                     );
                 }
                 converted += 1;
@@ -132,13 +136,13 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
                     let skin: Option<&NiSkinInstance> = c.stream.get(shape.base.base.skin_instance);
                     let geom: Option<&NiGeometryData> = c.stream.get(shape.base.base.geometry_data);
                     if let (Some(skin), Some(geom)) = (skin, geom) {
-                        let (deformed, _) = skin.deform(&c.stream, geom).expect("деформация");
+                        let (deformed, _) = skin.deform(&c.stream, geom).expect("deformation");
                         for (a, b) in deformed.iter().zip(&geom.vertices) {
                             worst_bind = worst_bind.max(a.distance(*b));
                         }
                     }
                 }
-                let bytes = c.save_bytes().expect("запись NIF");
+                let bytes = c.save_bytes().expect("writing the NIF");
                 let file = out_dir.join(format!("{converted:04}.nif"));
                 std::fs::write(&file, bytes).unwrap();
                 files.push(file);
@@ -147,15 +151,15 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
         }
     }
 
-    println!("=== скиннинговые меши на теле → скелет Morrowind ===");
-    println!("  сконвертировано:              {converted}");
-    println!("  не сконвертировано:           {}", failed.len());
+    println!("=== skinned body meshes → Morrowind skeleton ===");
+    println!("  converted:                    {converted}");
+    println!("  not converted:                {}", failed.len());
     for f in failed.iter().take(10) {
         println!("    {f}");
     }
-    println!("  костей отдали вес предку:     {merged}");
-    println!("  вершин без веса:              {unweighted}");
-    println!("  наибольшее отклонение деформации в позе привязки: {worst_bind:.6}");
+    println!("  bones gave weight to an ancestor: {merged}");
+    println!("  vertices without weight:      {unweighted}");
+    println!("  largest deformation deviation in the bind pose: {worst_bind:.6}");
 
     if let Some(niftest) = std::env::var_os("BACK2MW_NIFTEST") {
         let mut bad = 0usize;
@@ -170,11 +174,11 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
                 println!("{err}");
             }
         }
-        println!("  niftest: файлов {}, брака {bad}", files.len());
+        println!("  niftest: files {}, defects {bad}", files.len());
         assert_eq!(bad, 0);
     }
     if std::env::var_os("BACK2MW_KEEP_OUTPUT").is_some() {
-        println!("  результат оставлен в {}", out_dir.display());
+        println!("  result kept in {}", out_dir.display());
     } else {
         let _ = std::fs::remove_dir_all(&out_dir);
     }
@@ -183,7 +187,7 @@ fn skinned_worn_meshes_convert_onto_the_morrowind_skeleton() {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn worn_meshes_of_oblivion_esm() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
@@ -200,7 +204,7 @@ fn worn_meshes_of_oblivion_esm() {
             if record.data.is_empty() {
                 continue;
             }
-            let fields = Fields::parse(&record.data, "ARMO").expect("поля");
+            let fields = Fields::parse(&record.data, "ARMO").expect("fields");
             for model in [*b"MODL", *b"MOD3"] {
                 if let Some(m) = fields.opt_zstring(model).filter(|m| !m.is_empty()) {
                     paths.insert(format!("meshes\\{m}").to_ascii_lowercase());
@@ -217,7 +221,7 @@ fn worn_meshes_of_oblivion_esm() {
         let mut data = None;
         for (r, idx) in &mut archives {
             if let Some(e) = idx.find(path) {
-                data = Some(idx.extract(r, e).expect("извлечь"));
+                data = Some(idx.extract(r, e).expect("extract"));
                 break;
             }
         }
@@ -270,24 +274,21 @@ fn worn_meshes_of_oblivion_esm() {
         }
     }
 
-    println!("=== меши на теле ARMO/CLOT Oblivion.esm ===");
-    println!("  путей:                 {}", paths.len());
-    println!("  нет в архивах:         {missing}");
-    println!("  читаются целиком:      {ok} (со скиннингом {skinned}, жёстких {rigid})");
-    println!("  не читаются (ошибка):  {}", failed.len());
+    println!("=== ARMO/CLOT body meshes of Oblivion.esm ===");
+    println!("  paths:                 {}", paths.len());
+    println!("  missing from archives: {missing}");
+    println!("  read in full:          {ok} (skinned {skinned}, rigid {rigid})");
+    println!("  not read (error):      {}", failed.len());
     for f in failed.iter().take(10) {
         println!("    {f}");
     }
-    println!("  неподдержанные блоки:");
+    println!("  unsupported blocks:");
     for (k, v) in &blocked {
         println!("    {v:5}  {k}");
     }
-    println!("  кости в скиннинге (сколько форм):");
+    println!("  bones in skinning (how many shapes):");
     for (k, v) in &bones {
         println!("    {v:5}  {k}");
     }
-    assert!(
-        failed.is_empty(),
-        "ридер споткнулся на блоках, которые знает"
-    );
+    assert!(failed.is_empty(), "the reader stumbled on blocks it knows");
 }

@@ -1,5 +1,6 @@
-//! T2.4c/d: кора всех `.spt` Oblivion — числа конечны, вершин меньше 65 536, сводка по высоте.
-//! С `BACK2MW_SPT_PNG=<каталог>` ещё рисует силуэты (вид сбоку, X–Z) в PNG для глаза.
+//! T2.4c/d: the bark of all Oblivion `.spt` files — numbers are finite, fewer than 65,536 vertices,
+//! a height summary. With `BACK2MW_SPT_PNG=<directory>` it also draws silhouettes (side view, X–Z)
+//! into PNG for a visual check.
 
 mod common;
 
@@ -10,7 +11,7 @@ use mesh_convert::speedtree::branch::generate;
 use mesh_convert::speedtree::parse;
 use tes4_read::BsaIndex;
 
-/// PNG без сжатия (блоки deflate «stored»), серый 8 бит.
+/// An uncompressed PNG ("stored" deflate blocks), 8-bit gray.
 fn write_png(path: &std::path::Path, width: u32, height: u32, pixels: &[u8]) {
     fn crc(data: &[u8]) -> u32 {
         let mut c = 0xFFFF_FFFFu32;
@@ -64,12 +65,12 @@ fn write_png(path: &std::path::Path, width: u32, height: u32, pixels: &[u8]) {
     std::fs::write(path, out).unwrap();
 }
 
-/// Заливка треугольников полос в проекции X–Z.
+/// Filling the strip triangles in the X–Z projection.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "пиксели картинки 256×256"
+    reason = "pixels of a 256×256 image"
 )]
 fn silhouette(mesh: &mesh_convert::speedtree::branch::BranchMesh, size: u32) -> Vec<u8> {
     let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
@@ -143,7 +144,7 @@ fn silhouette(mesh: &mesh_convert::speedtree::branch::BranchMesh, size: u32) -> 
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_tree_bark_is_generated() {
     let png_dir = std::env::var_os("BACK2MW_SPT_PNG").map(std::path::PathBuf::from);
     let mut rows = Vec::new();
@@ -173,7 +174,7 @@ fn every_tree_bark_is_generated() {
                         .count()
                 };
                 failures.push(format!(
-                    "{name}: вершин {}, не конечны: позиций {}, нормалей {}, UV {}",
+                    "{name}: vertices {}, non-finite: positions {}, normals {}, UV {}",
                     mesh.vertices.len(),
                     bad(&mesh.vertices),
                     bad(&mesh.normals),
@@ -201,14 +202,10 @@ fn every_tree_bark_is_generated() {
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     for (name, size, branches, vertices, height, leaves) in &rows {
         println!(
-            "  {name:40} размер {size:6} веток {branches:4} вершин {vertices:6} высота {height:8.1} листьев {leaves:5}"
+            "  {name:40} size {size:6} branches {branches:4} vertices {vertices:6} height {height:8.1} leaves {leaves:5}"
         );
     }
-    println!(
-        "=== деревьев {}, отказов {} ===",
-        rows.len(),
-        failures.len()
-    );
+    println!("=== trees {}, failures {} ===", rows.len(), failures.len());
     for f in &failures {
         println!("  {f}");
     }

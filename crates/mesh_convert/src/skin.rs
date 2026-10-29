@@ -1,28 +1,31 @@
-//! Скиннинг: броня и одежда Oblivion на скелет Morrowind (T9.2b).
+//! Skinning: Oblivion armor and clothing onto the Morrowind skeleton (T9.2b).
 //!
-//! **Что измерено и почему так** (`docs/ru/formats/nif-oblivion.md`, «Скиннинг»):
+//! **What was measured and why it is done this way** (`docs/en/formats/nif-oblivion.md`,
+//! "Skinning"):
 //!
-//! * Ванильный Morrowind сам носит скиннинговую экипировку (46 из 328 мешей брони, 124 из 523
-//!   одежды), поэтому броня переносится со скиннингом, а не режется на жёсткие куски.
-//! * Все 33 кости `base_anim.nif` есть в скелете Oblivion под теми же именами. Лишние кости
-//!   Oblivion (скрутки рук, `Neck1`, фаланги, `Toe0`) отдают свой вес ближайшему предку, который
-//!   есть в скелете Morrowind — предок берётся из иерархии самого меша, а не из таблицы.
-//! * Пропорции скелетов расходятся (голень Morrowind на 36% длиннее, плечо на 18% короче, таз на
-//!   8.6 выше), поэтому геометрия **ретаргетится**: каждая кость Oblivion переносится на кость
-//!   Morrowind сдвигом к её суставу, поворотом направления «сустав → дочерний сустав» и
-//!   растяжением вдоль этого направления; вершина переносится взвешенной суммой по своим
-//!   костям, как при обычном скиннинге. Поворот вокруг оси кости не трогаем: по одним
-//!   позициям суставов его не узнать, а соглашения осей у обеих игр одни (Biped).
+//! * Vanilla Morrowind itself wears skinned equipment (46 of 328 armor meshes, 124 of 523
+//!   clothing), so armor is carried over with skinning instead of being cut into rigid pieces.
+//! * All 33 bones of `base_anim.nif` exist in the Oblivion skeleton under the same names. Extra
+//!   Oblivion bones (arm twists, `Neck1`, finger joints, `Toe0`) give their weight to the nearest
+//!   ancestor present in the Morrowind skeleton — the ancestor is taken from the mesh's own
+//!   hierarchy, not from a table.
+//! * The skeletons' proportions differ (the Morrowind shin is 36% longer, the upper arm 18%
+//!   shorter, the pelvis 8.6 higher), so the geometry is **retargeted**: each Oblivion bone is
+//!   moved onto the Morrowind bone by a translation to its joint, a rotation of the "joint → child
+//!   joint" direction and a stretch along that direction; a vertex is moved by a weighted sum over
+//!   its bones, as in ordinary skinning. Rotation around the bone axis is left alone: it cannot be
+//!   known from joint positions alone, and the axis conventions of both games are the same (Biped).
 //!
-//! **Соглашение вывода.** Формула скиннинга OpenMW (`components/sceneutil/riggeometry.cpp`):
-//! вершина = преобразование данных · Σ вес · (кость в пространстве скелета) · (обратная поза) · v.
-//! Мы пишем самое прямое согласованное с ней: узлы костей стоят в позе привязки Morrowind,
-//! вершины лежат в пространстве `Bip01` и форма стоит там же, где `Bip01`, обратная поза кости —
-//! `(кость)⁻¹ · Bip01`, общее преобразование `NiSkinData` — единичное. Тогда в позе привязки
-//! каждое `Bip01⁻¹ · кость · обратная_поза` — единица, что проверяет тест.
+//! **Output convention.** The OpenMW skinning formula (`components/sceneutil/riggeometry.cpp`):
+//! vertex = data transform · Σ weight · (bone in skeleton space) · (inverse pose) · v. We write the
+//! most direct thing consistent with it: the bone nodes stand in the Morrowind bind pose, the
+//! vertices lie in `Bip01` space and the shape stands where `Bip01` stands, the bone's inverse pose
+//! is `(bone)⁻¹ · Bip01`, and the overall `NiSkinData` transform is identity. Then in the bind pose
+//! every `Bip01⁻¹ · bone · inverse_pose` is identity, which the test checks.
 //!
-//! Позиция вершины Oblivion в позе привязки берётся той же формулой по его собственным костям
-//! (кость · обратная поза · v), без допущений о кадрах, в которых экспортёр записал вершины.
+//! The position of an Oblivion vertex in the bind pose is taken by the same formula over its own
+//! bones (bone · inverse pose · v), without assumptions about the frames in which the exporter
+//! wrote the vertices.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -39,24 +42,24 @@ use crate::read::skin::SkinTransform;
 use crate::read::{Block, BlockRef, NiTriStrips, NiTriStripsData, SourceNif};
 use crate::textures::TextureRegistry;
 
-/// Имя корневой кости Biped в обеих играх.
+/// Name of the Biped root bone in both games.
 pub const ROOT_BONE: &str = "Bip01";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkinError {
-    /// В иерархии скелета нет корневой кости `Bip01`.
+    /// The skeleton hierarchy has no `Bip01` root bone.
     NoRootBone,
-    /// Кость есть в иерархии, но ни один источник поз её не содержит.
+    /// The bone is in the hierarchy, but no pose source contains it.
     MissingPose { bone: String },
-    /// Кость формы — не узел.
+    /// A shape's bone is not a node.
     BoneNotANode { shape: usize, bone: usize },
-    /// Индекс вершины в весах за пределами массива вершин.
+    /// A vertex index in the weights is outside the vertex array.
     WeightOutOfRange {
         shape: usize,
         index: u16,
         vertices: usize,
     },
-    /// Файл скелета Morrowind не читается.
+    /// The Morrowind skeleton file cannot be read.
     Parse { message: String },
 }
 
@@ -106,26 +109,27 @@ impl From<SkinError> for ConvertError {
     }
 }
 
-/// Кость скелета Morrowind в позе привязки.
+/// A Morrowind skeleton bone in the bind pose.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetBone {
     pub name: String,
-    /// Индекс родителя в [`TargetSkeleton::bones`]; родитель всегда раньше ребёнка.
+    /// Parent index in [`TargetSkeleton::bones`]; the parent always comes before the child.
     pub parent: Option<usize>,
-    /// Поза в пространстве персонажа.
+    /// Pose in character space.
     pub world: Affine3A,
 }
 
-/// Скелет, на который садится броня.
+/// The skeleton the armor sits on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetSkeleton {
     pub bones: Vec<TargetBone>,
 }
 
 impl TargetSkeleton {
-    /// Набор и иерархия костей — из `hierarchy` (`base_anim.nif`: какие кости есть у персонажа),
-    /// позы привязки — из первого файла `poses`, где кость есть (тело, затем полная T-поза).
-    /// `base_anim` сам не годится: его узлы стоят в позе анимации, а не привязки.
+    /// The bone set and hierarchy come from `hierarchy` (`base_anim.nif`: which bones the character
+    /// has), the bind poses from the first file in `poses` that has the bone (the body, then the
+    /// full T-pose). `base_anim` itself will not do: its nodes stand in an animation pose, not the
+    /// bind pose.
     pub fn from_nifs(hierarchy: &NiStream, poses: &[&NiStream]) -> Result<Self, SkinError> {
         let pose_maps: Vec<HashMap<String, Affine3A>> =
             poses.iter().map(|s| node_worlds(s)).collect();
@@ -165,7 +169,8 @@ impl TargetSkeleton {
         Ok(Self { bones })
     }
 
-    /// То же из байтов NIF 4.0.0.2: так скелет строит вызывающий, у которого нет `tes3::nif`.
+    /// The same from NIF 4.0.0.2 bytes: this is how a caller without `tes3::nif` builds the
+    /// skeleton.
     pub fn from_bytes(hierarchy: &[u8], poses: &[&[u8]]) -> Result<Self, SkinError> {
         let parse = |bytes: &[u8]| {
             NiStream::from_bytes(bytes).map_err(|e| SkinError::Parse {
@@ -196,7 +201,7 @@ impl TargetSkeleton {
     }
 }
 
-/// Мировые позы всех узлов потока по имени в нижнем регистре (первый узел с таким именем).
+/// World poses of all stream nodes by lower-case name (the first node with that name).
 fn node_worlds(stream: &NiStream) -> HashMap<String, Affine3A> {
     let world = stream.world_transforms();
     let mut out = HashMap::new();
@@ -209,7 +214,7 @@ fn node_worlds(stream: &NiStream) -> HashMap<String, Affine3A> {
     out
 }
 
-/// Сторона кости по имени Biped: `Bip01 L …`, `Bip01 R …` или середина.
+/// The bone's side by its Biped name: `Bip01 L …`, `Bip01 R …` or the middle.
 fn side(name: &str) -> Option<char> {
     let rest = name.get(ROOT_BONE.len()..)?.trim_start();
     let mut chars = rest.chars();
@@ -219,8 +224,9 @@ fn side(name: &str) -> Option<char> {
     }
 }
 
-/// Преобразование `NiAVObject`/`NiTransform` из девяти `f32` в порядке файла. Та же формула,
-/// что у `tes3::nif` (`(rotation · scale)ᵀ`): сериализация матрицы у 20.0.0.4 и 4.0.0.2 одна.
+/// A `NiAVObject`/`NiTransform` transform from nine `f32` in file order. The same formula as in
+/// `tes3::nif` (`(rotation · scale)ᵀ`): the matrix serialization is the same in 20.0.0.4 and
+/// 4.0.0.2.
 fn affine(rotation: &[f32; 9], translation: [f32; 3], scale: f32) -> Affine3A {
     Affine3A {
         matrix3: (Mat3::from_cols_array(rotation) * scale).transpose().into(),
@@ -236,7 +242,7 @@ pub(crate) fn skin_affine(t: &SkinTransform) -> Affine3A {
     affine(&t.rotation, t.translation, t.scale)
 }
 
-/// `NiAVObject` Morrowind с жёстким преобразованием `t` (поворот без масштаба).
+/// A Morrowind `NiAVObject` with a rigid transform `t` (rotation without scale).
 fn av_with(name: &str, t: Affine3A, properties: Vec<NiLink<NiProperty>>) -> NiAVObject {
     NiAVObject {
         base: NiObjectNET {
@@ -251,8 +257,8 @@ fn av_with(name: &str, t: Affine3A, properties: Vec<NiLink<NiProperty>>) -> NiAV
     }
 }
 
-/// Перенос кости Oblivion на кость Morrowind: вершина → `матрица · v + сдвиг`; `rotation` —
-/// та же ориентация без растяжения, для нормалей.
+/// Moving an Oblivion bone onto a Morrowind bone: vertex → `matrix · v + offset`; `rotation` is the
+/// same orientation without the stretch, for normals.
 #[derive(Debug, Clone, Copy)]
 struct Retarget {
     transform: Affine3A,
@@ -266,8 +272,8 @@ impl Retarget {
     };
 }
 
-/// Переносы для всех костей цели. `joints` — мировые позиции суставов Oblivion по имени (нижний
-/// регистр). Кость без сустава в меше берёт перенос родителя.
+/// Retargets for all target bones. `joints` are the world positions of Oblivion joints by name
+/// (lower case). A bone without a joint in the mesh takes its parent's retarget.
 fn retargets(target: &TargetSkeleton, joints: &HashMap<String, Vec3A>) -> Vec<Retarget> {
     let mut out: Vec<Retarget> = Vec::with_capacity(target.bones.len());
     for (j, bone) in target.bones.iter().enumerate() {
@@ -276,7 +282,7 @@ fn retargets(target: &TargetSkeleton, joints: &HashMap<String, Vec3A>) -> Vec<Re
             continue;
         };
         let p_m = bone.world.translation;
-        // Направление кости — к единственному дочернему суставу той же стороны.
+        // The bone's direction is toward the only child joint of the same side.
         let children: Vec<usize> = target
             .children(j)
             .filter(|&c| side(&target.bones[c].name) == side(&bone.name))
@@ -315,13 +321,13 @@ fn retargets(target: &TargetSkeleton, joints: &HashMap<String, Vec3A>) -> Vec<Re
     out
 }
 
-/// Узел или форма источника с мировой позой и родителем.
+/// A source node or shape with its world pose and parent.
 pub(crate) struct Placed {
     pub(crate) world: Affine3A,
     pub(crate) parent: Option<usize>,
 }
 
-/// Обходит дерево от корней: мировые позы узлов и форм, родители.
+/// Walks the tree from the roots: world poses of nodes and shapes, parents.
 pub(crate) fn place(source: &SourceNif) -> Result<BTreeMap<usize, Placed>, ConvertError> {
     let mut out = BTreeMap::new();
     let mut stack: Vec<(usize, Option<usize>, Affine3A)> = Vec::new();
@@ -339,7 +345,8 @@ pub(crate) fn place(source: &SourceNif) -> Result<BTreeMap<usize, Placed>, Conve
         let (av, children): (&AvObject, &[BlockRef]) = match source.blocks.get(index) {
             Some(Block::Node(n)) => (&n.av, &n.children),
             Some(Block::TriStrips(s) | Block::TriShape(s)) => (&s.av, &[]),
-            // Выброшенный ребёнок — система частиц или свет (T2.3, T2.3b): костей под ним нет.
+            // A dropped child is a particle system or a light (T2.3, T2.3b): there are no bones
+            // under it.
             Some(Block::Ignored(_)) => continue,
             Some(_) => {
                 return Err(ConvertError::UnexpectedBlock {
@@ -356,7 +363,8 @@ pub(crate) fn place(source: &SourceNif) -> Result<BTreeMap<usize, Placed>, Conve
         };
         let world = parent_world * av_affine(av);
         out.insert(index, Placed { world, parent });
-        // Пустая ссылка (−1) в списке детей допустима: так экспортёр оставляет удалённый узел.
+        // An empty reference (−1) in the child list is allowed: this is how an exporter leaves a
+        // deleted node.
         for c in children.iter().filter_map(|r| r.index()) {
             stack.push((c, Some(index), world));
         }
@@ -372,14 +380,15 @@ pub(crate) fn block_name(source: &SourceNif, index: usize) -> Option<&str> {
     }
 }
 
-/// Кость цели для узла источника: сам узел, если он есть в скелете, иначе ближайший предок
-/// кроме корня; не нашлось — [`biped_fallback`]; и это не помогло — корень. Второе значение —
-/// «вес отдан другой кости».
+/// The target bone for a source node: the node itself if it is in the skeleton, otherwise the
+/// nearest ancestor other than the root; if none is found — [`biped_fallback`]; if that does not
+/// help either — the root. The second value is "the weight went to another bone".
 ///
-/// Подъём до корня не принимается как ответ: экспортёры (Blender) пишут кости брони плоским
-/// списком под `Scene Root`, и тогда у скрутки `Bip01 L UpperArmTwist` «предок» — сам корень.
-/// Вес на корне не ретаргетится к плечу и не ходит за рукой — так наплечники брони Black Knife
-/// съезжали вниз (2026-09-25, `black knife a.nif`: 16 костей, все дети `Scene Root`).
+/// Climbing up to the root is not accepted as an answer: exporters (Blender) write armor bones as a
+/// flat list under `Scene Root`, and then the "ancestor" of the `Bip01 L UpperArmTwist` twist is
+/// the root itself. Weight on the root is not retargeted to the shoulder and does not follow the
+/// arm — this is how the Black Knife armor's pauldrons slid down (2026-09-25, `black knife a.nif`:
+/// 16 bones, all children of `Scene Root`).
 fn map_bone(
     source: &SourceNif,
     placed: &BTreeMap<usize, Placed>,
@@ -405,11 +414,11 @@ fn map_bone(
     (fallback.unwrap_or(0), true)
 }
 
-/// Кость цели для кости Biped, которой нет в скелете Morrowind и чей предок в меше не найден.
-/// Сначала по имени: у Biped дополнительная кость называется по кости-хозяину с суффиксом
-/// (`UpperArmTwist` → `UpperArm`, `Neck1` → `Neck`, `Finger02` → `Finger0`) — берётся самое
-/// длинное имя цели, с которого начинается имя кости. Иначе (`Toe0`, `Finger31`) — ближайший по
-/// позе привязки источника сустав той же стороны. Узлы не из Biped (`Scene Root`) — `None`.
+/// The target bone for a Biped bone that is not in the Morrowind skeleton and whose ancestor was
+/// not found in the mesh. First by name: in Biped an extra bone is named after its host bone with a
+/// suffix (`UpperArmTwist` → `UpperArm`, `Neck1` → `Neck`, `Finger02` → `Finger0`) — the longest
+/// target name that the bone name starts with is taken. Otherwise (`Toe0`, `Finger31`) — the joint
+/// of the same side nearest by the source bind pose. Non-Biped nodes (`Scene Root`) give `None`.
 fn biped_fallback(
     target: &TargetSkeleton,
     joints: &HashMap<String, Vec3A>,
@@ -443,7 +452,7 @@ fn biped_fallback(
         .map(|(i, _)| i)
 }
 
-/// Меш со скиннингом (или жёсткий меш, сидящий на костях) → поток Morrowind на скелете `target`.
+/// A skinned mesh (or a rigid mesh sitting on bones) → a Morrowind stream on skeleton `target`.
 pub fn convert_skinned(
     source: &SourceNif,
     registry: &mut TextureRegistry,
@@ -466,7 +475,7 @@ pub fn convert_skinned(
     let root_inverse = root_world.inverse();
 
     let mut ctx = Context::new(source, registry);
-    // Скелет: узлы в позе привязки, родитель вставляется раньше детей.
+    // Skeleton: nodes in the bind pose, a parent is inserted before its children.
     let mut bone_links: Vec<NiLink<NiNode>> = Vec::with_capacity(target.bones.len());
     for bone in &target.bones {
         let parent_world = bone
@@ -512,11 +521,11 @@ pub fn convert_skinned(
             index,
             shape,
         )?;
-        // Форма — ребёнок `Bip01`, а не сосед: так лежат скиннинговые формы во всех 168
-        // скиннинговых частях тела `Morrowind.bsa` (под `Bip01` или под узлом внутри него —
-        // `Chest`, `Right Hand`), ни одной рядом с `Bip01` (2026-09-25). С формами-соседями
-        // кирасы и перчатки были невидимы в игре при верных именах `Tri …` (2026-09-25); что
-        // причина именно в этом — **не проверено**, это единственное найденное отличие от ванили.
+        // The shape is a child of `Bip01`, not a sibling: this is how skinned shapes lie in all 168
+        // skinned body parts of `Morrowind.bsa` (under `Bip01` or under a node inside it — `Chest`,
+        // `Right Hand`), none next to `Bip01` (2026-09-25). With sibling shapes, cuirasses and
+        // gauntlets were invisible in the game even with correct `Tri …` names (2026-09-25); that
+        // this was the cause is **not verified** — it is the only difference from vanilla found.
         if let Some(bip) = ctx.stream.get_mut(bone_links[0]) {
             bip.children.push(link.cast());
         }
@@ -542,11 +551,11 @@ pub fn convert_skinned(
     })
 }
 
-/// Веса вершин формы по костям цели и позиции/нормали вершин в пространстве персонажа.
+/// Shape vertex weights by target bone and vertex positions/normals in character space.
 struct Bound {
     positions: Vec<Vec3A>,
     normals: Vec<Vec3A>,
-    /// На вершину: (кость цели, вес), сумма весов 1.
+    /// Per vertex: (target bone, weight), the weights sum to 1.
     weights: Vec<Vec<(usize, f32)>>,
 }
 
@@ -611,7 +620,7 @@ fn bind_shape(
             }
         }
     }
-    // Жёсткая форма или вершины без весов: целиком на ближайшую кость-предка.
+    // A rigid shape or vertices without weights: entirely on the nearest ancestor bone.
     let (rigid_bone, _) = map_bone(source, placed, target, joints, placed[&index].parent);
     for k in 0..n {
         let total: f32 = weights[k].iter().map(|(_, w)| w).sum();
@@ -640,7 +649,7 @@ fn bind_shape(
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "общее состояние одного прогона; отдельная структура дублировала бы Context"
+    reason = "shared state of one run; a separate struct would duplicate Context"
 )]
 fn convert_shape(
     ctx: &mut Context<'_, '_>,
@@ -667,7 +676,7 @@ fn convert_shape(
     };
     let bound = bind_shape(ctx, placed, target, joints, index, shape, data)?;
 
-    // Ретаргетинг и перевод в пространство `Bip01`.
+    // Retargeting and conversion into `Bip01` space.
     let mut vertices = Vec::with_capacity(bound.positions.len());
     let mut normals = Vec::with_capacity(bound.normals.len());
     for (k, (p, weights)) in bound.positions.iter().zip(&bound.weights).enumerate() {
@@ -687,7 +696,7 @@ fn convert_shape(
         }
     }
 
-    // Свойства: свои, затем унаследованные от узлов-предков.
+    // Properties: its own, then those inherited from ancestor nodes.
     let mut refs = shape.av.properties.clone();
     let mut up = placed[&index].parent;
     while let Some(i) = up {
@@ -708,10 +717,10 @@ fn convert_shape(
     ctx.stats.degenerate += counts.degenerate;
     ctx.stats.triangles += shape_out.triangles.len();
 
-    // Кости формы: только те, у которых есть веса.
+    // The shape's bones: only those that have weights.
     let mut per_bone: BTreeMap<usize, Vec<(u16, f32)>> = BTreeMap::new();
     for (k, weights) in bound.weights.iter().enumerate() {
-        let k = u16::try_from(k).expect("число вершин NiTriStripsData — u16");
+        let k = u16::try_from(k).expect("NiTriStripsData vertex count is u16");
         for &(b, w) in weights {
             per_bone.entry(b).or_default().push((k, w));
         }
@@ -747,7 +756,7 @@ fn convert_shape(
     });
     let data_link = ctx.stream.insert(shape_out);
     let geometry = NiGeometry {
-        // Под `Bip01`: локально — единица, в мире форма там же, где `Bip01`.
+        // Under `Bip01`: identity locally, in the world the shape is where `Bip01` is.
         base: av_with(&shape.av.net.name, Affine3A::IDENTITY, properties),
         geometry_data: data_link.cast::<NiGeometryData>(),
         skin_instance: skin,
@@ -757,25 +766,25 @@ fn convert_shape(
     }))
 }
 
-/// Сторона тела.
+/// Body side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
 }
 
-/// Оставляет в сконвертированном меше треугольники одной стороны: у Morrowind перчатки — две
-/// вещи (левая и правая), а у обуви у каждой ступни своя часть тела, тогда как Oblivion кладёт
-/// обе руки или ноги в один меш. Сторона вершины — сторона её самой тяжёлой кости
-/// (`Bip01 L …`/`Bip01 R …`), сторона треугольника — большинство его вершин; треугольник на
-/// костях середины остаётся в обеих половинах. Возвращает, сколько треугольников осталось.
+/// Keeps the triangles of one side in the converted mesh: in Morrowind gauntlets are two items
+/// (left and right), and shoes have a separate body part for each foot, while Oblivion puts both
+/// hands or feet into one mesh. A vertex's side is the side of its heaviest bone
+/// (`Bip01 L …`/`Bip01 R …`), a triangle's side is the majority of its vertices; a triangle on
+/// middle bones stays in both halves. Returns how many triangles remain.
 pub fn keep_side(stream: &mut NiStream, side: Side) -> usize {
     let wanted = match side {
         Side::Left => 'L',
         Side::Right => 'R',
     };
-    // Сначала читаем стороны вершин, потом правим треугольники: у потока нельзя держать
-    // изменяемую и неизменяемую ссылку сразу.
+    // First read the vertex sides, then edit the triangles: a stream cannot hold a mutable and an
+    // immutable reference at the same time.
     let mut plans: Vec<(NiLink<NiGeometryData>, Vec<Option<char>>)> = Vec::new();
     for shape in stream.objects_of_type::<NiTriShape>() {
         let geometry = &shape.base.base;
@@ -828,7 +837,7 @@ pub fn keep_side(stream: &mut NiStream, side: Side) -> usize {
     kept
 }
 
-/// Базовая текстура формы — имя файла в нижнем регистре; `None` — текстуры нет.
+/// The shape's base texture — the file name in lower case; `None` means no texture.
 fn base_texture(stream: &NiStream, shape: &NiTriShape) -> Option<String> {
     use tes3::nif::{NiProperty, NiTexturingProperty, TextureMap, TextureSource};
     shape.base.base.base.properties.iter().find_map(|link| {
@@ -843,17 +852,17 @@ fn base_texture(stream: &NiStream, shape: &NiTriShape) -> Option<String> {
     })
 }
 
-/// Выбрасывает из форм с текстурой из `skin_textures` (имена файлов в нижнем регистре)
-/// треугольники, чья главная кость не проходит `keep`. Возвращает главные кости выброшенных
-/// вершин — по ним видно, какие места тела открылись.
+/// Drops, from shapes with a texture from `skin_textures` (file names in lower case), the triangles
+/// whose main bone does not pass `keep`. Returns the main bones of the dropped vertices — they show
+/// which body areas became exposed.
 ///
-/// Зачем (решение владельца 2026-09-30): Oblivion кладёт в меш брони и одежды куски тела с
-/// текстурой имперской кожи и на лету подменяет её кожей расы носящего; Morrowind так не умеет, и
-/// у тёмной соблазнительницы живот выходил человеческим, у аргонианки — руки. Без этих кусков
-/// там видно ванильное тело нужной расы. `keep` оставляет кожу на собственном слоте вещи: там
-/// движок тело прячет, и без куска была бы дыра. Главная кость вершины и большинство вершин
-/// треугольника — как в [`keep_side`]. Форма, у которой не осталось ни одного треугольника,
-/// убирается из меша совсем.
+/// Why (owner's decision 2026-09-30): Oblivion puts pieces of the body with the Imperial skin
+/// texture into armor and clothing meshes and swaps it on the fly for the wearer's race skin;
+/// Morrowind cannot do that, and the Dark Seducer's belly came out human, the Argonian woman's arms
+/// too. Without these pieces the vanilla body of the right race shows there. `keep` leaves the skin
+/// on the item's own slot: the engine hides the body there, and without the piece there would be a
+/// hole. The vertex's main bone and the triangle majority are as in [`keep_side`]. A shape left
+/// with no triangles at all is removed from the mesh entirely.
 pub fn drop_skin(
     stream: &mut NiStream,
     skin_textures: &BTreeSet<String>,
@@ -925,36 +934,37 @@ pub fn drop_skin(
         for node in stream.objects_of_type_mut::<NiNode>() {
             node.children.retain(|c| !emptied.contains(&c.key));
         }
-        // Отцепленная форма должна исчезнуть из потока совсем: иначе [`name_shapes`] даст ей
-        // номер, и у оставшихся не будет `Tri <узел> 0`. Движок ищет части по номерам с нуля и
-        // без нулевой не находит ни одной — «Not able to find Chest part» у 8 частей тела
-        // `SEWorld`, где первой формой была кожа (игра, 2026-09-30); у ванильной кирасы формы
-        // `Tri Chest 0`, `1`, `2` подряд.
+        // A detached shape must disappear from the stream entirely: otherwise [`name_shapes`] would
+        // give it a number, and the remaining ones would have no `Tri <node> 0`. The engine looks
+        // up parts by numbers from zero and without the zero finds none — "Not able to find Chest
+        // part" for 8 body parts of `SEWorld` where the first shape was skin (game, 2026-09-30);
+        // the vanilla cuirass has shapes `Tri Chest 0`, `1`, `2` in a row.
         stream.retain_reachable();
     }
     dropped
 }
 
-/// Даёт всем формам имя `Tri <узел> <n>`. Надетую скиннинговую часть тела Morrowind (и OpenMW,
-/// `CopyRigVisitor`) рисует только из форм, чьё имя начинается с `tri ` и имени узла слота из
-/// `base_anim.nif` (`Chest`, `Groin`, `Head`, `Right Hand`, …); форму с любым другим именем
-/// движок молча выбрасывает, и вещь на теле невидима. Ванильные меши так и названы: из
-/// скиннинговых частей тела `Morrowind.bsa` у груди 509 форм `Tri Chest`, у кистей 130
-/// `Tri Right Hand` и 110 `Tri Left Hand` (2026-09-25). Oblivion имени не требует, поэтому
-/// исходное имя (`Mesh_0001`) переносить нельзя.
+/// Gives every shape the name `Tri <node> <n>`. Morrowind (and OpenMW, `CopyRigVisitor`) draws a
+/// worn skinned body part only from shapes whose name starts with `tri ` and the slot node name
+/// from `base_anim.nif` (`Chest`, `Groin`, `Head`, `Right Hand`, …); a shape with any other name is
+/// silently dropped by the engine, and the item on the body is invisible. Vanilla meshes are named
+/// exactly this way: among the skinned body parts of `Morrowind.bsa` the chest has 509 `Tri Chest`
+/// shapes, the hands 130 `Tri Right Hand` and 110 `Tri Left Hand` (2026-09-25). Oblivion does not
+/// require the name, so the original name (`Mesh_0001`) must not be carried over.
 pub fn name_shapes(stream: &mut NiStream, node: &str) {
     for (n, shape) in stream.objects_of_type_mut::<NiTriShape>().enumerate() {
         shape.base.base.base.base.name = format!("Tri {node} {n}");
     }
 }
 
-/// Скиннинг на мировом объекте (паруса, флаги, цепи; T2.3b): скелета персонажа нет, поэтому
-/// вершины запекаются в позу файла: `данные · Σ вес · кость · обратная поза · v`, где «данные» —
-/// общее преобразование `NiSkinData`. Форма становится жёсткой, скин
-/// выбрасывается; кости остаются пустыми узлами. Как и анимация, движение теряется — меш
-/// стоит так, как стоит в файле.
+/// Skinning on a world object (sails, flags, chains; T2.3b): there is no character skeleton, so the
+/// vertices are baked into the file's pose: `data · Σ weight · bone · inverse pose · v`, where
+/// "data" is the overall `NiSkinData` transform. The shape becomes rigid, the skin is dropped; the
+/// bones remain as empty nodes. As with animation, the motion is lost — the mesh stands as it
+/// stands in the file.
 ///
-/// Вершина без весов остаётся на месте. Тангенты не пересчитываются: в выход они не идут.
+/// A vertex without weights stays in place. Tangents are not recomputed: they do not go into the
+/// output.
 pub(crate) fn bake_file_pose(
     source: &SourceNif,
     index: usize,
@@ -1004,9 +1014,10 @@ pub(crate) fn bake_file_pose(
             totals[k] += w;
         }
     }
-    // Сумма по костям лежит в пространстве над корнем сцены; в пространство формы её
-    // возвращает общее преобразование `NiSkinData` (формула OpenMW, см. начало модуля), а не
-    // обратная поза самой формы: у флага `shipflag01.nif` они расходятся на 7.4 по X.
+    // The sum over bones lies in the space above the scene root; it is brought back into shape
+    // space by the overall `NiSkinData` transform (the OpenMW formula, see the start of the
+    // module), not by the shape's own inverse pose: for the flag `shipflag01.nif` they differ by
+    // 7.4 in X.
     let to_shape = skin_affine(&skin_data.transform);
     let mut baked = data.clone();
     for k in 0..n {
@@ -1026,14 +1037,14 @@ pub(crate) fn bake_file_pose(
     Ok(baked)
 }
 
-/// Ограничивающая сфера: центр — среднее точек, радиус — до самой дальней.
+/// Bounding sphere: the center is the average of the points, the radius reaches the farthest one.
 pub(crate) fn bound_of(points: &[Vec3]) -> NiBound {
     if points.is_empty() {
         return NiBound::default();
     }
     #[expect(
         clippy::cast_precision_loss,
-        reason = "число вершин меньше 65 536 и точно представимо во f32"
+        reason = "the vertex count is below 65,536 and exactly representable in f32"
     )]
     let count = points.len() as f32;
     let center = points.iter().copied().sum::<Vec3>() / count;

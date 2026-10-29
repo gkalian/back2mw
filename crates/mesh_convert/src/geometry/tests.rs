@@ -51,7 +51,7 @@ fn shape(name: &str, data: u32) -> Block {
     })
 }
 
-/// Данные формы: `vertices` вершин, заданные полосы и `uv_sets` наборов UV.
+/// Shape data: `vertices` vertices, the given strips and `uv_sets` UV sets.
 fn strips_data(strips: Vec<Vec<u16>>, vertices: usize, uv_sets: usize) -> Block {
     Block::TriStripsData(Box::new(NiTriStripsData {
         group_id: 0,
@@ -87,7 +87,7 @@ fn nif(blocks: Vec<Block>, roots: &[u32]) -> SourceNif {
     }
 }
 
-/// Узел с одной формой: типичный меш статики.
+/// A node with one shape: a typical static mesh.
 fn simple(strips: Vec<Vec<u16>>, vertices: usize, uv_sets: usize) -> SourceNif {
     nif(
         vec![
@@ -108,7 +108,7 @@ fn strip_becomes_triangles_with_alternating_winding() {
 
 #[test]
 fn degenerate_triangles_are_dropped_but_parity_follows_the_strip() {
-    // (0,1,2) годен, (1,2,2) и (2,2,3) вырождены, (2,3,4) — i = 3, нечётный
+    // (0,1,2) is valid, (1,2,2) and (2,2,3) are degenerate, (2,3,4) has i = 3, odd
     let strips = [vec![0, 1, 2, 2, 3, 4]];
     let (tris, degenerate) = strips_to_triangles(&strips);
     assert_eq!(tris, [[0, 1, 2], [3, 2, 4]]);
@@ -168,7 +168,7 @@ fn converts_a_node_with_a_shape_and_reads_back() {
     assert_eq!(geometry.vertex_colors.len(), 4);
     assert_eq!(geometry.bound.radius, 1.5);
     assert_eq!(data[0].triangles, [[0, 1, 2], [2, 1, 3], [2, 3, 0]]);
-    // из двух наборов UV остался только первый
+    // of the two UV sets only the first remained
     assert_eq!(geometry.num_uv_sets(), 1);
     assert_eq!(geometry.uv_set(0).unwrap()[0].to_array(), [0.0, 0.5]);
 }
@@ -207,13 +207,14 @@ fn rotation_bytes_are_copied_verbatim() {
         .collect();
     assert!(
         bytes.windows(expected.len()).any(|w| w == expected),
-        "девять чисел поворота не легли в файл теми же байтами в том же порядке"
+        "the nine rotation numbers did not land in the file as the same bytes in the same order"
     );
 }
 
 #[test]
 fn node_names_starting_with_collision_are_guarded() {
-    // `CollisionBox01` Oblivion: корень с таким именем роняет Construction Set (`crate::node_name`).
+    // Oblivion's `CollisionBox01`: a root with this name crashes the Construction Set
+    // (`crate::node_name`).
     let source = nif(
         vec![
             node("CollisionBox01", &[1, 2]),
@@ -233,7 +234,7 @@ fn node_names_starting_with_collision_are_guarded() {
         names,
         ["ob_Collision:0", "ob_CollisionBox01", "ob_collisionInner"]
     );
-    // Контроль: обычные имена остаются как были.
+    // Control: ordinary names stay as they were.
     let plain = nif(vec![node("Root", &[])], &[0]);
     let back = NiStream::from_bytes(&convert(&plain).unwrap().save_bytes().unwrap()).unwrap();
     assert_eq!(
@@ -283,7 +284,7 @@ fn editor_markers_are_dropped_with_their_subtree() {
     assert_eq!(converted.stats.dropped_editor_markers, 2);
     let back = NiStream::from_bytes(&converted.save_bytes().unwrap()).unwrap();
     let root = back.roots_of_type::<NiNode>().next().unwrap();
-    assert_eq!(root.children.len(), 1, "осталась только стена");
+    assert_eq!(root.children.len(), 1, "only the wall remained");
     assert_eq!(back.objects_of_type::<NiTriShape>().count(), 1);
 }
 
@@ -373,7 +374,7 @@ fn shape_data_must_be_strips_data() {
     ));
 }
 
-/// Полоса `0,1,2,0,1,2…`: все тройки различны, вырожденных нет.
+/// Strip `0,1,2,0,1,2…`: all triples differ, there are no degenerate ones.
 fn cycling_strip(points: u32) -> Vec<u16> {
     (0..points).map(|i| u16::try_from(i % 3).unwrap()).collect()
 }
@@ -404,13 +405,13 @@ fn exactly_65535_triangles_fit() {
 fn a_name_outside_cp1252_is_an_error_on_save_not_a_silent_replacement() {
     let mut source = nif(vec![node("R", &[])], &[0]);
     if let Block::Node(n) = &mut source.blocks[0] {
-        n.av.net.name = "Крыша".to_owned();
+        n.av.net.name = "Roof Ω".to_owned();
     }
     let mut converted = convert(&source).unwrap();
     assert!(converted.save_bytes().is_err());
 }
 
-// --- Свойства (T1.5) ---------------------------------------------------------------
+// --- Properties (T1.5) ---------------------------------------------------------------
 
 use crate::read::properties::TexDesc;
 use crate::read::{
@@ -493,10 +494,9 @@ fn texture_block(file: &str) -> Block {
     })
 }
 
-/// Два узла-формы, делящие материал; у первой ещё текстура и альфа.
+/// Two shape nodes sharing a material; the first one also has a texture and alpha.
 ///
-/// 0 корень, 1 форма A, 2 данные A, 3 текстурирование, 4 материал, 5 альфа, 6 текстура,
-/// 7 форма B, 8 данные B.
+/// 0 root, 1 shape A, 2 data A, 3 texturing, 4 material, 5 alpha, 6 texture, 7 shape B, 8 data B.
 fn with_properties(uv_set: u32, glow_uv: Option<u32>) -> SourceNif {
     nif(
         vec![
@@ -521,7 +521,7 @@ fn properties_are_converted_linked_and_shared() {
     assert_eq!(
         (s.shapes, s.properties, s.textures),
         (2, 3, 1),
-        "материал общий и конвертируется один раз"
+        "the material is shared and converted once"
     );
     let back = NiStream::from_bytes(&converted.save_bytes().unwrap()).unwrap();
     assert_eq!(back.objects_of_type::<NiMaterialProperty>().count(), 1);
@@ -548,7 +548,7 @@ fn properties_are_converted_linked_and_shared() {
     assert_eq!(shapes[1].base.base.base.properties.len(), 1);
     assert_eq!(
         shapes[0].base.base.base.properties[1], shapes[1].base.base.base.properties[0],
-        "общий материал остался общим"
+        "the shared material stayed shared"
     );
 }
 
@@ -558,7 +558,7 @@ fn the_uv_set_of_the_base_texture_is_the_one_kept() {
     assert_eq!(converted.stats.uv_set_switched, 1);
     let back = NiStream::from_bytes(&converted.save_bytes().unwrap()).unwrap();
     let data: Vec<_> = back.objects_of_type::<NiTriShapeData>().collect();
-    // В данных набор `s` состоит из точек с u = s; форма A выбрала набор 1, форма B — 0.
+    // In the data, set `s` consists of points with u = s; shape A chose set 1, shape B set 0.
     assert_eq!(data[0].base.base.uv_sets[0].x, 1.0);
     assert_eq!(data[1].base.base.uv_sets[0].x, 0.0);
 }
@@ -622,9 +622,9 @@ fn properties_on_nodes_are_converted_too() {
     assert_eq!(root.base.properties.len(), 1);
 }
 
-// --- Текстуры (T1.6) ---------------------------------------------------------------
+// --- Textures (T1.6) -----------------------------------------------------------------
 
-/// Меш с одной формой, у которой одна base-текстура с данным путём.
+/// A mesh with one shape that has one base texture with the given path.
 fn with_texture(path: &str) -> SourceNif {
     nif(
         vec![
@@ -645,7 +645,7 @@ fn a_texture_shared_by_two_slots_is_copied_once() {
             node("R", &[1]),
             shape_with("A", 2, &[3]),
             strips_data(vec![vec![0, 1, 2]], 3, 1),
-            // base и glow ссылаются на один и тот же блок текстуры
+            // base and glow reference the same texture block
             texturing(4, 0, Some(0)),
             texture_block("textures/a/b.dds"),
         ],
@@ -681,8 +681,8 @@ fn a_separate_registry_per_call_does_not_see_other_meshes() {
 
 #[test]
 fn a_normal_map_in_a_kept_slot_is_an_error() {
-    // Ребёнок узла с такой текстурой выбрасывается как искажение (T2.3b), поэтому форма здесь —
-    // сам корень: его не выбросить, и ошибка остаётся.
+    // A node's child with such a texture is dropped as distortion (T2.3b), so the shape here is the
+    // root itself: it cannot be dropped, and the error remains.
     let source = nif(
         vec![
             shape_with("A", 1, &[2]),
@@ -717,7 +717,7 @@ fn an_internal_texture_is_an_error_before_its_name_is_looked_at() {
     );
 }
 
-// --- Коллизия (T1.7) ---------------------------------------------------------------
+// --- Collision (T1.7) ----------------------------------------------------------------
 
 use crate::read::havok::{
     BhkCollisionObject, BhkMoppBvTreeShape, BhkNiTriStripsShape, BhkRigidBody, HavokFilter,
@@ -767,9 +767,9 @@ fn mopp(shape: u32) -> Block {
 
 const IDENTITY_Q: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
-/// Меш с коллизией у корня. 0 корень, 1 форма, 2 её данные, 3 объект коллизии, 4 тело;
-/// без `mopp`: 5 форма коллизии, 6 её данные; с `mopp`: 5 `mopp`, 6 форма, 7 данные.
-/// Данные коллизии — одна полоса из четырёх вершин (квадрат со стороной 1 в плоскости XY).
+/// A mesh with collision at the root. 0 root, 1 shape, 2 its data, 3 collision object, 4 body;
+/// without `mopp`: 5 collision shape, 6 its data; with `mopp`: 5 `mopp`, 6 shape, 7 data. The
+/// collision data is one strip of four vertices (a square with side 1 in the XY plane).
 fn with_collision(
     through_mopp: bool,
     translated: bool,
@@ -814,7 +814,7 @@ fn collision_data() -> Block {
     Block::TriStripsData(d)
 }
 
-/// Вершины форм под `RootCollisionNode` и число таких узлов в файле.
+/// Vertices of the shapes under `RootCollisionNode` and the number of such nodes in the file.
 fn collision_vertices(converted: &mut Converted) -> (Vec<Vec<[f32; 3]>>, usize) {
     let back = NiStream::from_bytes(&converted.save_bytes().unwrap()).unwrap();
     let nodes = back.objects_of_type::<RootCollisionNode>().count();
@@ -888,7 +888,7 @@ fn a_translated_body_shifts_by_seven_times_its_translation() {
 
 #[test]
 fn a_translated_body_rotates_before_it_shifts() {
-    // Поворот на 90° вокруг Z: (x, y) → (−y, x); масштаб — до поворота, сдвиг — после.
+    // A 90° rotation around Z: (x, y) → (−y, x); scale before the rotation, translation after.
     let half = std::f32::consts::FRAC_1_SQRT_2;
     let mut converted = convert(&with_collision(
         false,
@@ -898,7 +898,7 @@ fn a_translated_body_rotates_before_it_shifts() {
     ))
     .unwrap();
     let (shapes, _) = collision_vertices(&mut converted);
-    // вершина (1, 0, 0) → ×7 → (7, 0, 0) → поворот → (0, 7, 0) → +(7, 0, 0) = (7, 7, 0)
+    // vertex (1, 0, 0) → ×7 → (7, 0, 0) → rotation → (0, 7, 0) → +(7, 0, 0) = (7, 7, 0)
     assert_close(&shapes[0][1..2], &[[7.0, 7.0, 0.0]]);
 }
 
@@ -920,7 +920,7 @@ fn a_mesh_without_collision_gets_no_collision_node() {
 #[test]
 fn collision_on_a_non_root_node_is_counted_not_converted() {
     let mut source = with_collision(false, false, [0.0; 3], IDENTITY_Q);
-    // Снимаем коллизию с корня и вешаем на форму.
+    // Take the collision off the root and hang it on the shape.
     if let Block::Node(n) = &mut source.blocks[0] {
         n.av.collision_object = BlockRef::NONE;
     }
@@ -935,7 +935,7 @@ fn collision_on_a_non_root_node_is_counted_not_converted() {
 #[test]
 fn a_collision_chain_with_a_wrong_block_is_an_error() {
     let mut source = with_collision(false, false, [0.0; 3], IDENTITY_Q);
-    // Тело ссылается на данные вместо формы.
+    // The body references the data instead of the shape.
     source.blocks[4] = rigid_body(2, false, [0.0; 3], IDENTITY_Q);
     assert!(matches!(
         convert(&source).unwrap_err(),
@@ -955,7 +955,7 @@ fn a_collision_index_outside_the_vertices_is_an_error() {
     ));
 }
 
-// --- Другие формы коллизии (T1.3w) --------------------------------------------------
+// --- Other collision shapes (T1.3w) --------------------------------------------------
 
 use crate::read::shapes::{BhkBoxShape, BhkListShape, BhkTransformShape, ConvexBase};
 
@@ -969,8 +969,8 @@ fn box_shape(half: [f32; 3]) -> Block {
     })
 }
 
-/// Коллизия у корня из произвольных блоков формы: 0 корень, 1 форма, 2 данные, 3 объект,
-/// 4 тело (с формой 5), дальше — `shapes` начиная с индекса 5.
+/// Collision at the root from arbitrary shape blocks: 0 root, 1 shape, 2 data, 3 object, 4 body
+/// (with shape 5), then `shapes` starting at index 5.
 fn with_shapes(shapes: Vec<Block>) -> SourceNif {
     let mut source = with_collision(false, false, [0.0; 3], IDENTITY_Q);
     source.blocks.truncate(5);
@@ -991,9 +991,9 @@ fn a_box_becomes_a_scaled_box_mesh() {
 fn a_list_gives_one_output_shape_per_child_and_a_transform_moves_its_subtree() {
     let mut matrix = [0.0f32; 16];
     for i in 0..4 {
-        matrix[i * 5] = 1.0; // единичная
+        matrix[i * 5] = 1.0; // identity
     }
-    matrix[12] = 10.0; // сдвиг по x в четвёртом столбце
+    matrix[12] = 10.0; // x translation in the fourth column
     let list = Block::ListShape(BhkListShape {
         shapes: vec![BlockRef(Some(6)), BlockRef(Some(7))],
     });
@@ -1015,7 +1015,7 @@ fn a_list_gives_one_output_shape_per_child_and_a_transform_moves_its_subtree() {
     assert_eq!(
         min_x(&shapes[1]),
         63.0,
-        "сдвиг 10 havok-юнитов = 70 игровых, минус полуразмер 7"
+        "a shift of 10 havok units = 70 game units, minus the half-size 7"
     );
 }
 
@@ -1086,7 +1086,7 @@ fn a_tri_shape_with_ready_triangles_converts_like_a_strip_shape() {
     assert_eq!(converted.stats.triangles, 2);
     assert_eq!(converted.stats.degenerate, 0);
 
-    // индекс за пределами вершин — ошибка и здесь
+    // an index outside the vertices is an error here too
     if let Block::TriShapeData(d) = &mut source.blocks[2] {
         d.triangles = vec![[0, 1, 9]];
     }
@@ -1096,7 +1096,7 @@ fn a_tri_shape_with_ready_triangles_converts_like_a_strip_shape() {
     ));
 }
 
-// --- Частицы и искажение (T2.3b) ----------------------------------------------------
+// --- Particles and distortion (T2.3b) ------------------------------------------------
 
 #[test]
 fn particle_systems_and_distortion_shapes_are_dropped() {
@@ -1124,15 +1124,15 @@ fn particle_systems_and_distortion_shapes_are_dropped() {
     assert_eq!(
         back.objects_of_type::<NiTriShape>().count(),
         1,
-        "осталась рама"
+        "the frame remained"
     );
     assert_eq!(back.objects_of_type::<NiSourceTexture>().count(), 1);
 }
 
-// --- Частицы → эмиттер Morrowind (T2.7) ---------------------------------------------
+// --- Particles → Morrowind emitter (T2.7) ---------------------------------------------
 
-/// С системами частиц `convert_with_particles` ставит на место системы узел-эмиттер и узел
-/// частиц; без них (`convert_with`) система выбрасывается, как раньше.
+/// With particle systems, `convert_with_particles` puts an emitter node and a particle node in
+/// place of the system; without them (`convert_with`) the system is dropped, as before.
 #[test]
 fn a_particle_system_becomes_a_morrowind_emitter_when_particles_are_given() {
     use crate::particles::Systems;
@@ -1153,7 +1153,7 @@ fn a_particle_system_becomes_a_morrowind_emitter_when_particles_are_given() {
         &[0],
     );
     let mut system_av = av("Fire");
-    // Свойства системы: текстура (переносится) и блок, который частицам не нужен.
+    // The system's properties: a texture (carried over) and a block particles do not need.
     system_av.properties = vec![BlockRef(Some(4))];
     let system = ParticleSystem {
         index: 3,
@@ -1217,17 +1217,17 @@ fn a_particle_system_becomes_a_morrowind_emitter_when_particles_are_given() {
     assert_eq!(
         geometry[0].base.base.base.properties.len(),
         1,
-        "текстура системы перенесена"
+        "the system's texture was carried over"
     );
-    assert_eq!(converted.textures.len(), 1, "и попала в список копирования");
-    // Узел-эмиттер и узел частиц — дети того же узла, что и система.
+    assert_eq!(converted.textures.len(), 1, "and went into the copy list");
+    // The emitter node and the particle node are children of the same node as the system.
     let root = back
         .objects_of_type::<NiNode>()
         .find(|n| n.base.base.name == "Root")
         .unwrap();
-    assert_eq!(root.children.len(), 3, "форма, узел-эмиттер, узел частиц");
+    assert_eq!(root.children.len(), 3, "shape, emitter node, particle node");
 
-    // Без частиц — как раньше: система выброшена.
+    // Without particles — as before: the system is dropped.
     let plain = convert(&source).unwrap();
     assert_eq!(
         (
@@ -1237,7 +1237,7 @@ fn a_particle_system_becomes_a_morrowind_emitter_when_particles_are_given() {
         (0, 1)
     );
 
-    // Система, которую эмиттер Morrowind не выражает (частицы по событию), выбрасывается.
+    // A system the Morrowind emitter cannot express (event particles) is dropped.
     let mut triggered = system;
     triggered.emission.as_mut().unwrap().triggered = true;
     let refused = Systems::from_systems(vec![triggered]);

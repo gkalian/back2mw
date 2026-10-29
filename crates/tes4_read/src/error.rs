@@ -4,44 +4,44 @@ use crate::container::Tag;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Ошибки разбора. Каждая несёт позицию или имя поля: на двоичном формате
-/// сообщение без этого бесполезно.
+/// Parse errors. Each carries a position or a field name: on a binary format a message without one
+/// is useless.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    /// Данные кончились раньше, чем требует структура.
+    /// The data ended earlier than the structure requires.
     Truncated { at: usize, need: usize, have: usize },
-    /// Размер группы меньше её собственного заголовка.
+    /// The group size is smaller than its own header.
     BadGroupSize { at: usize, size: u32 },
-    /// Файл не начинается записью `TES4`.
+    /// The file does not start with a `TES4` record.
     NotAPlugin { found: Tag },
-    /// Распаковка zlib не удалась или дала не тот размер.
+    /// zlib decompression failed or gave the wrong size.
     Decompress { at: usize, detail: String },
-    /// Обязательное поле отсутствует.
+    /// A required field is missing.
     MissingField { record: &'static str, field: Tag },
-    /// Поле есть, но не того размера.
+    /// The field is present but has the wrong size.
     FieldSize {
         record: &'static str,
         field: Tag,
         expected: usize,
         got: usize,
     },
-    /// Поле нужного размера, но значение вне допустимого.
+    /// The field has the right size, but the value is out of range.
     BadValue {
         record: &'static str,
         field: Tag,
         detail: String,
     },
-    /// Запись передана разборщику не своего типа.
+    /// A record was passed to a parser of another type.
     WrongRecord { expected: Tag, got: Tag },
-    /// Файл не является BSA-архивом: первые четыре байта не `BSA\0`.
+    /// The file is not a BSA archive: the first four bytes are not `BSA\0`.
     NotABsa { found: Tag },
-    /// Поддерживается только BSA версии 103; получена другая.
+    /// Only BSA version 103 is supported; a different one was found.
     UnsupportedBsaVersion { version: u32 },
-    /// Ошибка чтения или позиционирования потока. `io::Error` хранится строкой,
-    /// потому что `Error: Clone + PartialEq`.
+    /// A stream read or seek error. `io::Error` is stored as a string because
+    /// `Error: Clone + PartialEq`.
     Io { detail: String },
-    /// Смещение первого блока папок, вычисленное из записей папок, не совпало
-    /// с фактической позицией после их чтения — нарушена целостность индекса.
+    /// The offset of the first folder block computed from the folder records did not match the
+    /// actual position after reading them — the index is inconsistent.
     BadFolderOffset { expected: u64, got: u64 },
 }
 

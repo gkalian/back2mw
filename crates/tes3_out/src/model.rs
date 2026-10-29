@@ -1,30 +1,30 @@
-//! Модель цели: простые структуры без типов `tes3::…` в сигнатурах (решение Р1).
+//! The target model: simple structures without `tes3::…` types in signatures (decision D1).
 
-/// Запись `STAT`: статический объект.
+/// A `STAT` record: a static object.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Static {
-    /// Строковый ID записи (cp1252, регистронезависим).
+    /// The record's string ID (cp1252, case-insensitive).
     pub id: String,
-    /// Путь меша относительно `Meshes\`, разделитель `\`.
+    /// Mesh path relative to `Meshes\`, separator `\`.
     pub mesh: String,
 }
 
-/// Запись `WEAP`: оружие.
+/// A `WEAP` record: a weapon.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Weapon {
     pub id: String,
-    /// `FNAM` — имя в игре.
+    /// `FNAM` — the in-game name.
     pub name: String,
-    /// `MODL` — относительно `Meshes\`. Одна модель и в руке, и на земле.
+    /// `MODL` — relative to `Meshes\`. One model both in the hand and on the ground.
     pub mesh: String,
-    /// `ITEX` — относительно `Icons\`; пусто — без иконки.
+    /// `ITEX` — relative to `Icons\`; empty means no icon.
     pub icon: String,
-    /// `ENAM` — ID зачарования (T9.4); пусто — без зачарования.
+    /// `ENAM` — the enchantment ID (T9.4); empty means no enchantment.
     pub enchantment: String,
     pub stats: WeaponStats,
 }
 
-/// Поля `WPDT`.
+/// `WPDT` fields.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WeaponStats {
     pub kind: WeaponKind,
@@ -33,17 +33,17 @@ pub struct WeaponStats {
     pub health: u16,
     pub speed: f32,
     pub reach: f32,
-    /// Ёмкость зачарования.
+    /// Enchantment capacity.
     pub enchant_capacity: u16,
-    /// Урон (min, max) рубящим, режущим и колющим ударом.
+    /// Damage (min, max) of the chop, slash and thrust attacks.
     pub chop: [u8; 2],
     pub slash: [u8; 2],
     pub thrust: [u8; 2],
-    /// Флаг `WPDT` 0x1 — «игнорирует обычную сопротивляемость оружию».
+    /// `WPDT` flag 0x1 — "ignores normal weapon resistance".
     pub ignores_resistance: bool,
 }
 
-/// Тип оружия Morrowind. Порядок — как в `WPDT` (0…13).
+/// Morrowind weapon type. The order is as in `WPDT` (0…13).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum WeaponKind {
     ShortBladeOneHand,
@@ -62,7 +62,7 @@ pub enum WeaponKind {
     Bolt,
 }
 
-/// Тип брони Morrowind. Порядок — как в `AODT` (0…10).
+/// Morrowind armor type. The order is as in `AODT` (0…10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ArmorKind {
     Helmet,
@@ -78,7 +78,7 @@ pub enum ArmorKind {
     RightBracer,
 }
 
-/// Тип одежды Morrowind. Порядок — как в `CTDT` (0…9).
+/// Morrowind clothing type. The order is as in `CTDT` (0…9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ClothingKind {
     Pants,
@@ -93,27 +93,27 @@ pub enum ClothingKind {
     Amulet,
 }
 
-/// Слот тела, который занимает вещь (`INDX` у `ARMO`/`CLOT`): 0 голова, 1 волосы, 3 грудь,
-/// 4 пах, 6/7 правая/левая кисть, 10 щит, 15/16 правая/левая ступня … 26 хвост — нумерация
-/// Morrowind (`docs/ru/formats/tes3.md`, «Броня и одежда»).
+/// The body slot an item occupies (`INDX` of `ARMO`/`CLOT`): 0 head, 1 hair, 3 chest, 4 groin, 6/7
+/// right/left hand, 10 shield, 15/16 right/left foot … 26 tail — Morrowind numbering
+/// (`docs/en/formats/tes3.md`, "Armor and clothing").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WornPart {
     pub slot: u8,
-    /// ID записи `BODY` для мужчин; пусто — нет.
+    /// ID of the male `BODY` record; empty means none.
     pub male: String,
-    /// ID записи `BODY` для женщин; пусто — берётся мужская.
+    /// ID of the female `BODY` record; empty means the male one is used.
     pub female: String,
 }
 
-/// Запись `ARMO`.
+/// An `ARMO` record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Armor {
     pub id: String,
     pub name: String,
-    /// Мировая модель (на земле).
+    /// The world model (on the ground).
     pub mesh: String,
     pub icon: String,
-    /// `ENAM` — ID зачарования (T9.4); пусто — без зачарования.
+    /// `ENAM` — the enchantment ID (T9.4); empty means no enchantment.
     pub enchantment: String,
     pub kind: ArmorKind,
     pub weight: f32,
@@ -124,14 +124,14 @@ pub struct Armor {
     pub parts: Vec<WornPart>,
 }
 
-/// Запись `CLOT`.
+/// A `CLOT` record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Clothing {
     pub id: String,
     pub name: String,
     pub mesh: String,
     pub icon: String,
-    /// `ENAM` — ID зачарования (T9.4); пусто — без зачарования.
+    /// `ENAM` — the enchantment ID (T9.4); empty means no enchantment.
     pub enchantment: String,
     pub kind: ClothingKind,
     pub weight: f32,
@@ -140,30 +140,30 @@ pub struct Clothing {
     pub parts: Vec<WornPart>,
 }
 
-/// Запись `BODY`: меш части тела, которую надевает броня или одежда.
+/// A `BODY` record: the mesh of a body part worn by armor or clothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BodyPart {
     pub id: String,
     pub mesh: String,
-    /// Часть `MP_*`: 0 голова, 1 волосы, 2 шея, 3 грудь, 4 пах, 5 кисть, 6 запястье, 7 предплечье,
-    /// 8 плечо, 9 ступня, 10 лодыжка, 11 колено, 12 бедро, 13 ключица, 14 хвост.
+    /// `MP_*` part: 0 head, 1 hair, 2 neck, 3 chest, 4 groin, 5 hand, 6 wrist, 7 forearm, 8 upper
+    /// arm, 9 foot, 10 ankle, 11 knee, 12 upper leg, 13 clavicle, 14 tail.
     pub part: u8,
     pub kind: BodyPartKind,
     pub female: bool,
-    /// Раса части тела (`FNAM`) — только у `Skin`; у брони и одежды пусто.
+    /// The body part's race (`FNAM`) — only for `Skin`; empty for armor and clothing.
     pub race: String,
 }
 
-/// Вид части тела (`BYDT` тип).
+/// Body part kind (`BYDT` type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyPartKind {
-    /// Тело расы: движок собирает NPC из частей его расы и пола.
+    /// A race body: the engine assembles an NPC from the parts of its race and sex.
     Skin,
     Clothing,
     Armor,
 }
 
-/// Предмет инвентаря: `MISC`, `BOOK`, `ALCH`, `INGR`, `APPA` (T2.1).
+/// An inventory item: `MISC`, `BOOK`, `ALCH`, `INGR`, `APPA` (T2.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
     pub id: String,
@@ -175,47 +175,48 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-/// Вид предмета и то, что есть только у него.
+/// Item kind and what only it has.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ItemKind {
-    /// `MISC`; `key` — флаг ключа в `MCDT`.
+    /// `MISC`; `key` is the key flag in `MCDT`.
     Misc { key: bool },
-    /// `BOOK`: свиток, навык Morrowind (0…26, `None` — не учит), текст, ёмкость зачарования.
+    /// `BOOK`: scroll, Morrowind skill (0…26, `None` means it teaches nothing), text, enchantment
+    /// capacity.
     Book {
         scroll: bool,
         skill: Option<u8>,
         text: String,
         enchant_capacity: u32,
-        /// ID зачарования свитка (T9.4); пусто — не зачарован.
+        /// Enchantment ID of a scroll (T9.4); empty means not enchanted.
         enchantment: String,
     },
-    /// `ALCH`: эффекты (`ENAM`), T2.1b.
+    /// `ALCH`: effects (`ENAM`), T2.1b.
     Potion { effects: Vec<Effect> },
-    /// `INGR`: до четырёх эффектов (`IRDT`), T2.1b. У ингредиента Morrowind есть только
-    /// эффект, навык и атрибут — величина, длительность и дальность не пишутся.
+    /// `INGR`: up to four effects (`IRDT`), T2.1b. A Morrowind ingredient has only the effect,
+    /// skill and attribute — magnitude, duration and range are not written.
     Ingredient { effects: Vec<Effect> },
-    /// `APPA`: тип (0 ступка, 1 перегонный куб, 2 кальцинатор, 3 реторта) и качество.
+    /// `APPA`: type (0 mortar and pestle, 1 alembic, 2 calcinator, 3 retort) and quality.
     Apparatus { kind: u8, quality: f32 },
 }
 
-/// Магический эффект Morrowind (`ENAM` зелья, заклинания, зачарования), T2.1b.
+/// A Morrowind magic effect (`ENAM` of a potion, spell, enchantment), T2.1b.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Effect {
-    /// Номер эффекта Morrowind, 0…136 (эффекты `Morrowind.esm`).
+    /// Morrowind effect number, 0…136 (the effects of `Morrowind.esm`).
     pub id: u8,
-    /// Навык Morrowind (0…26) у эффектов «навыка».
+    /// Morrowind skill (0…26) for "skill" effects.
     pub skill: Option<u8>,
-    /// Атрибут Morrowind (0…7) у эффектов «атрибута».
+    /// Morrowind attribute (0…7) for "attribute" effects.
     pub attribute: Option<u8>,
-    /// 0 — на себя, 1 — касание, 2 — цель.
+    /// 0 — self, 1 — touch, 2 — target.
     pub range: u8,
     pub area: u32,
-    /// Секунды.
+    /// Seconds.
     pub duration: u32,
     pub magnitude: [u32; 2],
 }
 
-/// Запись плагина, которую умеет писать `PluginBuilder`.
+/// A plugin record that `PluginBuilder` can write.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
     Static(Static),
@@ -230,89 +231,88 @@ pub enum Object {
     Light(Light),
 }
 
-/// Запись `ACTI`: активатор (T2.2). Без имени движок не даёт его активировать.
+/// An `ACTI` record: an activator (T2.2). Without a name the engine does not let it be activated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Activator {
     pub id: String,
     pub name: String,
     pub mesh: String,
-    /// `SCRI` — ID скрипта (T10.3: петля звука); пусто — без скрипта.
+    /// `SCRI` — the script ID (T10.3: a sound loop); empty means no script.
     pub script: String,
 }
 
-/// Запись `DOOR` (T2.2).
+/// A `DOOR` record (T2.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Door {
     pub id: String,
     pub name: String,
     pub mesh: String,
-    /// `SNAM`/`ANAM` — ID `SOUN` открытия и закрытия (T10.1); пусто — без звука.
+    /// `SNAM`/`ANAM` — IDs of the opening and closing `SOUN` (T10.1); empty means no sound.
     pub open_sound: String,
     pub close_sound: String,
 }
 
-/// Запись `SOUN` (T10.1).
+/// A `SOUN` record (T10.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sound {
     pub id: String,
-    /// `FNAM` — относительно `Sound`.
+    /// `FNAM` — relative to `Sound`.
     pub file: String,
-    /// 0…255 — громкость 0…1.
+    /// 0…255 — volume 0…1.
     pub volume: u8,
-    /// Дальность без затухания и предел слышимости; движок умножает их на GMST
-    /// `fAudioMinDistanceMult` и `fAudioMaxDistanceMult`. Обе 0 — умолчания движка.
+    /// Distance without attenuation and the audibility limit; the engine multiplies them by the
+    /// GMSTs `fAudioMinDistanceMult` and `fAudioMaxDistanceMult`. Both 0 means the engine defaults.
     pub min_range: u8,
     pub max_range: u8,
 }
 
-/// Запись `SNDG` (T11.6): звук существа одного вида. ID у ванили — ID существа и номер вида из
-/// четырёх цифр (`alit0004`).
+/// An `SNDG` record (T11.6): a creature's sound of one kind. In vanilla the ID is the creature ID
+/// and a four-digit kind number (`alit0004`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SoundGen {
     pub id: String,
-    /// `CNAM` — существо, чьим звуком это служит.
+    /// `CNAM` — the creature whose sound this is.
     pub creature: String,
     /// `SNAM` — `SOUN`.
     pub sound: String,
-    /// 0 левая нога, 1 правая, 2 плавание влево, 3 вправо, 4 Moan, 5 Roar, 6 Scream, 7 Land.
+    /// 0 left foot, 1 right, 2 swim left, 3 swim right, 4 Moan, 5 Roar, 6 Scream, 7 Land.
     pub kind: u8,
 }
 
-/// Запись `CONT` (T2.2): обычный контейнер или органический (растение).
+/// A `CONT` record (T2.2): an ordinary container or an organic one (a plant).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Container {
     pub id: String,
     pub name: String,
     pub mesh: String,
-    /// Вместимость (`CNDT`).
+    /// Capacity (`CNDT`).
     pub capacity: f32,
-    /// Флаг 0x1: растение — собирается, а не открывается.
+    /// Flag 0x1: a plant — it is harvested, not opened.
     pub organic: bool,
-    /// Флаг 0x2: содержимое восстанавливается.
+    /// Flag 0x2: the contents respawn.
     pub respawns: bool,
-    /// Содержимое: число (отрицательное — пополняемое) и ID предмета.
+    /// Contents: a count (negative means restocking) and an item ID.
     pub items: Vec<(i32, String)>,
 }
 
-/// Запись `LIGH` (T2.2). `mesh` может быть пустым — невидимый источник света.
+/// A `LIGH` record (T2.2). `mesh` can be empty — an invisible light source.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Light {
     pub id: String,
     pub name: String,
     pub mesh: String,
     pub icon: String,
-    /// `SNAM` — ID `SOUN`, который свет играет по кругу (T10.1); пусто — без звука.
+    /// `SNAM` — the ID of the `SOUN` the light plays in a loop (T10.1); empty means no sound.
     pub sound: String,
     pub weight: f32,
     pub value: u32,
-    /// Время горения, с; −1 — вечно.
+    /// Burn time, s; −1 means forever.
     pub time: i32,
     pub radius: u32,
-    /// R, G, B и неиспользуемый байт.
+    /// R, G, B and an unused byte.
     pub color: [u8; 4],
-    /// Флаги `LHDT` Morrowind: 0x1 динамический, 0x2 можно нести, 0x4 отрицательный, 0x8
-    /// мерцание, 0x10 огонь, 0x20 выключен, 0x40 медленное мерцание, 0x80 пульсация, 0x100
-    /// медленная пульсация.
+    /// Morrowind `LHDT` flags: 0x1 dynamic, 0x2 can carry, 0x4 negative, 0x8 flicker, 0x10 fire,
+    /// 0x20 off by default, 0x40 slow flicker, 0x80 pulse, 0x100 slow pulse.
     pub flags: u32,
 }
 
@@ -384,61 +384,62 @@ impl From<Weapon> for Object {
     }
 }
 
-/// Запись `LEVI`: уровневый список предметов (T2.5). Не [`Object`]: меша у списка нет, а стадии
-/// прогона ведут объекты вместе с их мешами.
+/// A `LEVI` record: a leveled item list (T2.5). Not an [`Object`]: a list has no mesh, while the
+/// run stages carry objects together with their meshes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeveledItem {
     pub id: String,
-    /// Флаг `DATA` 0x2: выбирать из всех строк с уровнем ≤ игрока, а не только с ближайшим.
+    /// `DATA` flag 0x2: pick from all rows with level ≤ the player's, not only the closest one.
     pub all_levels: bool,
-    /// Флаг `DATA` 0x1: число в контейнере — столько независимых бросков.
+    /// `DATA` flag 0x1: the count in a container means that many independent rolls.
     pub each_item: bool,
-    /// `NNAM` — шанс «ничего», 0…100.
+    /// `NNAM` — the "nothing" chance, 0…100.
     pub chance_none: u8,
-    /// Строки: ID предмета или другого списка и уровень. Числа у строки в `LEVI` нет.
+    /// Rows: the ID of an item or another list, and the level. A `LEVI` row has no count.
     pub items: Vec<(String, u16)>,
 }
 
-/// Запись `LEVC`: уровневый список существ (T11.4). В строках ванили — существа, NPC и другие
-/// списки (`Morrowind.esm`: `CREA` 1 002, `NPC_` 28; вложенные — у Bloodmoon, 11; 2026-10-01,
-/// `tests/real_vanilla_leveled.rs`). Флаг у списка один: у `LEVI` «все уровни» — 0x2, здесь 0x1.
+/// A `LEVC` record: a leveled creature list (T11.4). Vanilla rows hold creatures, NPCs and other
+/// lists (`Morrowind.esm`: `CREA` 1,002, `NPC_` 28; nested ones in Bloodmoon, 11; 2026-10-01,
+/// `tests/real_vanilla_leveled.rs`). The list has one flag: "all levels" is 0x2 for `LEVI`, 0x1
+/// here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeveledCreature {
     pub id: String,
-    /// Флаг `DATA` 0x1: выбирать из всех строк с уровнем ≤ игрока, а не только с ближайшим.
+    /// `DATA` flag 0x1: pick from all rows with level ≤ the player's, not only the closest one.
     pub all_levels: bool,
-    /// `NNAM` — шанс «ничего», 0…100.
+    /// `NNAM` — the "nothing" chance, 0…100.
     pub chance_none: u8,
-    /// Строки: ID существа, NPC или другого списка и уровень.
+    /// Rows: the ID of a creature, NPC or another list, and the level.
     pub creatures: Vec<(String, u16)>,
 }
 
-/// Как срабатывает зачарование (`ENDT`, 0…3).
+/// How an enchantment triggers (`ENDT`, 0…3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EnchantKind {
-    /// Свиток: один раз.
+    /// Scroll: once.
     CastOnce,
-    /// Оружие и стрелы: при ударе, расходует заряд.
+    /// Weapons and arrows: on strike, uses charge.
     OnStrike,
-    /// По команде (посохи, вещи), расходует заряд.
+    /// On use (staves, items), uses charge.
     WhenUsed,
-    /// Одежда и броня: постоянно, пока надето.
+    /// Clothing and armor: constantly while worn.
     Constant,
 }
 
-/// Запись `ENCH` (T9.4). Не [`Object`]: меша нет.
+/// An `ENCH` record (T9.4). Not an [`Object`]: no mesh.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Enchantment {
     pub id: String,
     pub kind: EnchantKind,
-    /// Стоимость одного применения, в единицах заряда.
+    /// Cost of one use, in charge units.
     pub cost: u32,
     pub charge: u32,
     pub effects: Vec<Effect>,
 }
 
-/// Вид заклинания (`SPDT`, в порядке Morrowind: 0 заклинание, 1 способность, 3 болезнь,
-/// 5 сила; мор и проклятие Oblivion не даёт).
+/// Spell kind (`SPDT`, in Morrowind order: 0 spell, 1 ability, 3 disease, 5 power; Oblivion gives
+/// no blight or curse).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SpellKind {
     Spell,
@@ -447,21 +448,22 @@ pub enum SpellKind {
     Power,
 }
 
-/// Запись `SPEL` (T9.4). Не [`Object`]: меша нет.
+/// A `SPEL` record (T9.4). Not an [`Object`]: no mesh.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Spell {
     pub id: String,
-    /// `FNAM` — имя в игре.
+    /// `FNAM` — the in-game name.
     pub name: String,
     pub kind: SpellKind,
     pub cost: u32,
-    /// Флаг 0x4: всегда удаётся.
+    /// Flag 0x4: always succeeds.
     pub always_succeeds: bool,
     pub effects: Vec<Effect>,
 }
 
-/// Значение глобальной переменной `GLOB` (T11.1): тип `FNAM` и число. В файле число всегда
-/// `f32` (`FLTV`), поэтому `Long` больше 2^24 не представим без потерь — это решает `transform`.
+/// The value of a `GLOB` global variable (T11.1): the `FNAM` type and the number. In the file the
+/// number is always `f32` (`FLTV`), so a `Long` above 2^24 cannot be represented without loss —
+/// `transform` decides what to do about it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GlobalValue {
     Short(i16),
@@ -469,7 +471,7 @@ pub enum GlobalValue {
     Float(f32),
 }
 
-/// Запись `GLOB`: глобальная переменная (T11.1). Не [`Object`]: меша у неё нет.
+/// A `GLOB` record: a global variable (T11.1). Not an [`Object`]: it has no mesh.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Global {
     pub id: String,

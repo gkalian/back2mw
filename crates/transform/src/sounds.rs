@@ -1,34 +1,37 @@
-//! Звуки (T10.1): `SOUN` Oblivion → `SOUN` Morrowind.
+//! Sounds (T10.1): Oblivion `SOUN` → Morrowind `SOUN`.
 //!
-//! Правила и замеры — `docs/ru/formats/tes4.md`, «Звуки»:
+//! Rules and measurements — `docs/en/formats/tes4.md`, "Sounds":
 //!
-//! * **Громкость.** У Oblivion громкость — постоянное ослабление в сотых долях дБ (`SNDX`, 0…
-//!   10 000), у Morrowind — байт 0…255 (линейно, 255 — полная). 255 · 10^(−дБ/20).
-//! * **Дальность.** У Oblivion `min` — в пятёрках единиц, `max` — в сотнях. У Morrowind движок
-//!   умножает `min` на GMST `fAudioMinDistanceMult` (20), `max` — на `fAudioMaxDistanceMult`
-//!   (50), значения ванильного `Morrowind.esm` (2026-09-28). Отсюда `min/4` и `max·2`. Пара 0/0
-//!   у обоих значит «умолчания движка» — так и переносится. Формула множителей взята из OpenMW,
-//!   в ванильном движке не проверена.
-//! * **Каталог** вместо файла (движок Oblivion играет случайный файл) — у Morrowind один файл:
-//!   берётся первый по имени; какой именно, решает стадия, которая видит архивы.
-//! * Сдвиг частоты и флаги Oblivion у Morrowind выразить нечем — отбрасываются.
+//! * **Volume.** In Oblivion the volume is a static attenuation in hundredths of a dB (`SNDX`,
+//!   0…10,000), in Morrowind a byte 0…255 (linear, 255 is full). 255 · 10^(−dB/20).
+//! * **Range.** In Oblivion `min` is in fives of units, `max` in hundreds. In Morrowind the engine
+//!   multiplies `min` by the GMST `fAudioMinDistanceMult` (20) and `max` by `fAudioMaxDistanceMult`
+//!   (50), the values of vanilla `Morrowind.esm` (2026-09-28). Hence `min/4` and `max·2`. A 0/0
+//!   pair in both means "engine defaults" — it is carried over as such. The multiplier formula is
+//!   taken from OpenMW and not verified in the vanilla engine.
+//! * **A directory** instead of a file (the Oblivion engine plays a random file) — Morrowind has
+//!   one file: the first by name is taken; which exactly is decided by the stage that sees the
+//!   archives.
+//! * Oblivion's frequency shift and flags cannot be expressed in Morrowind — they are dropped.
 //!
-//! **Звуки регионов** (T10.2, [`region_sounds`], решения владельца 2026-09-28): шансы `RDSD`
-//! Oblivion — веса выбора (сумма по региону около 100 %), а у Morrowind шанс — доля тиков, в
-//! которые звук играет (ваниль: сумма 20…103, чаще 55). Поэтому веса нормируются к сумме
-//! [`REGION_CHANCE_TOTAL`]. Петля (у Oblivion — непрерывный фон со 100 %) идёт как обычный звук
-//! с весом, равным среднему весу случайных звуков региона. Каталог даёт не больше вариантов, чем
-//! шанс звука: вариант — свой `SOUN` на следующий по имени файл, шанс делится поровну.
+//! **Region sounds** (T10.2, [`region_sounds`], owner's decisions 2026-09-28): Oblivion `RDSD`
+//! chances are selection weights (the sum per region is about 100%), while in Morrowind a chance is
+//! the fraction of ticks in which the sound plays (vanilla: sums of 20…103, most often 55). So the
+//! weights are normalized to the sum [`REGION_CHANCE_TOTAL`]. A loop (in Oblivion a continuous
+//! background at 100%) goes as an ordinary sound with a weight equal to the average weight of the
+//! region's random sounds. A directory gives no more variants than the sound's chance: a variant is
+//! its own `SOUN` for the next file by name, the chance is split evenly.
 //!
-//! **Петли и размещённые звуки** (T10.3, решение 3): у Morrowind петлю у места играет скрипт
-//! `PlayLoopSound3DVP` ([`loop_script`], шаблон — `tes3_out::Script::LoopSound`), один на звук.
-//! Активатор со звуком `SNAM` получает этот скрипт сам — как ванильные `furn_dwrv_steam_00` →
-//! `Sound_Machinery` (решение владельца 2026-09-28). Размещённый `SOUN` (`REFR` на звук) —
-//! ссылка на невидимый активатор-маркер со скриптом ([`sound_marker`]).
+//! **Loops and placed sounds** (T10.3, decision 3): in Morrowind a loop at a place is played by a
+//! `PlayLoopSound3DVP` script ([`loop_script`], template `tes3_out::Script::LoopSound`), one per
+//! sound. An activator with an `SNAM` sound gets this script itself — like vanilla
+//! `furn_dwrv_steam_00` → `Sound_Machinery` (owner's decision 2026-09-28). A placed `SOUN` (a
+//! `REFR` to a sound) becomes a reference to an invisible marker activator with the script
+//! ([`sound_marker`]).
 //!
-//! **Звуки существ** (T11.6, [`creature_sounds`]): `SNDG` на каждый вид, который выбрал
-//! `transform::creatures::sound_gens`; ID — ID существа и номер вида из четырёх цифр, как у
-//! `Morrowind.esm` (`alit0004`); `SOUN` выдаётся так же, как для дверей.
+//! **Creature sounds** (T11.6, [`creature_sounds`]): an `SNDG` for each kind chosen by
+//! `transform::creatures::sound_gens`; the ID is the creature ID and a four-digit kind number, as
+//! in `Morrowind.esm` (`alit0004`); the `SOUN` is issued the same way as for doors.
 
 use std::collections::BTreeMap;
 
@@ -38,12 +41,13 @@ use tes4_read::{SOUND_LOOP, Sound as SourceSound};
 use crate::ids::{DEFAULT_MAX_LEN, variant_id};
 use crate::paths::sound_path;
 
-/// Меш маркера размещённого звука — ванильный, из `Morrowind.bsa` (`meshes\editormarker.nif`):
-/// его единственная геометрия `Tri EditorMarker 0` в игре не рисуется. С ним же стоят 14
-/// ванильных звуковых активаторов (`Sound_Cave_Drip00` и др., `Morrowind.esm`, 2026-09-28).
+/// The mesh of a placed sound marker is vanilla, from `Morrowind.bsa` (`meshes\editormarker.nif`):
+/// its only geometry `Tri EditorMarker 0` is not drawn in the game. 14 vanilla sound activators use
+/// it too (`Sound_Cave_Drip00` and others, `Morrowind.esm`, 2026-09-28).
 pub const MARKER_MESH: &str = "EditorMarker.nif";
 
-/// Скрипт петли звука `sound_id`: `obls_<…>` — производный ID, с основными не совпадёт.
+/// The loop script of sound `sound_id`: `obls_<…>` is a derived ID, it will not match the primary
+/// ones.
 pub fn loop_script(sound_id: &str) -> Script {
     Script::LoopSound {
         id: variant_id(sound_id, "ls", DEFAULT_MAX_LEN),
@@ -51,8 +55,8 @@ pub fn loop_script(sound_id: &str) -> Script {
     }
 }
 
-/// Невидимый активатор, который играет звук `sound_id` по кругу там, где стоит, и его скрипт.
-/// Без имени: движок не даёт такой активатор навести и активировать.
+/// An invisible activator that plays sound `sound_id` in a loop where it stands, and its script.
+/// Without a name: the engine does not let such an activator be targeted and activated.
 pub fn sound_marker(sound_id: &str) -> (Activator, Script) {
     let script = loop_script(sound_id);
     let marker = Activator {
@@ -64,38 +68,39 @@ pub fn sound_marker(sound_id: &str) -> (Activator, Script) {
     (marker, script)
 }
 
-/// Сумма шансов звуков региона Morrowind: самая частая у ванили (Bitter Coast, Ascadian Isles,
-/// Azura's Coast, Sheogorad — по 55; `Morrowind.esm`, 2026-09-28).
+/// The sum of a Morrowind region's sound chances: the most common in vanilla (Bitter Coast,
+/// Ascadian Isles, Azura's Coast, Sheogorad — 55 each; `Morrowind.esm`, 2026-09-28).
 pub const REGION_CHANCE_TOTAL: f64 = 55.0;
 
-/// Звук региона источника, уже сопоставленный с `SOUN` плагина.
+/// A source region sound, already matched with the plugin's `SOUN`.
 #[derive(Debug, Clone, Copy)]
 pub struct RegionEntry<'a> {
-    /// ID `SOUN` в плагине Morrowind.
+    /// The `SOUN` ID in the Morrowind plugin.
     pub id: &'a str,
     pub source: &'a SourceSound,
-    /// Шанс `RDSD`, стотысячные доли процента.
+    /// The `RDSD` chance, hundred-thousandths of a percent.
     pub chance: u32,
-    /// Файлы каталога относительно `Sound\` (нормальная форма), по имени; у файла — пусто.
+    /// Directory files relative to `Sound\` (normal form), by name; empty for a file.
     pub files: &'a [String],
 }
 
-/// Список звуков региона Morrowind и `SOUN`, которые он требует (основной и варианты).
+/// A Morrowind region's sound list and the `SOUN` it requires (the main one and the variants).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RegionSounds {
-    /// ID и шанс, %.
+    /// ID and chance, %.
     pub list: Vec<(String, u8)>,
     pub sounds: Vec<ConvertedSound>,
-    /// Звуки с шансом 0 (у Oblivion не играют) и каталоги без файлов: не переносятся.
+    /// Sounds with chance 0 (they do not play in Oblivion) and directories without files: not
+    /// carried over.
     pub dropped: usize,
     pub notes: Vec<String>,
 }
 
-/// Звуки региона Morrowind из `RDSD` (см. модуль). Один `SOUN`, упомянутый дважды, — одна строка
-/// с общим весом.
+/// Morrowind region sounds from `RDSD` (see the module). One `SOUN` mentioned twice is one row with
+/// the combined weight.
 pub fn region_sounds(entries: &[RegionEntry<'_>]) -> RegionSounds {
     let mut out = RegionSounds::default();
-    // Строки с положительным шансом и файлами, одинаковые ID слиты.
+    // Rows with a positive chance and files, identical IDs merged.
     let mut live: Vec<(RegionEntry<'_>, f64)> = Vec::new();
     for e in entries {
         if e.chance == 0 || (e.source.is_directory() && e.files.is_empty()) {
@@ -115,7 +120,7 @@ pub fn region_sounds(entries: &[RegionEntry<'_>]) -> RegionSounds {
         .collect();
     #[expect(
         clippy::cast_precision_loss,
-        reason = "звуков в регионе — десятки, точно в f64"
+        reason = "a region has tens of sounds, exact in f64"
     )]
     let loop_weight = if random.is_empty() {
         1.0
@@ -132,7 +137,7 @@ pub fn region_sounds(entries: &[RegionEntry<'_>]) -> RegionSounds {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "значение округлено и зажато в 1..=100"
+            reason = "the value is rounded and clamped to 1..=100"
         )]
         let chance = (weight * REGION_CHANCE_TOTAL / total)
             .round()
@@ -162,9 +167,10 @@ pub fn region_sounds(entries: &[RegionEntry<'_>]) -> RegionSounds {
                     continue;
                 }
             };
-            // Шанс поровну, остаток — первым вариантам.
+            // The chance is split evenly, the remainder goes to the first variants.
             let share = usize::from(chance) / count + usize::from(k < usize::from(chance) % count);
-            let share = u8::try_from(share).expect("доля не больше шанса, а он не больше 100");
+            let share = u8::try_from(share)
+                .expect("a share is no more than the chance, which is no more than 100");
             out.list.push((converted.sound.id.clone(), share));
             out.sounds.push(converted);
         }
@@ -172,33 +178,33 @@ pub fn region_sounds(entries: &[RegionEntry<'_>]) -> RegionSounds {
     out
 }
 
-/// Множители дальности ванильного `Morrowind.esm`: GMST `fAudioMinDistanceMult` и
+/// Range multipliers of vanilla `Morrowind.esm`: the GMSTs `fAudioMinDistanceMult` and
 /// `fAudioMaxDistanceMult` (2026-09-28).
 pub const MIN_DISTANCE_MULT: f64 = 20.0;
 pub const MAX_DISTANCE_MULT: f64 = 50.0;
 
-/// Единиц в шаге `min`/`max` у Oblivion (UESP, `SNDX`).
+/// Units per `min`/`max` step in Oblivion (UESP, `SNDX`).
 const SOURCE_MIN_STEP: f64 = 5.0;
 const SOURCE_MAX_STEP: f64 = 100.0;
 
-/// Звук Morrowind и откуда брать файл.
+/// A Morrowind sound and where to take the file from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConvertedSound {
     pub sound: Sound,
     pub origin: SoundOrigin,
 }
 
-/// Файл звука источника.
+/// A source sound file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SoundOrigin {
     pub editor_id: String,
-    /// `FNAM` в нормальной форме (`paths::normalize`), относительно `Sound\`, без `\` на конце.
+    /// `FNAM` in normal form (`paths::normalize`), relative to `Sound\`, without a trailing `\`.
     pub source: String,
-    /// `FNAM` — каталог: стадия файлов берёт из него первый `.wav` по имени.
+    /// `FNAM` is a directory: the files stage takes the first `.wav` from it by name.
     pub directory: bool,
 }
 
-/// `SOUN` → `SOUN`; `id` уже выдан. Ошибка — путь не представим.
+/// `SOUN` → `SOUN`; `id` is already issued. The error means the path cannot be represented.
 pub fn convert_sound(source: &SourceSound, id: String) -> Result<ConvertedSound, String> {
     let (Some(file), Some(normal)) = (
         sound_path(&source.file),
@@ -227,18 +233,21 @@ pub fn convert_sound(source: &SourceSound, id: String) -> Result<ConvertedSound,
     })
 }
 
-/// Звуки существ со своей моделью (T11.6): `SNDG` и `SOUN`, которых ещё нет в плагине.
+/// Sounds of creatures with their own model (T11.6): `SNDG` and `SOUN` the plugin does not have
+/// yet.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreatureSounds {
     pub gens: Vec<SoundGen>,
     pub sounds: Vec<ConvertedSound>,
-    /// `SOUN` не найден среди записей плагина (чужой мастер) или путь не представим.
+    /// The `SOUN` was not found among the plugin's records (another master) or the path cannot be
+    /// represented.
     pub lost: usize,
     pub problems: Vec<String>,
 }
 
-/// `SNDG` для звуков существ. `creature_id` — ID существа по `FormID` источника; `sources` —
-/// все `SOUN` плагина; `have` — ID звуков, уже выданных плагину (второй раз не выдаются).
+/// `SNDG` for creature sounds. `creature_id` is the creature's ID by source `FormID`; `sources` are
+/// all `SOUN` of the plugin; `have` are the sound IDs already issued to the plugin (they are not
+/// issued a second time).
 pub fn creature_sounds(
     gens: &[crate::creatures::CreatureSoundGen],
     creature_id: &dyn Fn(u32) -> Option<String>,
@@ -282,19 +291,19 @@ pub fn creature_sounds(
     out
 }
 
-/// Ослабление в сотых долях дБ → громкость 0…255.
+/// Attenuation in hundredths of a dB → volume 0…255.
 pub fn volume(attenuation: u16) -> u8 {
     let linear = 10f64.powf(-f64::from(attenuation) / 2000.0);
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "значение округлено и зажато в 0..=255"
+        reason = "the value is rounded and clamped to 0..=255"
     )]
     let out = (255.0 * linear).round().clamp(0.0, 255.0) as u8;
     out
 }
 
-/// `min`/`max` Oblivion → байты дальности Morrowind (в тех же единицах мира).
+/// Oblivion `min`/`max` → Morrowind range bytes (in the same world units).
 pub fn ranges(min: u8, max: u8) -> (u8, u8) {
     if min == 0 && max == 0 {
         return (0, 0);
@@ -303,7 +312,7 @@ pub fn ranges(min: u8, max: u8) -> (u8, u8) {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "значение округлено и зажато в 0..=255"
+            reason = "the value is rounded and clamped to 0..=255"
         )]
         let out = (f64::from(value) * from / to).round().clamp(0.0, 255.0) as u8;
         out
@@ -333,8 +342,8 @@ mod tests {
     #[test]
     fn volume_follows_decibels() {
         assert_eq!(volume(0), 255);
-        assert_eq!(volume(600), 128, "−6 дБ — половина амплитуды");
-        assert_eq!(volume(1000), 81, "−10 дБ — 0.316");
+        assert_eq!(volume(600), 128, "−6 dB is half the amplitude");
+        assert_eq!(volume(1000), 81, "−10 dB is 0.316");
         assert_eq!(volume(10_000), 0);
     }
 
@@ -342,8 +351,8 @@ mod tests {
     fn ranges_keep_distances_in_world_units() {
         // 60·5 = 300 = 15·20; 20·100 = 2000 = 40·50.
         assert_eq!(ranges(60, 20), (15, 40));
-        assert_eq!(ranges(0, 0), (0, 0), "умолчания движка");
-        assert_eq!(ranges(255, 180), (64, 255), "дальше 255 не записать");
+        assert_eq!(ranges(0, 0), (0, 0), "engine defaults");
+        assert_eq!(ranges(255, 180), (64, 255), "beyond 255 cannot be written");
     }
 
     #[test]
@@ -370,7 +379,7 @@ mod tests {
         assert_eq!(dir.origin.source, "fx\\npc\\foot");
         assert!(dir.origin.directory);
 
-        assert!(convert_sound(&source("fx\\звук.wav"), "ob_C_3".to_owned()).is_err());
+        assert!(convert_sound(&source("fx\\bruit_é.wav"), "ob_C_3".to_owned()).is_err());
     }
 
     fn entry<'a>(id: &'a str, source: &'a SourceSound, percent: u32) -> RegionEntry<'a> {
@@ -401,7 +410,7 @@ mod tests {
             flags: SOUND_LOOP,
             ..source("fx\\wind_lp.wav")
         };
-        // Веса 20, 60 и петля 40 (среднее) из 120: 9.2, 27.5, 18.3.
+        // Weights 20, 60 and the loop 40 (the average) out of 120: 9.2, 27.5, 18.3.
         let out = region_sounds(&[
             entry("ob_A", &a, 20),
             entry("ob_B", &b, 60),
@@ -418,7 +427,7 @@ mod tests {
             .map(|n| format!("fx\\birds\\{n}.wav"))
             .collect();
         let crow = source("fx\\crow.wav");
-        // Птицы 5 %, ворона 95 %: 3 и 52 → птицы — 3 варианта по 1.
+        // Birds 5%, crow 95%: 3 and 52 → birds get 3 variants of 1.
         let out = region_sounds(&[
             RegionEntry {
                 files: &files,
@@ -434,7 +443,8 @@ mod tests {
             "{list:?}"
         );
         assert_eq!(list[3], ("ob_Crow_2", 52));
-        // Основной — путь каталога (в него ляжет первый файл), варианты — пути своих файлов.
+        // The main one is the directory path (the first file will go there), the variants are the
+        // paths of their own files.
         assert!(out.sounds[0].origin.directory);
         assert_eq!(out.sounds[1].origin.source, "fx\\birds\\b.wav");
         assert!(!out.sounds[1].origin.directory);
@@ -442,7 +452,7 @@ mod tests {
             out.sounds.iter().map(|s| s.sound.file.as_str()).collect();
         assert_eq!(paths.len(), 4);
 
-        // Единственный звук региона получает все 55 — на 4 файла: 14, 14, 14, 13.
+        // The region's only sound gets all 55 — over 4 files: 14, 14, 14, 13.
         let out = region_sounds(&[RegionEntry {
             files: &files,
             chance: 100_000,
@@ -466,7 +476,10 @@ mod tests {
     fn a_sound_marker_is_invisible_nameless_and_plays_its_sound() {
         let (marker, script) = sound_marker("ob_AMBWaterfall_000a1b2");
         assert_eq!(marker.id, "obsm_AMBWaterfall_000a1b2");
-        assert!(marker.name.is_empty(), "без имени не активируется");
+        assert!(
+            marker.name.is_empty(),
+            "without a name it cannot be activated"
+        );
         assert_eq!(marker.mesh, MARKER_MESH);
         assert_eq!(marker.script, script.id());
         assert_eq!(
@@ -477,7 +490,7 @@ mod tests {
             }
         );
         assert_eq!(script, loop_script("ob_AMBWaterfall_000a1b2"));
-        // Длинный ID звука: производные укорачиваются, но влезают в 31 знак.
+        // A long sound ID: derived ones are shortened but fit into 31 characters.
         let long = "ob_AMBWaterfallVeryLongNameX_000a1b2";
         let (marker, script) = sound_marker(long);
         assert!(marker.id.len() <= DEFAULT_MAX_LEN && script.id().len() <= DEFAULT_MAX_LEN);
@@ -539,7 +552,7 @@ mod creature_tests {
             },
         ];
         let id = |f: u32| (f != 3).then(|| format!("ob_Gnarl{f}"));
-        // `ob_Step_51` у плагина уже есть (его просила дверь).
+        // The plugin already has `ob_Step_51` (the door asked for it).
         let out = creature_sounds(&gens, &id, &sources, &|s| s == "ob_Step_51");
         let ids: Vec<&str> = out.gens.iter().map(|g| g.id.as_str()).collect();
         assert_eq!(ids, ["ob_Gnarl10005", "ob_Gnarl20005", "ob_Gnarl20000"]);
@@ -548,9 +561,9 @@ mod creature_tests {
         assert_eq!(
             out.sounds.len(),
             1,
-            "общий SOUN один; уже выданный не повторяется"
+            "the shared SOUN is one; an already issued one is not repeated"
         );
         assert!(out.sounds[0].origin.directory);
-        assert_eq!(out.lost, 1, "SOUN 0x99 нет в плагине");
+        assert_eq!(out.lost, 1, "SOUN 0x99 is not in the plugin");
     }
 }

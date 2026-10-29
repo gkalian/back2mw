@@ -25,9 +25,12 @@ fn a_missing_file_is_a_failure_too() {
     let text = "Failed to read 'nt/nothere.nif':\n\
                 Failed to open 'nt/nothere.nif' for reading: 2\n";
     let f = parse_niftest_output(text);
-    assert_eq!(f.len(), 1, "одно название файла — один провал: {f:?}");
+    assert_eq!(f.len(), 1, "one mention of a file is one failure: {f:?}");
     assert_eq!(f[0].path, "nt/nothere.nif");
-    assert_eq!(f[0].reason, "", "вторая строка — тоже «Failed», не причина");
+    assert_eq!(
+        f[0].reason, "",
+        "the second line is also «Failed», not a reason"
+    );
 }
 
 #[test]
@@ -76,7 +79,7 @@ fn paths(n: usize, len: usize) -> Vec<PathBuf> {
 
 #[test]
 fn chunks_cover_every_file_once_and_respect_the_budget() {
-    let files = paths(50, 97); // 100 знаков на путь с запасом
+    let files = paths(50, 97); // 100 characters per path, with a margin
     let chunks = chunks_by_length(&files, 1000);
     assert!(chunks.len() > 1);
     let total: usize = chunks.iter().map(|c| c.len()).sum();
@@ -86,7 +89,7 @@ fn chunks_cover_every_file_once_and_respect_the_budget() {
         assert!(used <= 1000, "{used}");
     }
     let flat: Vec<&PathBuf> = chunks.iter().flat_map(|c| c.iter()).collect();
-    assert_eq!(flat, files.iter().collect::<Vec<_>>(), "порядок сохранён");
+    assert_eq!(flat, files.iter().collect::<Vec<_>>(), "order is preserved");
 }
 
 #[test]

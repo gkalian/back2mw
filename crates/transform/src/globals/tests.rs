@@ -13,10 +13,10 @@ fn glob(form_id: u32, edid: &str, kind: u8, value: f32) -> Vec<u8> {
 fn plugin_with(records: &[Vec<u8>]) -> Plugin {
     let group = synth::group(GameFormat::Tes4, b"GLOB", 0, &records.concat());
     let bytes = synth::plugin(GameFormat::Tes4, &synth::header_fields(3), &[group]);
-    Plugin::parse(&bytes).expect("синтетический плагин разбирается")
+    Plugin::parse(&bytes).expect("the synthetic plugin parses")
 }
 
-/// Ванильные переменные `Morrowind.esm`, нужные тестам.
+/// Vanilla variables of `Morrowind.esm` that the tests need.
 fn vanilla() -> HashMap<String, String> {
     ["GameHour", "Day", "Month", "Year", "TimeScale", "PCVampire"]
         .into_iter()
@@ -38,7 +38,7 @@ fn bad_rows_are_errors() {
     assert!(GlobalTable::parse("GameDay").is_err());
     assert!(GlobalTable::parse("GameDay\t").is_err());
     assert!(GlobalTable::parse("GameDay\tDay\nGAMEDAY\tDay").is_err());
-    assert!(GlobalTable::parse("# x\n\nGameDay\tDay\tпояснение").is_ok());
+    assert!(GlobalTable::parse("# x\n\nGameDay\tDay\tnote").is_ok());
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn engine_same_name_and_own_globals_go_three_ways() {
         Target::Vanilla("PCVampire".into())
     );
     assert_eq!(resolve("RentIllOmen", &v), Target::Own);
-    // Пара из таблицы, которой нет у мастера, — не переносится, а не своя запись.
+    // A table pair the master lacks is not carried over, rather than becoming our own record.
     assert_eq!(resolve("GameYear", &HashMap::new()), Target::Unsupported);
 }
 
@@ -120,7 +120,7 @@ fn plugin_globals_are_written_mapped_or_dropped() {
     assert_eq!(
         ids.id_for(0x38),
         None,
-        "ванильной переменной свой ID не нужен"
+        "a vanilla variable does not need its own ID"
     );
 }
 

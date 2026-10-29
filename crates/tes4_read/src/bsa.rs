@@ -1,13 +1,14 @@
-//! Ридер архивов BSA версии 103 (Oblivion).
+//! Reader of BSA archives version 103 (Oblivion).
 //!
-//! Формат описан в `docs/ru/formats/tes4.md`, раздел «BSA v103». Ключевые детали:
+//! The format is described in `docs/en/formats/tes4.md`, section "BSA v103 (Oblivion)". Key
+//! details:
 //!
-//! * Смещение в записи папки = фактическая позиция блока + `totalFileNameLength`.
-//!   Поэтому для получения реальной позиции вычитаем `totalFileNameLength`.
-//! * `totalFolderNameLength` в заголовке = Σ(длина имени папки + 1 байт NUL),
-//!   без учёта байтов длины. Отсюда в формуле позиции блока имён стоит
-//!   «+ число папок» (по байту длины на папку).
-//! * Хеши в записях не используются при чтении: имена есть, порядок совпадает.
+//! * The offset in a folder record = the actual block position + `totalFileNameLength`. So to get
+//!   the real position we subtract `totalFileNameLength`.
+//! * `totalFolderNameLength` in the header = Σ(folder name length + 1 NUL byte), not counting the
+//!   length bytes. Hence the formula for the name block position has "+ number of folders" (one
+//!   length byte per folder).
+//! * Hashes in the records are not used when reading: the names are present and the order matches.
 
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
@@ -15,73 +16,72 @@ use std::io::{Read, Seek, SeekFrom};
 use crate::cp1252;
 use crate::error::{Error, Result};
 
-/// Флаг архива: имена папок присутствуют в блоках файлов.
+/// Archive flag: folder names are present in the file blocks.
 const FLAG_HAS_FOLDER_NAMES: u32 = 0x001;
-/// Флаг архива: блок имён файлов присутствует.
+/// Archive flag: the file name block is present.
 const FLAG_HAS_FILE_NAMES: u32 = 0x002;
-/// Флаг архива: файлы по умолчанию сжаты zlib.
+/// Archive flag: files are zlib-compressed by default.
 const FLAG_COMPRESSED: u32 = 0x004;
 
-/// Бит в поле размера файла: инвертирует флаг сжатия архива.
+/// A bit in the file size field: inverts the archive's compression flag.
 const FILE_INVERT_COMPRESSION: u32 = 0x4000_0000;
-/// Маска реального размера файла (биты 0–29).
+/// Mask of the real file size (bits 0–29).
 const FILE_SIZE_MASK: u32 = 0x3FFF_FFFF;
 
-/// Единственная поддерживаемая версия BSA.
+/// The only supported BSA version.
 const SUPPORTED_VERSION: u32 = 103;
 
-/// Описание одного файла в архиве.
+/// Description of one file in the archive.
 ///
-/// Не хранит сами данные — только позицию и метаданные.
+/// Does not hold the data itself — only the position and metadata.
 #[derive(Debug, Clone)]
 pub struct BsaEntry {
-    /// Полный путь в нижнем регистре, разделитель `\\`.
-    /// Пример: `meshes\\clutter\\bowl01.nif`.
+    /// Full path in lower case, separator `\\`. Example: `meshes\\clutter\\bowl01.nif`.
     pub path: String,
-    /// Абсолютное смещение хранимых данных от начала архива.
+    /// Absolute offset of the stored data from the start of the archive.
     pub offset: u64,
-    /// Размер хранимых данных в байтах (для сжатых — включая 4-байтный заголовок
-    /// с распакованным размером).
+    /// Size of the stored data in bytes (for compressed ones — including the 4-byte header with the
+    /// uncompressed size).
     pub stored_size: u32,
-    /// Файл хранится сжатым: первые 4 байта — u32 распакованного размера,
-    /// остальное — поток zlib.
+    /// The file is stored compressed: the first 4 bytes are a u32 of the uncompressed size, the
+    /// rest is a zlib stream.
     pub compressed: bool,
 }
 
-/// Индекс BSA-архива.
+/// A BSA archive index.
 ///
-/// Хранит оглавление, но не сами данные. Для чтения файла нужен тот же ридер,
-/// которым читалось оглавление.
+/// Holds the table of contents, but not the data itself. Reading a file needs the same reader the
+/// table of contents was read with.
 #[derive(Debug)]
 pub struct BsaIndex {
     entries: Vec<BsaEntry>,
-    /// Ключ — нормализованный путь (нижний регистр, разделитель `\\`).
+    /// The key is the normalized path (lower case, separator `\\`).
     by_path: HashMap<String, usize>,
 }
 
 impl BsaIndex {
-    /// Читает оглавление из потока.
+    /// Reads the table of contents from a stream.
     ///
-    /// Поток должен быть позиционирован на начало файла. После вызова позиция
-    /// потока не определена.
+    /// The stream must be positioned at the start of the file. After the call the stream position
+    /// is undefined.
     pub fn read_from<R: Read + Seek>(reader: &mut R) -> Result<Self> {
         reader.seek(SeekFrom::Start(0)).map_err(io_err)?;
         read_bsa(reader)
     }
 
-    /// Все записи в порядке архива.
+    /// All records in archive order.
     pub fn entries(&self) -> &[BsaEntry] {
         &self.entries
     }
 
-    /// Ищет запись по пути без учёта регистра; `'/'` и `'\\'` равнозначны.
+    /// Looks up a record by path, case-insensitively; `'/'` and `'\\'` are equivalent.
     pub fn find(&self, path: &str) -> Option<&BsaEntry> {
         self.by_path
             .get(&normalize_path(path))
             .map(|&i| &self.entries[i])
     }
 
-    /// Извлекает и возвращает содержимое файла. Сжатые данные распаковываются.
+    /// Extracts and returns the file contents. Compressed data is decompressed.
     pub fn extract<R: Read + Seek>(&self, reader: &mut R, entry: &BsaEntry) -> Result<Vec<u8>> {
         reader.seek(SeekFrom::Start(entry.offset)).map_err(io_err)?;
 
@@ -102,10 +102,10 @@ impl BsaIndex {
             let mut zlib = vec![0u8; zlib_len];
             reader.read_exact(&mut zlib).map_err(io_err)?;
 
-            // Смещения в BSA-архиве хранятся в u32, поэтому ≤ u32::MAX < usize на 64-бит.
+            // Offsets in a BSA archive are stored as u32, so ≤ u32::MAX < usize on 64-bit.
             #[expect(
                 clippy::cast_possible_truncation,
-                reason = "BSA-смещения помещаются в u32, что меньше usize на любой поддерживаемой платформе"
+                reason = "BSA offsets fit into u32, which is smaller than usize on any supported platform"
             )]
             let at = entry.offset as usize;
 
@@ -137,10 +137,10 @@ impl BsaIndex {
     }
 }
 
-// --- внутренняя реализация разбора ---
+// --- internal parsing implementation ---
 
 fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
-    // Заголовок, 36 байт
+    // Header, 36 bytes
     let magic = read_tag(reader)?;
     if &magic != b"BSA\0" {
         return Err(Error::NotABsa { found: magic });
@@ -149,11 +149,11 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
     if version != SUPPORTED_VERSION {
         return Err(Error::UnsupportedBsaVersion { version });
     }
-    let _folder_records_offset = read_u32(reader)?; // обычно 36
+    let _folder_records_offset = read_u32(reader)?; // usually 36
     let archive_flags = read_u32(reader)?;
     let folder_count = read_u32(reader)? as usize;
     let file_count = read_u32(reader)? as usize;
-    let _total_folder_name_length = read_u32(reader)? as u64; // используется только при записи
+    let _total_folder_name_length = read_u32(reader)? as u64; // used only when writing
     let total_file_name_length = read_u32(reader)? as u64;
     let _file_flags = read_u32(reader)?;
 
@@ -161,7 +161,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
     let has_folder_names = archive_flags & FLAG_HAS_FOLDER_NAMES != 0;
     let has_file_names = archive_flags & FLAG_HAS_FILE_NAMES != 0;
 
-    // Записи папок: folder_count × 16 байт
+    // Folder records: folder_count × 16 bytes
     let mut folder_fc: Vec<usize> = Vec::with_capacity(folder_count);
     let mut first_block_expected: Option<u64> = None;
 
@@ -169,7 +169,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
         let _hash = read_u64(reader)?;
         let fc = read_u32(reader)? as usize;
         let offset_raw = read_u32(reader)? as u64;
-        // Реальная позиция блока папки = offset_raw - total_file_name_length
+        // Real position of a folder block = offset_raw - total_file_name_length
         let block_pos = offset_raw.saturating_sub(total_file_name_length);
         if i == 0 {
             first_block_expected = Some(block_pos);
@@ -177,7 +177,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
         folder_fc.push(fc);
     }
 
-    // Проверяем, что вычисленное смещение первого блока совпадает с текущей позицией
+    // Check that the computed offset of the first block matches the current position
     if let Some(expected) = first_block_expected {
         let got = reader.stream_position().map_err(io_err)?;
         if expected != got {
@@ -185,7 +185,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
         }
     }
 
-    // Блоки файлов — читаем последовательно
+    // File blocks — read sequentially
     let mut folder_names: Vec<String> = Vec::with_capacity(folder_count);
     // (size_raw, absolute_offset)
     let mut file_records: Vec<(u32, u64)> = Vec::with_capacity(file_count);
@@ -201,7 +201,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
             }
             let mut name_bytes = vec![0u8; len];
             reader.read_exact(&mut name_bytes).map_err(io_err)?;
-            // Последний байт — NUL, отбрасываем
+            // The last byte is NUL, drop it
             let name = cp1252::decode(&name_bytes[..len.saturating_sub(1)]).to_ascii_lowercase();
             folder_names.push(name);
         } else {
@@ -216,7 +216,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
         }
     }
 
-    // Блок имён файлов
+    // File name block
     let mut file_names: Vec<String> = Vec::with_capacity(file_count);
     if has_file_names {
         for _ in 0..file_count {
@@ -232,7 +232,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
         }
     }
 
-    // Сборка записей
+    // Assembling the records
     let mut entries: Vec<BsaEntry> = Vec::with_capacity(file_count);
     let mut by_path: HashMap<String, usize> = HashMap::with_capacity(file_count);
     let mut global_idx = 0usize;
@@ -276,8 +276,7 @@ fn read_bsa<R: Read + Seek>(reader: &mut R) -> Result<BsaIndex> {
     Ok(BsaIndex { entries, by_path })
 }
 
-/// Нормализует путь для поиска: нижний регистр ASCII, `'/'` → `'\\'`,
-/// ведущий `'\\'` — убирается.
+/// Normalizes a path for lookup: ASCII lower case, `'/'` → `'\\'`, a leading `'\\'` is removed.
 fn normalize_path(path: &str) -> String {
     let s: String = path
         .chars()
@@ -289,7 +288,7 @@ fn normalize_path(path: &str) -> String {
     s.strip_prefix('\\').map(str::to_owned).unwrap_or(s)
 }
 
-// --- вспомогательные читатели ---
+// --- helper readers ---
 
 fn io_err(e: std::io::Error) -> Error {
     Error::Io {

@@ -1,6 +1,6 @@
-//! Тесты ридера BSA на реальных архивах Oblivion. Требуют BACK2MW_GAME_DATA и BACK2MW_BSATOOL.
+//! BSA reader tests on real Oblivion archives. They need BACK2MW_GAME_DATA and BACK2MW_BSATOOL.
 //!
-//! Запуск:
+//! Running:
 //! ```
 //! DATA='C:\path\to\back2mw-data'
 //! BACK2MW_GAME_DATA="$DATA\\tes" \
@@ -19,32 +19,32 @@ use std::time::Instant;
 
 use tes4_read::BsaIndex;
 
-/// Путь к `bsatool.exe` из переменной окружения. Паника с подсказкой, если не задан.
+/// Path to `bsatool.exe` from an environment variable. Panics with a hint if it is not set.
 fn bsatool() -> PathBuf {
     let raw = std::env::var_os("BACK2MW_BSATOOL").expect(
-        "BACK2MW_BSATOOL не задана. \
-         Выставить: BACK2MW_BSATOOL='C:\\Users\\…\\back2mw-data\\OpenMW 0.51.0\\bsatool.exe' \
+        "BACK2MW_BSATOOL is not set. \
+         Set it: BACK2MW_BSATOOL='C:\\Users\\…\\back2mw-data\\OpenMW 0.51.0\\bsatool.exe' \
          WSLENV=BACK2MW_BSATOOL",
     );
     let p = PathBuf::from(raw);
     assert!(
         p.is_file(),
-        "BACK2MW_BSATOOL не указывает на файл: {}",
+        "BACK2MW_BSATOOL does not point to a file: {}",
         p.display()
     );
     p
 }
 
-/// Список путей из `bsatool list <archive>`, нормализованных к нижнему регистру с `\\`.
+/// The list of paths from `bsatool list <archive>`, normalized to lower case with `\\`.
 fn bsatool_list(bsatool: &std::path::Path, archive: &std::path::Path) -> HashSet<String> {
     let out = Command::new(bsatool)
         .arg("list")
         .arg(archive)
         .output()
-        .unwrap_or_else(|e| panic!("bsatool list завершился с ошибкой: {e}"));
+        .unwrap_or_else(|e| panic!("bsatool list failed: {e}"));
     assert!(
         out.status.success(),
-        "bsatool list вернул ненулевой код для {}",
+        "bsatool list returned a non-zero code for {}",
         archive.display()
     );
     String::from_utf8_lossy(&out.stdout)
@@ -54,7 +54,7 @@ fn bsatool_list(bsatool: &std::path::Path, archive: &std::path::Path) -> HashSet
         .collect()
 }
 
-/// Содержимое файла из `bsatool extract`, возвращает байты.
+/// File contents from `bsatool extract`, returns the bytes.
 fn bsatool_extract(
     bsatool: &std::path::Path,
     archive: &std::path::Path,
@@ -68,27 +68,23 @@ fn bsatool_extract(
         .arg(out_dir)
         .status()
         .unwrap_or_else(|e| panic!("bsatool extract: {e}"));
-    assert!(status.success(), "bsatool extract вернул ненулевой код");
+    assert!(status.success(), "bsatool extract returned a non-zero code");
 
-    // bsatool кладёт файл по относительному пути внутри out_dir.
-    // Путь в архиве: "meshes\\clutter\\bowl01.nif" →
-    // создаёт: out_dir/meshes/clutter/bowl01.nif
-    // Нормализуем: заменяем '\\' на разделитель ОС.
+    // bsatool puts the file at its relative path inside out_dir.
+    // Path in the archive: "meshes\\clutter\\bowl01.nif" →
+    // creates: out_dir/meshes/clutter/bowl01.nif
+    // Normalize: replace '\\' with the OS separator.
     let rel: PathBuf = file_in_archive.split(['\\', '/']).collect::<PathBuf>();
     let full = out_dir.join(rel);
-    std::fs::read(&full).unwrap_or_else(|e| {
-        panic!(
-            "не удалось прочитать извлечённый файл {}: {e}",
-            full.display()
-        )
-    })
+    std::fs::read(&full)
+        .unwrap_or_else(|e| panic!("could not read the extracted file {}: {e}", full.display()))
 }
 
-/// Читает все BSA Oblivion и проверяет базовые инварианты без сравнения с bsatool.
+/// Reads all Oblivion BSAs and checks basic invariants without comparing with bsatool.
 ///
-/// Числа переносятся в `docs/ru/formats/tes4.md`.
+/// The numbers go to `docs/en/formats/tes4.md`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn all_oblivion_bsa_read_without_errors() {
     let dir = common::game_data_dir();
 
@@ -105,8 +101,11 @@ fn all_oblivion_bsa_read_without_errors() {
         .collect();
     bsa_files.sort();
 
-    println!("=== Все BSA в BACK2MW_GAME_DATA ===");
-    println!("{:<50} {:>8} {:>8} {:>8}", "Архив", "Папок", "Файлов", "мс");
+    println!("=== All BSAs in BACK2MW_GAME_DATA ===");
+    println!(
+        "{:<50} {:>8} {:>8} {:>8}",
+        "Archive", "Folders", "Files", "ms"
+    );
     println!("{}", "-".repeat(78));
 
     let mut total_entries = 0usize;
@@ -115,19 +114,19 @@ fn all_oblivion_bsa_read_without_errors() {
     for path in &bsa_files {
         let t0 = Instant::now();
 
-        // Проверяем первые 4 байта: TES3 BSA начинается с 0x00_01_00_00,
-        // Oblivion BSA — с "BSA\0". Morrowind-архивы пропускаем с пометкой.
+        // Check the first 4 bytes: a TES3 BSA starts with 0x00_01_00_00, an Oblivion BSA with
+        // "BSA\0". Morrowind archives are skipped with a note.
         let magic = {
             let mut buf = [0u8; 4];
             let mut fh = std::fs::File::open(path)
-                .unwrap_or_else(|e| panic!("не открыть {}: {e}", path.display()));
+                .unwrap_or_else(|e| panic!("cannot open {}: {e}", path.display()));
             use std::io::Read as _;
             fh.read_exact(&mut buf).unwrap_or_default();
             buf
         };
         if &magic != b"BSA\0" {
             println!(
-                "{:<50} (пропущен, TES3 BSA или другой формат: {:02x?})",
+                "{:<50} (skipped, TES3 BSA or another format: {:02x?})",
                 path.file_name().unwrap_or_default().to_string_lossy(),
                 magic
             );
@@ -135,7 +134,7 @@ fn all_oblivion_bsa_read_without_errors() {
         }
 
         let f = std::fs::File::open(path)
-            .unwrap_or_else(|e| panic!("не открыть {}: {e}", path.display()));
+            .unwrap_or_else(|e| panic!("cannot open {}: {e}", path.display()));
         let mut reader = BufReader::new(f);
 
         match BsaIndex::read_from(&mut reader) {
@@ -152,7 +151,7 @@ fn all_oblivion_bsa_read_without_errors() {
             }
             Err(e) => {
                 println!(
-                    "{:<50} ОШИБКА: {e}",
+                    "{:<50} ERROR: {e}",
                     path.file_name().unwrap_or_default().to_string_lossy()
                 );
                 errors += 1;
@@ -162,20 +161,20 @@ fn all_oblivion_bsa_read_without_errors() {
 
     println!("{}", "-".repeat(78));
     println!(
-        "Итого: {} архивов, {} файлов, {} ошибок",
+        "Total: {} archives, {} files, {} errors",
         bsa_files.len(),
         total_entries,
         errors
     );
-    assert_eq!(errors, 0, "есть архивы, которые не удалось прочитать");
+    assert_eq!(errors, 0, "some archives could not be read");
 }
 
-/// Множество путей нашего ридера совпадает с выводом `bsatool list`.
+/// The set of paths from our reader matches the output of `bsatool list`.
 ///
-/// Проверяем только `Oblivion - Meshes.bsa`: самый крупный (20 182 файла),
-/// содержимое хорошо известно.
+/// We check only `Oblivion - Meshes.bsa`: the largest one (20,182 files), its contents are well
+/// known.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA и BACK2MW_BSATOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA and BACK2MW_BSATOOL"]
 fn path_set_matches_bsatool_for_meshes_bsa() {
     let bst = bsatool();
     let archive = common::game_file("Oblivion - Meshes.bsa");
@@ -183,7 +182,7 @@ fn path_set_matches_bsatool_for_meshes_bsa() {
     let t0 = Instant::now();
     let bsatool_paths = bsatool_list(&bst, &archive);
     println!(
-        "bsatool list: {} путей за {} мс",
+        "bsatool list: {} paths in {} ms",
         bsatool_paths.len(),
         t0.elapsed().as_millis()
     );
@@ -194,25 +193,25 @@ fn path_set_matches_bsatool_for_meshes_bsa() {
     let index =
         BsaIndex::read_from(&mut reader).unwrap_or_else(|e| panic!("BsaIndex::read_from: {e}"));
     println!(
-        "read_from: {} записей за {} мс",
+        "read_from: {} records in {} ms",
         index.entries().len(),
         t1.elapsed().as_millis()
     );
 
     let our_paths: HashSet<String> = index.entries().iter().map(|e| e.path.clone()).collect();
 
-    // Совпадение
+    // Matching
     let only_bsatool: Vec<_> = bsatool_paths.difference(&our_paths).take(5).collect();
     let only_ours: Vec<_> = our_paths.difference(&bsatool_paths).take(5).collect();
 
     if !only_bsatool.is_empty() {
-        println!("Только у bsatool (первые 5):");
+        println!("Only in bsatool (first 5):");
         for p in &only_bsatool {
             println!("  {p}");
         }
     }
     if !only_ours.is_empty() {
-        println!("Только у нас (первые 5):");
+        println!("Only in ours (first 5):");
         for p in &only_ours {
             println!("  {p}");
         }
@@ -221,21 +220,21 @@ fn path_set_matches_bsatool_for_meshes_bsa() {
     assert_eq!(
         our_paths.len(),
         bsatool_paths.len(),
-        "число путей не совпадает: наш={}, bsatool={}",
+        "the number of paths differs: ours={}, bsatool={}",
         our_paths.len(),
         bsatool_paths.len()
     );
     assert!(
         only_bsatool.is_empty() && only_ours.is_empty(),
-        "множества путей различаются"
+        "the path sets differ"
     );
-    println!("✓ {} путей совпали", our_paths.len());
+    println!("✓ {} paths matched", our_paths.len());
 }
 
-/// Каждый 500-й файл из `Oblivion - Meshes.bsa` побайтово равен
-/// тому, что извлекает `bsatool extract`.
+/// Every 500th file of `Oblivion - Meshes.bsa` is byte-for-byte equal to what `bsatool extract`
+/// extracts.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA и BACK2MW_BSATOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA and BACK2MW_BSATOOL"]
 fn sampled_files_match_bsatool_extract() {
     let bst = bsatool();
     let archive = common::game_file("Oblivion - Meshes.bsa");
@@ -246,7 +245,7 @@ fn sampled_files_match_bsatool_extract() {
 
     let sample: Vec<_> = index.entries().iter().step_by(500).collect();
     println!(
-        "Проверяем {} файлов (каждый 500-й из {})",
+        "Checking {} files (every 500th of {})",
         sample.len(),
         index.entries().len()
     );
@@ -268,7 +267,7 @@ fn sampled_files_match_bsatool_extract() {
 
         if our_bytes != bst_bytes {
             println!(
-                "НЕСОВПАДЕНИЕ «{}»: наш {} байт, bsatool {} байт",
+                "MISMATCH \"{}\": ours {} bytes, bsatool {} bytes",
                 entry.path,
                 our_bytes.len(),
                 bst_bytes.len()
@@ -277,16 +276,16 @@ fn sampled_files_match_bsatool_extract() {
         }
     }
 
-    // Очищаем временные файлы
+    // Clean up the temporary files
     let _ = std::fs::remove_dir_all(&tmp);
 
-    assert_eq!(mismatches, 0, "{mismatches} файлов не совпало с bsatool");
-    println!("✓ {} файлов совпали побайтово", sample.len());
+    assert_eq!(mismatches, 0, "{mismatches} files did not match bsatool");
+    println!("✓ {} files matched byte for byte", sample.len());
 }
 
-/// Все файлы в `Oblivion - Meshes.bsa` распаковываются без ошибки.
+/// All files in `Oblivion - Meshes.bsa` decompress without errors.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn all_mesh_files_extract_without_error() {
     let archive = common::game_file("Oblivion - Meshes.bsa");
     let f = std::fs::File::open(&archive).unwrap();
@@ -303,11 +302,11 @@ fn all_mesh_files_extract_without_error() {
         let mut r = BufReader::new(&mut f2);
         match index.extract(&mut r, entry) {
             Ok(data) => {
-                // Минимальная проверка: NIF начинается с "Gamebryo" или "NetImmerse"
-                let _ = data; // просто убедились, что распаковалось
+                // A minimal check: a NIF starts with "Gamebryo" or "NetImmerse"
+                let _ = data; // just making sure it decompressed
             }
             Err(e) => {
-                println!("ОШИБКА «{}»: {e}", entry.path);
+                println!("ERROR \"{}\": {e}", entry.path);
                 errors += 1;
             }
         }
@@ -315,8 +314,8 @@ fn all_mesh_files_extract_without_error() {
     }
 
     println!(
-        "Извлечено {total} файлов за {} с, ошибок: {errors}",
+        "Extracted {total} files in {} s, errors: {errors}",
         t0.elapsed().as_secs()
     );
-    assert_eq!(errors, 0, "{errors} файлов не удалось извлечь");
+    assert_eq!(errors, 0, "{errors} files could not be extracted");
 }

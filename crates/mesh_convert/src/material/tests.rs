@@ -25,7 +25,7 @@ fn desc(source: u32, filter: u32, uv_set: u32, transform: bool) -> TexDesc {
     }
 }
 
-/// Две разные ссылки на текстуры.
+/// Two different texture references.
 fn links() -> (NiLink<NiSourceTexture>, NiLink<NiSourceTexture>) {
     let mut stream = tes3::nif::NiStream::new();
     (
@@ -64,7 +64,7 @@ fn material_keeps_colours_shine_and_alpha() {
     assert_eq!(out.base.base.name, "mat");
     assert!(
         out.base.base.extra_data.is_null() && out.base.base.controller.is_null(),
-        "доп. данные и контроллер не переносятся"
+        "extra data and the controller are not carried over"
     );
     assert_eq!(out.ambient_color.to_array(), [0.1, 0.2, 0.3]);
     assert_eq!(out.diffuse_color.to_array(), [0.4, 0.5, 0.6]);
@@ -73,7 +73,7 @@ fn material_keeps_colours_shine_and_alpha() {
     assert_eq!((out.shine, out.alpha), (25.0, 0.5));
 }
 
-/// Ambient 0 в Morrowind — чёрная тень (рукава NPC `SEWorld`): он становится diffuse.
+/// Ambient 0 in Morrowind is a black shadow (the sleeves of `SEWorld` NPCs): it becomes diffuse.
 #[test]
 fn a_zero_ambient_takes_the_diffuse_colour() {
     let src = |ambient| SrcMaterial {
@@ -92,7 +92,7 @@ fn a_zero_ambient_takes_the_diffuse_colour() {
     assert_eq!(
         material(&src([0.0, 0.0, 0.01])).ambient_color.to_array(),
         [0.0, 0.0, 0.01],
-        "ненулевой ambient остаётся как есть"
+        "a non-zero ambient stays as is"
     );
 }
 
@@ -133,7 +133,7 @@ fn vertex_color_with_an_unknown_mode_is_an_error() {
 
 #[test]
 fn alpha_keeps_test_bits_and_threshold_and_drops_bethesda_only_bits() {
-    // 0x12ED — типичные флаги Oblivion; биты 13–15 в 4.0.0.2 не существуют.
+    // 0x12ED — typical Oblivion flags; bits 13–15 do not exist in 4.0.0.2.
     let out = alpha(&SrcAlpha {
         net: net("alpha"),
         flags: 0xE000 | 0x12ED,
@@ -202,14 +202,14 @@ fn texturing_keeps_base_and_glow_in_their_slots() {
     assert_eq!(out.apply_mode, ApplyMode::Modulate);
     assert_eq!(out.texture_maps.len(), OUT_SLOTS);
     let Some(TextureMap::Map(base)) = &out.texture_maps[SLOT_BASE] else {
-        panic!("слот base пуст");
+        panic!("the base slot is empty");
     };
     assert_eq!(base.texture, a);
     assert_eq!(base.clamp_mode, ClampMode::ClampSWrapT);
     assert_eq!(base.filter_mode, FilterMode::Trilerp);
     assert_eq!(base.texture_index, 0);
     let Some(TextureMap::Map(glow)) = &out.texture_maps[SLOT_GLOW] else {
-        panic!("слот glow пуст");
+        panic!("the glow slot is empty");
     };
     assert_eq!(glow.texture, b);
     assert_eq!(glow.filter_mode, FilterMode::NearestMipLerp);
@@ -244,7 +244,7 @@ fn anisotropic_filter_becomes_trilerp_and_other_unknowns_are_errors() {
     src.base = Some(desc(1, 6, 0, false));
     let (out, _) = texturing(5, &src, Some(a), None).unwrap();
     let Some(TextureMap::Map(base)) = &out.texture_maps[SLOT_BASE] else {
-        panic!("слот base пуст");
+        panic!("the base slot is empty");
     };
     assert_eq!(base.filter_mode, FilterMode::Trilerp);
 
@@ -289,7 +289,8 @@ fn stencil_keeps_double_sided_mode_and_every_field() {
     assert_eq!((out.stencil_ref, out.stencil_mask), (3, 0xFFFF_FFFF));
     assert!(out.stencil_enabled);
 
-    // Мусор из экспортёра (float 1.0 в целом поле) не валит меш, а даёт значения по умолчанию.
+    // Junk from an exporter (float 1.0 in an integer field) does not fail the mesh but gives
+    // default values.
     let junk = Src {
         function: 1_065_353_216,
         fail_action: 1_065_353_216,

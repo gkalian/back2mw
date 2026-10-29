@@ -1,5 +1,5 @@
-//! Задание интерфейса на настоящей установке Oblivion с модами (только чтение источника,
-//! запись — во временную папку).
+//! The interface job on a real Oblivion install with mods (the source is only read; writing goes to
+//! a temporary folder).
 //!
 //! ```text
 //! $env:BACK2MW_OBLIVION_DATA = 'C:\path\to\Oblivion\Data'
@@ -14,7 +14,7 @@ use back2mw::plugins;
 
 fn oblivion() -> PathBuf {
     PathBuf::from(
-        std::env::var_os("BACK2MW_OBLIVION_DATA").expect("BACK2MW_OBLIVION_DATA не задана"),
+        std::env::var_os("BACK2MW_OBLIVION_DATA").expect("BACK2MW_OBLIVION_DATA is not set"),
     )
 }
 
@@ -28,8 +28,8 @@ impl Drop for Temp {
     }
 }
 
-/// Заглушка `Data Files` Morrowind: `Morrowind.esm` и — если задана `BACK2MW_GAME_DATA` с
-/// настоящим `Morrowind.bsa` — свободными файлами меши, из которых строится скелет для брони.
+/// A stub of Morrowind's `Data Files`: `Morrowind.esm` and — if `BACK2MW_GAME_DATA` with a real
+/// `Morrowind.bsa` is set — the meshes the armor skeleton is built from, as loose files.
 fn stub_morrowind(target: &std::path::Path) {
     fs::write(target.join("Morrowind.esm"), b"stub").unwrap();
     let Some(game) = std::env::var_os("BACK2MW_GAME_DATA") else {
@@ -44,7 +44,7 @@ fn stub_morrowind(target: &std::path::Path) {
         "meshes/a/a_art_cuirass_lords_c.nif",
     ];
     for f in files {
-        let bytes = tes3_out::vanilla::read_file(&game, f).expect("файл скелета в Morrowind.bsa");
+        let bytes = tes3_out::vanilla::read_file(&game, f).expect("skeleton file in Morrowind.bsa");
         let path = f.split('/').fold(target.to_owned(), |p, s| p.join(s));
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, bytes).unwrap();
@@ -59,20 +59,16 @@ fn temp(name: &str) -> Temp {
 }
 
 #[test]
-#[ignore = "настоящая установка Oblivion: BACK2MW_OBLIVION_DATA"]
+#[ignore = "real Oblivion install: BACK2MW_OBLIVION_DATA"]
 fn lists_the_real_plugins_with_masters_and_load_order() {
     let list = plugins::list(&oblivion()).unwrap();
-    println!("плагинов: {}", list.len());
+    println!("plugins: {}", list.len());
     for p in &list {
         println!(
-            "{:>3} {} {:<8} {:>10} {:<40} мастера: {:?} {}",
+            "{:>3} {} {:<8} {:>10} {:<40} masters: {:?} {}",
             p.load_index,
             p.kind,
-            if p.official {
-                "оригинал"
-            } else {
-                "мод"
-            },
+            if p.official { "original" } else { "mod" },
             p.size,
             p.name,
             p.masters,
@@ -82,7 +78,7 @@ fn lists_the_real_plugins_with_masters_and_load_order() {
     assert!(list[0].is_oblivion_master());
     assert!(
         list.iter().all(|p| p.error.is_none()),
-        "есть нечитаемые заголовки"
+        "some headers are unreadable"
     );
 }
 
@@ -119,7 +115,7 @@ fn convert_all(pack_bsa: bool) {
     };
     let report = run(&job, &mut |l| println!("{l}")).unwrap_or_else(|e| panic!("{e}"));
     println!(
-        "STAT {}, WEAP {} (пропущено {}), мешей {}, текстур {}, bsa {}, проверка {}",
+        "STAT {}, WEAP {} (skipped {}), meshes {}, textures {}, bsa {}, validated {}",
         report.statics_written,
         report.weapons_written,
         report.statics_skipped,
@@ -129,13 +125,14 @@ fn convert_all(pack_bsa: bool) {
         report.validated
     );
     for n in report.notes.iter().take(15) {
-        println!("  замечание: {n}");
+        println!("  note: {n}");
     }
-    println!("  замечаний всего: {}", report.notes.len());
+    println!("  notes in total: {}", report.notes.len());
     assert!(report.statics_written > 5000);
-    // Один плагин Morrowind на каждый плагин Oblivion, с тем же именем; back2mw.esp больше нет.
-    println!("  плагины: {:?}", report.plugins);
-    println!("  архивы:  {:?}", report.bsas);
+    // One Morrowind plugin per Oblivion plugin, with the same name; there is no back2mw.esp
+    // anymore.
+    println!("  plugins: {:?}", report.plugins);
+    println!("  archives: {:?}", report.bsas);
     assert_eq!(report.plugins.len(), job.plugins.len());
     for name in &report.plugins {
         assert!(target.join(name).is_file(), "{name}");
@@ -150,37 +147,38 @@ fn convert_all(pack_bsa: bool) {
         .iter()
         .filter(|f| f.relative.contains('/'))
         .count();
-    println!("  ассетов, лежащих в Data Files вне архивов: {loose}");
+    println!("  assets in Data Files outside archives: {loose}");
     if pack_bsa {
-        // В BSA вошло почти всё; отдельными остаются лишь файлы с совпавшим хешем.
-        assert!(loose < 50, "слишком много файлов вне архива: {loose}");
+        // Almost everything went into BSA; only files with a hash collision stay separate.
+        assert!(loose < 50, "too many files outside the archive: {loose}");
     } else {
         assert!(target.join("Meshes").exists());
     }
     back2mw::install::uninstall(&target).unwrap();
     for name in &report.plugins {
-        assert!(!target.join(name).exists(), "{name} после отката");
+        assert!(!target.join(name).exists(), "{name} after rollback");
     }
 }
 
 #[test]
-#[ignore = "настоящая установка Oblivion: BACK2MW_OBLIVION_DATA"]
+#[ignore = "real Oblivion install: BACK2MW_OBLIVION_DATA"]
 fn converts_every_plugin_of_a_real_install_loose() {
     convert_all(false);
 }
 
 #[test]
-#[ignore = "настоящая установка Oblivion: BACK2MW_OBLIVION_DATA"]
+#[ignore = "real Oblivion install: BACK2MW_OBLIVION_DATA"]
 fn converts_every_plugin_of_a_real_install_into_a_bsa() {
     convert_all(true);
 }
 
-/// Плагины из `BACK2MW_PLUGINS` (через `;`): моды без `STAT` — броня, оружие и т. п.
+/// Plugins from `BACK2MW_PLUGINS` (separated by `;`): mods without `STAT` — armor, weapons and so
+/// on.
 #[test]
-#[ignore = "настоящая установка Oblivion: BACK2MW_OBLIVION_DATA, BACK2MW_PLUGINS"]
+#[ignore = "real Oblivion install: BACK2MW_OBLIVION_DATA, BACK2MW_PLUGINS"]
 fn converts_the_models_of_gear_mods_that_have_no_statics() {
     let names: Vec<String> = std::env::var("BACK2MW_PLUGINS")
-        .expect("BACK2MW_PLUGINS не задана")
+        .expect("BACK2MW_PLUGINS is not set")
         .split(';')
         .map(str::to_owned)
         .collect();
@@ -208,7 +206,7 @@ fn converts_the_models_of_gear_mods_that_have_no_statics() {
     };
     let report = run(&job, &mut |l| println!("{l}")).unwrap_or_else(|e| panic!("{e}"));
     println!(
-        "STAT {}, WEAP {} (пропущено {}), мешей {}, текстур {}",
+        "STAT {}, WEAP {} (skipped {}), meshes {}, textures {}",
         report.statics_written,
         report.weapons_written,
         report.statics_skipped,
@@ -216,10 +214,10 @@ fn converts_the_models_of_gear_mods_that_have_no_statics() {
         report.textures
     );
     for n in report.notes.iter().take(40) {
-        println!("  замечание: {n}");
+        println!("  note: {n}");
     }
     assert!(
         report.statics_written + report.weapons_written > 0,
-        "ни одного объекта"
+        "not a single object"
     );
 }

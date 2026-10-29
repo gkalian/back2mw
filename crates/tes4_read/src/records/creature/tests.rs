@@ -20,8 +20,8 @@ fn u32s(values: &[u32]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
 
-/// Обязательные поля: `ACBS`, `AIDT`, `DATA`, `RNAM`, `BNAM`, `TNAM`, `WNAM` — как у ограбленного
-/// стража Мании (`SEUncleLeo`) в `Oblivion.esm`.
+/// Required fields: `ACBS`, `AIDT`, `DATA`, `RNAM`, `BNAM`, `TNAM`, `WNAM` — as in the robbed Mania
+/// guard (`SEUncleLeo`) in `Oblivion.esm`.
 fn required() -> Vec<Vec<u8>> {
     vec![
         synth::field(b"EDID", b"SEUncleLeo\0"),
@@ -113,7 +113,8 @@ fn reads_model_parts_lists_and_sound_groups() {
         (c.script, c.death_item, c.sound_source),
         (Some(0x50), Some(0x60), Some(0x70))
     );
-    // Шанс `CSDC` — к последнему звуку перед ним; звук без своего `CSDC` — 100 %.
+    // The `CSDC` chance belongs to the last sound before it; a sound without its own `CSDC` is
+    // 100%.
     assert_eq!(
         c.sounds,
         [

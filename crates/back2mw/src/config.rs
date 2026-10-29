@@ -1,20 +1,21 @@
-//! Конфигурация и пути (T1.1).
+//! Configuration and paths (T1.1).
 //!
-//! Источники значений, от сильного к слабому: флаг командной строки → `config.toml` →
-//! (для путей к инструментам) переменная окружения → умолчание. Так же у смещения worldspace:
-//! флаг `--offset` → ключ `offset` → умолчание прогона (`pipeline::default_offset`). Автообнаружение установок
-//! (реестр, `libraryfolders.vdf`) не делается: проверить его не на чем.
+//! Sources of values, strongest first: command-line flag → `config.toml` → (for tool paths)
+//! environment variable → default. The worldspace offset works the same way: the `--offset` flag →
+//! the `offset` key → the run default (`pipeline::default_offset`). Installs are not auto-detected
+//! (registry, `libraryfolders.vdf`): there is nothing to test it on.
 //!
-//! Относительный путь **из файла** отсчитывается от каталога `config.toml`, чтобы папка с
-//! бинарём и конфигом переезжала целиком. Относительный путь **из флага** — от текущего
-//! каталога, как у любой команды.
+//! A relative path **from the file** is resolved against the `config.toml` directory, so a folder
+//! with the binary and the config can move as a whole. A relative path **from a flag** is resolved
+//! against the current directory, as for any command.
 //!
-//! Значения по умолчанию есть только у `work_dir` и `output_dir`. Всё, что мы создаём, лежит в
-//! папке `_back2mw-output` **в корне игры**, ничего — рядом с программой или в `%TEMP%`:
-//! распакованное из Oblivion — `<Oblivion>/_back2mw-output` (`work_dir`), результат и подготовка
-//! установки — `<Morrowind>/_back2mw-output/{output,stage}`. Корень игры — родитель каталога
-//! данных (`Data`, `Data Files`). Пока пути к играм неизвестны (команды `package`/`validate` без
-//! них), умолчание — `work`/`output` рядом с конфигом. Пути к играм угадывать нельзя.
+//! Only `work_dir` and `output_dir` have defaults. Everything we create lives in the
+//! `_back2mw-output` folder **in the game root**, nothing next to the program or in `%TEMP%`: what
+//! is unpacked from Oblivion goes to `<Oblivion>/_back2mw-output` (`work_dir`), the result and the
+//! install staging to `<Morrowind>/_back2mw-output/{output,stage}`. The game root is the parent of
+//! the data directory (`Data`, `Data Files`). While the game paths are unknown (the
+//! `package`/`validate` commands run without them), the default is `work`/`output` next to the
+//! config. Game paths must not be guessed.
 
 use std::ffi::OsString;
 use std::fmt;
@@ -22,62 +23,65 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-/// Имя файла конфигурации рядом с бинарём.
+/// Name of the configuration file next to the binary.
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 
-/// Папка со всем, что мы создаём, в корне каждой из игр.
+/// The folder with everything we create, in the root of each game.
 pub const OUTPUT_DIR_NAME: &str = "_back2mw-output";
 
-/// `<корень игры>/_back2mw-output` по каталогу данных игры; `None`, если у каталога нет родителя.
+/// `<game root>/_back2mw-output` from the game's data directory; `None` if the directory has no
+/// parent.
 fn in_game_root(data: &Path) -> Option<PathBuf> {
     data.parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(|p| p.join(OUTPUT_DIR_NAME))
 }
 
-/// Умолчание `work_dir`: распакованное из архивов Oblivion — в папке с Oblivion.
+/// Default `work_dir`: what is unpacked from Oblivion archives goes into the Oblivion folder.
 pub fn default_work_dir(source_data: &Path) -> Option<PathBuf> {
     in_game_root(source_data)
 }
 
-/// Умолчание `output_dir`: результат — в папке с Morrowind.
+/// Default `output_dir`: the result goes into the Morrowind folder.
 pub fn default_output_dir(target_data: &Path) -> Option<PathBuf> {
     in_game_root(target_data).map(|d| d.join("output"))
 }
 
-/// Подготовка установки (`Job`): тоже в папке с Morrowind, чтобы собранное не уходило на другой
-/// диск и ничего не падало в `%TEMP%`.
+/// Install staging (`Job`): also in the Morrowind folder, so the build does not land on another
+/// disk and nothing ends up in `%TEMP%`.
 pub fn default_stage_dir(target_data: &Path) -> Option<PathBuf> {
     in_game_root(target_data).map(|d| d.join("stage"))
 }
 
-/// Итоговая конфигурация.
+/// The resulting configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    /// Каталог с `Oblivion.esm` и BSA источника.
+    /// Directory with `Oblivion.esm` and the source BSAs.
     pub source_data: PathBuf,
-    /// Каталог с `Morrowind.esm` (эталон: размер мастера пишется в заголовок плагина).
+    /// Directory with `Morrowind.esm` (the reference: the master's size is written into the plugin
+    /// header).
     pub target_data: PathBuf,
     pub work_dir: PathBuf,
     pub output_dir: PathBuf,
-    /// `esmtool` для стадии `validate`; без него `validate` — ошибка, не пропуск.
+    /// `esmtool` for the `validate` stage; without it `validate` is an error, not a skip.
     pub esmtool: Option<PathBuf>,
     pub niftest: Option<PathBuf>,
-    /// Отмеченные в интерфейсе плагины Oblivion (имена файлов); пусто — не заданы.
+    /// Oblivion plugins ticked in the interface (file names); empty means not set.
     pub selected_plugins: Vec<String>,
-    /// Собирать меши и текстуры в BSA-архив вместо loose-файлов.
+    /// Pack meshes and textures into a BSA archive instead of loose files.
     pub pack_bsa: bool,
-    /// Подтягивать цены оружия и брони к Morrowind (`transform::prices`); нет — как в Oblivion.
+    /// Bring weapon and armor prices in line with Morrowind (`transform::prices`); otherwise as in
+    /// Oblivion.
     pub morrowind_prices: bool,
-    /// Класть лист карты мира и мод MWSE-Lua, который его показывает (`crate::world_map`).
+    /// Add the world map sheet and the MWSE-Lua mod that shows it (`crate::world_map`).
     pub lua_map: bool,
-    /// Смещение worldspace в ячейках Morrowind (ключ `offset = [dx, dy]`, его пишет и окно);
-    /// `None` — ключа нет. Флаг `--offset` сильнее. Хранится в файле, чтобы повторная сборка
-    /// ставила мир туда же: от смещения зависят сохранения.
+    /// Worldspace offset in Morrowind cells (the `offset = [dx, dy]` key, the window writes it
+    /// too); `None` means no key. The `--offset` flag wins. Kept in the file so a rebuild puts the
+    /// world in the same place: saves depend on the offset.
     pub offset: Option<(i32, i32)>,
 }
 
-/// Значения из флагов. `None` — флаг не задан.
+/// Values from flags. `None` means the flag is not given.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Overrides {
     pub source_data: Option<PathBuf>,
@@ -88,8 +92,8 @@ pub struct Overrides {
     pub niftest: Option<PathBuf>,
 }
 
-/// Содержимое `config.toml`. Неизвестный ключ — ошибка: опечатка в имени ключа иначе молча
-/// превратилась бы в «ключ не задан».
+/// Contents of `config.toml`. An unknown key is an error: otherwise a typo in a key name would
+/// silently turn into "key not set".
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FileConfig {
@@ -103,32 +107,46 @@ struct FileConfig {
     pack_bsa: Option<bool>,
     morrowind_prices: Option<bool>,
     lua_map: Option<bool>,
-    /// Выбор worldspace в окне. Консоль его не читает — у неё флаг `--worldspace`; ключ здесь,
-    /// чтобы общий `config.toml` не считался битым.
-    #[expect(dead_code, reason = "ключ окна; консоль только допускает его в файле")]
+    /// Worldspace choice in the window. The console does not read it — it has the `--worldspace`
+    /// flag; the key is here so a shared `config.toml` is not considered broken.
+    #[expect(
+        dead_code,
+        reason = "window key; the console only tolerates it in the file"
+    )]
     worldspace: Option<String>,
-    /// Смещение worldspace: `[dx, dy]`. Общий ключ консоли и окна. Списком, а не парой: пару
-    /// `serde` молча берёт и из трёх чисел, а длину нужно проверить (`parse_file`).
+    /// Worldspace offset: `[dx, dy]`. A key shared by the console and the window. A list, not a
+    /// pair: `serde` silently takes a pair from three numbers too, and the length has to be checked
+    /// (`parse_file`).
     offset: Option<Vec<i32>>,
-    /// Язык сообщений. Консоль читает его раньше, до разбора конфигурации (`main.rs`,
-    /// `init_language`), чтобы и ошибки конфигурации вышли на нём; здесь ключ только допускается.
-    #[expect(dead_code, reason = "читается отдельно, до разбора конфигурации")]
+    /// Message language. The console reads it earlier, before parsing the configuration (`main.rs`,
+    /// `init_language`), so configuration errors come out in it too; here the key is only
+    /// tolerated.
+    #[expect(
+        dead_code,
+        reason = "read separately, before parsing the configuration"
+    )]
     language: Option<String>,
-    /// Остальные ключи окна (`crate::settings`) — «только собрать», «ещё zip»: консоль только
-    /// допускает их в файле.
-    #[expect(dead_code, reason = "ключ окна; консоль только допускает его в файле")]
+    /// Other window keys (`crate::settings`) — "build only", "also zip": the console only tolerates
+    /// them in the file.
+    #[expect(
+        dead_code,
+        reason = "window key; the console only tolerates it in the file"
+    )]
     build_only: Option<bool>,
-    #[expect(dead_code, reason = "ключ окна; консоль только допускает его в файле")]
+    #[expect(
+        dead_code,
+        reason = "window key; the console only tolerates it in the file"
+    )]
     package_zip: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigError {
-    /// Файл конфигурации есть, но не читается.
+    /// The configuration file exists but cannot be read.
     Read { path: PathBuf, message: String },
-    /// Файл не разобрался как TOML или содержит неизвестный ключ.
+    /// The file did not parse as TOML or contains an unknown key.
     Parse { path: PathBuf, message: String },
-    /// Обязательный путь не задан ни флагом, ни файлом.
+    /// A required path is set neither by a flag nor by the file.
     Missing {
         key: &'static str,
         flag: &'static str,
@@ -165,15 +183,16 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Разбирает текст `config.toml`; `dir` — каталог файла, от него отсчитываются относительные
-/// пути.
+/// Parses the text of `config.toml`; `dir` is the file's directory, relative paths are resolved
+/// against it.
 fn parse_file(path: &Path, text: &str) -> Result<FileConfig, ConfigError> {
     let dir = path.parent().unwrap_or_else(|| Path::new(""));
     let mut file: FileConfig = toml::from_str(text).map_err(|e| ConfigError::Parse {
         path: path.to_owned(),
         message: e.to_string(),
     })?;
-    // Молча взять умолчание или первые два числа нельзя: мир встал бы не там, где в сохранениях.
+    // Silently taking the default or the first two numbers is not allowed: the world would land
+    // somewhere other than in the saves.
     if let Some(offset) = &file.offset
         && offset.len() != 2
     {
@@ -203,7 +222,7 @@ fn parse_file(path: &Path, text: &str) -> Result<FileConfig, ConfigError> {
     Ok(file)
 }
 
-/// Какие обязательные пути нужны команде. Не нужный путь остаётся пустым (`PathBuf::new()`).
+/// Which required paths a command needs. A path that is not needed stays empty (`PathBuf::new()`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Needs {
     pub source_data: bool,
@@ -211,25 +230,25 @@ pub struct Needs {
 }
 
 impl Needs {
-    /// Оба пути: прогон `all`.
+    /// Both paths: the `all` run.
     pub const ALL: Self = Self {
         source_data: true,
         target_data: true,
     };
-    /// Только каталог целевой игры: `install`, `uninstall`.
+    /// Only the target game directory: `install`, `uninstall`.
     pub const TARGET: Self = Self {
         source_data: false,
         target_data: true,
     };
-    /// Ни один: `validate`, `package`.
+    /// Neither: `validate`, `package`.
     pub const NONE: Self = Self {
         source_data: false,
         target_data: false,
     };
 }
 
-/// Собирает конфигурацию. `file` — путь к файлу и его текст, если он есть; `env` — чтение
-/// переменной окружения (параметр, чтобы тесты не трогали настоящее окружение).
+/// Builds the configuration. `file` is the path to the file and its text, if there is one; `env`
+/// reads an environment variable (a parameter so tests do not touch the real environment).
 pub fn resolve(
     file: Option<(&Path, &str)>,
     flags: Overrides,
@@ -238,7 +257,7 @@ pub fn resolve(
     resolve_with(file, flags, env, Needs::ALL)
 }
 
-/// То же, но обязательными считаются только пути из `needs`.
+/// The same, but only the paths in `needs` are required.
 pub fn resolve_with(
     file: Option<(&Path, &str)>,
     flags: Overrides,
@@ -322,13 +341,13 @@ pub fn resolve_with(
     })
 }
 
-/// Читает `config.toml` (если файл есть) и собирает конфигурацию из настоящего окружения.
-/// Отсутствие файла — не ошибка: всё можно передать флагами.
+/// Reads `config.toml` (if the file exists) and builds the configuration from the real environment.
+/// A missing file is not an error: everything can be passed by flags.
 pub fn load(config_path: &Path, flags: Overrides) -> Result<Config, ConfigError> {
     load_with(config_path, flags, Needs::ALL)
 }
 
-/// То же с выбором обязательных путей.
+/// The same with a choice of required paths.
 pub fn load_with(
     config_path: &Path,
     flags: Overrides,

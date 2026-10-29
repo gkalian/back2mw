@@ -22,8 +22,8 @@ fn av(name: &str, translation: [f32; 3]) -> AvObject {
     }
 }
 
-/// Голова: форма на высоте 100 (как у кости), треугольник из вершин 0,1,2 и шов — вершина 3 на
-/// месте вершины 0. Кость `Bip01 Head` на той же высоте.
+/// Head: a shape at height 100 (like the bone), a triangle of vertices 0,1,2 and a seam — vertex 3
+/// at the place of vertex 0. The `Bip01 Head` bone at the same height.
 fn head(vertices: Vec<[f32; 3]>) -> SourceNif {
     let n = vertices.len();
     let blocks = vec![
@@ -133,16 +133,16 @@ fn baked(frame: &HeadFrame, egm: Option<&Egm>, coef: f32) -> Vec<Vec3> {
 #[test]
 fn frame_moves_bone_to_bone_then_into_the_attach_node() {
     let nif = head(verts());
-    // Кость головы Morrowind на высоте 120, узел крепления — ещё на 5 выше и развёрнут на 180°
-    // вокруг Z (как `Head` у `base_anim`).
+    // The Morrowind head bone at height 120, the attachment node 5 higher still and turned by 180°
+    // around Z (like `Head` in `base_anim`).
     let mw_bone = Affine3A::from_translation(Vec3::new(0.0, 0.0, 120.0));
     let attach = Affine3A::from_rotation_translation(
         tes3::nif::glam::Quat::from_rotation_z(std::f32::consts::PI),
         Vec3::new(0.0, 0.0, 5.0),
     );
     let frame = HeadFrame::new(&nif, mw_bone, attach).unwrap();
-    // Вершина (1, 0, 0) у кости Oblivion → (1, 0, 0) у кости Morrowind → в узле: −5 по Z и X
-    // развёрнут.
+    // Vertex (1, 0, 0) at the Oblivion bone → (1, 0, 0) at the Morrowind bone → in the node: −5 in
+    // Z and X turned.
     let v = frame.to_mw.transform_point3(Vec3::new(1.0, 0.0, 0.0));
     assert!(v.abs_diff_eq(Vec3::new(-1.0, 0.0, -5.0), 1e-5), "{v:?}");
 }
@@ -156,7 +156,7 @@ fn face_morph_is_applied_before_the_move_and_normals_are_welded() {
     let plain = baked(&frame, Some(&e), 0.0);
     let morphed = baked(&frame, Some(&e), 3.0);
     assert!(plain[1].abs_diff_eq(Vec3::new(1.0, 0.0, -10.0), 1e-5));
-    // 3 · 0.5 · 2 = 3 вверх.
+    // 3 · 0.5 · 2 = 3 up.
     assert!(morphed[1].abs_diff_eq(Vec3::new(1.0, 0.0, -7.0), 1e-5));
 
     let nif = head(verts());
@@ -182,7 +182,7 @@ fn face_morph_is_applied_before_the_move_and_normals_are_welded() {
         .objects_of_type::<NiTriShapeData>()
         .next()
         .unwrap();
-    // Вершины 0 и 3 — одна точка (шов UV): нормаль у них общая.
+    // Vertices 0 and 3 are one point (a UV seam): they share a normal.
     assert_eq!(data.base.normals[0], data.base.normals[3]);
     assert!(
         data.base
@@ -226,7 +226,7 @@ fn foreign_egm_and_headless_nif_are_errors() {
     ));
 }
 
-/// `.tri` к синтетической голове: «BigAah» опускает вершину 1, «моргание» ставит вершину 2 на (0, 1, −1).
+/// A `.tri` for the synthetic head: "BigAah" lowers vertex 1, "blink" puts vertex 2 at (0, 1, −1).
 fn tri() -> Tri {
     use crate::facegen::{TriDiffMorph, TriStatMorph};
     Tri {
@@ -291,12 +291,12 @@ fn talk_and_blink_become_a_morpher_like_vanilla() {
     let d = out.stream.objects_of_type::<NiMorphData>().next().unwrap();
     assert!(d.relative_targets);
     assert_eq!(d.targets.len(), 3);
-    // Смещения — векторы: поворот на 180° вокруг Z, без сдвига.
+    // Offsets are vectors: a 180° rotation around Z, no translation.
     assert!(d.targets[1].vertices[1].abs_diff_eq(Vec3::new(0.0, 0.0, -1.0), 1e-5));
-    // Моргание: из (0, 1, 0) в (0, 1, −1) → (0, 0, −1) после поворота.
+    // Blink: from (0, 1, 0) to (0, 1, −1) → (0, 0, −1) after the rotation.
     assert!(d.targets[2].vertices[2].abs_diff_eq(Vec3::new(0.0, 0.0, -1.0), 1e-5));
     assert_eq!(d.targets[2].vertices[0], Vec3::ZERO);
-    // База — запечённые вершины.
+    // The base is the baked vertices.
     assert!(d.targets[0].vertices[1].abs_diff_eq(Vec3::new(-1.0, 0.0, -10.0), 1e-5));
 }
 
@@ -337,7 +337,7 @@ fn part_without_expressions_is_static() {
 
 #[test]
 fn hair_tint_follows_the_texture_mean_and_stays_in_range() {
-    // Серая текстура 100, волосы (200, 50, 250) → 2, 0.5, 2.5 (зажато).
+    // Gray texture 100, hair (200, 50, 250) → 2, 0.5, 2.5 (clamped).
     assert_eq!(
         hair_tint([200, 50, 255], [100.0; 3]),
         [2.0, 0.5, HAIR_TINT_MAX]
@@ -365,7 +365,7 @@ fn tint_copies_the_material_instead_of_editing_a_shared_one() {
     assert_eq!(
         tinted.ambient_color,
         Vec3::new(0.5, 1.0, 2.0),
-        "ambient = diffuse с оттенком: у ванильных голов ambient как diffuse"
+        "ambient = diffuse with the tint: vanilla heads have ambient like diffuse"
     );
     let original = stream
         .get_as::<NiProperty, NiMaterialProperty>(shared)
@@ -373,11 +373,11 @@ fn tint_copies_the_material_instead_of_editing_a_shared_one() {
     assert_eq!(
         original.diffuse_color,
         Vec3::ONE,
-        "общий материал не тронут"
+        "the shared material is untouched"
     );
 }
 
-/// Голова с текстурой меша `textures\characters\imperial\eyelefthuman.dds` (блоки 4, 5).
+/// A head with the mesh texture `textures\characters\imperial\eyelefthuman.dds` (blocks 4, 5).
 fn textured_head() -> SourceNif {
     use crate::read::properties::{
         NiSourceTexture as SrcSourceTexture, NiTexturingProperty as SrcTexturing, TexDesc,
@@ -419,14 +419,14 @@ fn textured_head() -> SourceNif {
     }));
     nif.header.block_type_index = vec![0; nif.blocks.len()];
     let Block::TriShape(shape) = &mut nif.blocks[1] else {
-        unreachable!("форма фикстуры");
+        unreachable!("fixture shape");
     };
     shape.av.properties = vec![BlockRef(Some(4))];
     nif
 }
 
-/// T8.7: текстура-замена части (глаза — `EYES` NPC) встаёт вместо текстуры меша и попадает в
-/// список копий; без замены — своя (контроль).
+/// T8.7: a part's replacement texture (eyes — the NPC's `EYES`) takes the place of the mesh texture
+/// and goes into the copy list; without a replacement the part keeps its own (control).
 #[test]
 fn part_texture_replaces_the_mesh_texture() {
     let nif = textured_head();

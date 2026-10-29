@@ -4,8 +4,8 @@ use tes3_out::{Armor, Weapon, WeaponStats};
 #[test]
 fn embedded_table_parses() {
     let c = parse_table(TABLE).unwrap();
-    assert_eq!(c.weapon.len(), 7, "(0, 0) и шесть ступеней");
-    assert_eq!(c.armor.len(), 6, "(0, 0) и пять ступеней");
+    assert_eq!(c.weapon.len(), 7, "(0, 0) and six steps");
+    assert_eq!(c.armor.len(), 6, "(0, 0) and five steps");
 }
 
 #[test]
@@ -21,24 +21,25 @@ fn bad_tables_are_rejected_with_the_line() {
             .unwrap_err()
             .contains("not a price")
     );
-    // Кривая должна расти по обеим осям.
+    // The curve must grow on both axes.
     assert!(parse_table("weapon\t10\t20\nweapon\t5\t30\n").is_err());
     assert!(parse_table("weapon\t10\t20\nweapon\t20\t10\n").is_err());
-    assert!(parse_table("# comment\n\nweapon\t10\t20\tпояснение\n").is_ok());
+    assert!(parse_table("# comment\n\nweapon\t10\t20\tnote\n").is_ok());
 }
 
 #[test]
 fn anchors_are_hit_exactly_and_prices_never_drop() {
     let c = curves();
-    // Опорные точки оружия ложатся точно.
+    // The weapon control points land exactly.
     assert_eq!(raised(&c.weapon, 20), 40);
     assert_eq!(raised(&c.weapon, 3100), 30000);
-    // Между точками — прямая: 300 → 600 и 1 425 → 15 000, посередине 862.5 → 7 800.
+    // Between the points — a straight line: 300 → 600 and 1,425 → 15,000, in the middle 862.5 →
+    // 7,800.
     assert_eq!(raised(&c.weapon, 60), 120);
     assert_eq!(raised(&c.weapon, 862), 7794);
-    // За последней — отношение последней точки.
+    // Beyond the last one — the ratio of the last point.
     assert_eq!(raised(&c.weapon, 6200), 60000);
-    // Железная и стальная броня Morrowind дешевле Oblivion: цена не опускается.
+    // Morrowind iron and steel armor is cheaper than Oblivion's: the price is not lowered.
     assert_eq!(raised(&c.armor, 45), 45);
     assert_eq!(raised(&c.armor, 95), 95);
     assert_eq!(raised(&c.armor, 2500), 34000);
@@ -102,13 +103,16 @@ fn raise_prices_touches_weapons_and_armor_but_not_arrows() {
         armor(ArmorKind::Helmet, 25),
     ];
     let r = raise_prices(&mut objects);
-    assert!(value(&objects[0]) > 1150 * 5, "стеклянный клеймор подтянут");
-    assert_eq!(value(&objects[1]), 35, "стрелы не трогаем");
+    assert!(
+        value(&objects[0]) > 1150 * 5,
+        "the glass claymore is raised"
+    );
+    assert_eq!(value(&objects[1]), 35, "arrows are left alone");
     assert_eq!(value(&objects[2]), 34000);
     assert_eq!(
         value(&objects[3]),
         25,
-        "железо Morrowind дешевле — не опускаем"
+        "Morrowind iron is cheaper — not lowered"
     );
     assert_eq!(
         r,
@@ -121,7 +125,8 @@ fn raise_prices_touches_weapons_and_armor_but_not_arrows() {
 
 #[test]
 fn a_gauntlet_is_raised_as_half_of_the_pair() {
-    // Пара даэдрических рукавиц 2 500 → две вещи по 1 250; кривая от пары — 34 000, по 17 000.
+    // A pair of daedric gauntlets 2,500 → two items of 1,250 each; the curve from the pair gives
+    // 34,000, 17,000 each.
     let mut objects = vec![
         armor(ArmorKind::LeftGauntlet, 1250),
         armor(ArmorKind::RightGauntlet, 1250),

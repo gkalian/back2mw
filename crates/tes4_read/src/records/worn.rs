@@ -2,30 +2,30 @@ use crate::container::{Record, Tag};
 use crate::error::{Error, Result};
 use crate::schema::Fields;
 
-/// Броня (`ARMO`) и одежда (`CLOT`) Oblivion: одна раскладка, кроме `DATA`.
+/// Oblivion armor (`ARMO`) and clothing (`CLOT`): one layout, except for `DATA`.
 ///
-/// Измерено на `Oblivion.esm` (2026-09-24, `docs/ru/formats/tes4.md`): `BMDT` — 4 байта у всех
-/// 996 `ARMO` и 604 `CLOT`; `DATA` — 14 байт у брони, 8 у одежды.
+/// Measured on `Oblivion.esm` (2026-09-24, `docs/en/formats/tes4.md`): `BMDT` is 4 bytes in all 996
+/// `ARMO` and 604 `CLOT`; `DATA` is 14 bytes for armor, 8 for clothing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Worn {
     pub editor_id: String,
     pub name: Option<String>,
     pub script: Option<u32>,
     pub enchantment: Option<u32>,
-    /// Биты слотов `BMDT`: 0 голова, 1 волосы, 2 верх тела, 3 низ тела, 4 кисть, 5 ступня,
-    /// 6 правое кольцо, 7 левое кольцо, 8 амулет, 13 щит, 15 хвост; см. `WORN_*`.
+    /// `BMDT` slot bits: 0 head, 1 hair, 2 upper body, 3 lower body, 4 hand, 5 foot, 6 right ring,
+    /// 7 left ring, 8 amulet, 13 shield, 15 tail; see `WORN_*`.
     pub slots: u16,
-    /// Общие флаги `BMDT`: `0x80` — тяжёлая броня, `0x40` — не для игрока.
+    /// Common `BMDT` flags: `0x80` — heavy armor, `0x40` — not playable.
     pub flags: u8,
-    /// `MODL` — мужская модель на теле.
+    /// `MODL` — the male body model.
     pub male_body: Option<String>,
-    /// `MOD2` — мужская мировая модель (на земле).
+    /// `MOD2` — the male world model (on the ground).
     pub male_world: Option<String>,
-    /// `MOD3` — женская модель на теле.
+    /// `MOD3` — the female body model.
     pub female_body: Option<String>,
-    /// `MOD4` — женская мировая модель.
+    /// `MOD4` — the female world model.
     pub female_world: Option<String>,
-    /// `ICON` — мужская иконка, `ICO2` — женская.
+    /// `ICON` — the male icon, `ICO2` — the female one.
     pub male_icon: Option<String>,
     pub female_icon: Option<String>,
     pub data: WornData,
@@ -34,14 +34,14 @@ pub struct Worn {
 /// `DATA`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WornData {
-    /// Броня: рейтинг ×100, цена, прочность, вес.
+    /// Armor: rating ×100, value, health, weight.
     Armor {
         armor: u16,
         value: u32,
         health: u32,
         weight: f32,
     },
-    /// Одежда: цена, вес.
+    /// Clothing: value, weight.
     Clothing { value: u32, weight: f32 },
 }
 
@@ -56,7 +56,7 @@ pub const WORN_LEFT_RING: u16 = 1 << 7;
 pub const WORN_AMULET: u16 = 1 << 8;
 pub const WORN_SHIELD: u16 = 1 << 13;
 pub const WORN_TAIL: u16 = 1 << 15;
-/// Общий флаг `BMDT`: тяжёлая броня.
+/// Common `BMDT` flag: heavy armor.
 pub const WORN_HEAVY: u8 = 0x80;
 
 fn non_empty(v: Option<String>) -> Option<String> {
@@ -64,11 +64,15 @@ fn non_empty(v: Option<String>) -> Option<String> {
 }
 
 fn u32_at(raw: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
 impl Worn {
-    /// Разбирает `ARMO` или `CLOT`.
+    /// Parses an `ARMO` or a `CLOT`.
     pub fn from_record(record: &Record) -> Result<Self> {
         let (name, armor): (&'static str, bool) = match &record.header.tag {
             b"ARMO" => ("ARMO", true),

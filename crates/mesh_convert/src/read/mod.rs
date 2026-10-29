@@ -1,10 +1,10 @@
-//! Чтение NIF Oblivion (20.0.0.4/20.0.0.5) в собственную модель источника.
+//! Reading an Oblivion NIF (20.0.0.4/20.0.0.5) into our own source model.
 //!
-//! Размеров блоков в этих версиях нет, поэтому блок неизвестного типа пропустить
-//! нельзя, а единственная проверка раскладки — курсор после последнего блока и
-//! футера обязан стоять ровно в конце файла.
+//! These versions have no block sizes, so a block of an unknown type cannot be skipped, and the
+//! only layout check is that after the last block and the footer the cursor must stand exactly at
+//! the end of the file.
 //!
-//! Поддерживается набор среза M1 (`docs/ru/formats/nif-oblivion.md`); остальное —
+//! The set of the M1 slice is supported (`docs/en/formats/nif-oblivion.md`); the rest is
 //! [`Error::UnsupportedBlock`].
 
 pub mod anim;
@@ -47,15 +47,15 @@ pub use properties::{
 };
 pub use skin::{BoneSkin, NiSkinData, NiSkinInstance, NiSkinPartition, SkinTransform};
 
-/// Разобранный блок.
+/// A parsed block.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Node(NiNode),
     TriStrips(NiTriStrips),
     TriStripsData(Box<NiTriStripsData>),
-    /// `NiTriShape`: та же раскладка, что у `NiTriStrips`.
+    /// `NiTriShape`: the same layout as `NiTriStrips`.
     TriShape(NiTriStrips),
-    /// `NiTriShapeData`: `strips` пусто, треугольники — в `triangles`.
+    /// `NiTriShapeData`: `strips` is empty, the triangles are in `triangles`.
     TriShapeData(Box<NiTriStripsData>),
     TexturingProperty(Box<NiTexturingProperty>),
     SourceTexture(NiSourceTexture),
@@ -74,7 +74,7 @@ pub enum Block {
     PackedStripsShape(shapes::BhkPackedNiTriStripsShape),
     PackedStripsData(Box<shapes::HkPackedNiTriStripsData>),
     ListShape(shapes::BhkListShape),
-    /// `bhkConvexTransformShape` и `bhkTransformShape`.
+    /// `bhkConvexTransformShape` and `bhkTransformShape`.
     TransformShape(shapes::BhkTransformShape),
     StringExtraData(StringExtraData),
     BinaryExtraData(BinaryExtraData),
@@ -87,18 +87,18 @@ pub enum Block {
     SkinInstance(NiSkinInstance),
     SkinData(Box<NiSkinData>),
     SkinPartition(NiSkinPartition),
-    /// Прочитан ради длины и отброшен: анимация, havok-связи, фантомы (`anim`), частицы
+    /// Read for its length and dropped: animation, havok constraints, phantoms (`anim`), particles
     /// (`particles`).
     Ignored(Ignored),
 }
 
-/// Меш Oblivion, разобранный целиком.
+/// An Oblivion mesh parsed in full.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceNif {
     pub header: NifHeader,
-    /// Блоки в порядке файла; `BlockRef` указывает в этот вектор.
+    /// Blocks in file order; a `BlockRef` points into this vector.
     pub blocks: Vec<Block>,
-    /// Корни сцены (футер).
+    /// Scene roots (the footer).
     pub roots: Vec<BlockRef>,
 }
 
@@ -108,15 +108,15 @@ impl SourceNif {
     }
 }
 
-/// Читает блок по имени его типа из таблицы заголовка.
+/// Reads a block by its type name from the header table.
 fn read_block(cur: &mut Cursor<'_>, index: usize, type_name: &str) -> Result<Block> {
     Ok(match type_name {
         "NiNode" => Block::Node(nodes::read_node(cur)?),
-        // Узел, повёрнутый к камере: у Oblivion — трава, пламя, листва. Режим разворота теряется,
-        // узел становится обычным (T2.3).
+        // A node turned toward the camera: in Oblivion, grass, flames, foliage. The billboard mode
+        // is lost, the node becomes an ordinary one (T2.3).
         "NiBillboardNode" => {
             let node = nodes::read_node(cur)?;
-            cur.u16()?; // режим разворота (с 10.1.0.0)
+            cur.u16()?; // billboard mode (since 10.1.0.0)
             Block::Node(node)
         }
         "NiTriStrips" => Block::TriStrips(geometry::read_tri_strips(cur)?),
@@ -181,15 +181,15 @@ fn read_block(cur: &mut Cursor<'_>, index: usize, type_name: &str) -> Result<Blo
     })
 }
 
-/// Разбирает NIF целиком. Курсор после блоков и футера обязан оказаться ровно в конце
-/// файла, иначе [`Error::TrailingData`].
+/// Parses a whole NIF. After the blocks and the footer the cursor must end up exactly at the end of
+/// the file, otherwise [`Error::TrailingData`].
 pub fn parse(bytes: &[u8]) -> Result<SourceNif> {
     parse_with_offsets(bytes).map(|(source, _)| source)
 }
 
-/// То же, что [`parse`], и смещение начала каждого блока от начала файла: по ним
-/// [`motion::sequences`] вторым проходом читает значения анимации, которые общий разбор
-/// отбрасывает (T2.6).
+/// The same as [`parse`], plus the offset of each block's start from the start of the file: by them
+/// [`motion::sequences`] reads, in a second pass, the animation values the general parse drops
+/// (T2.6).
 pub fn parse_with_offsets(bytes: &[u8]) -> Result<(SourceNif, Vec<usize>)> {
     let header = header::parse(bytes)?;
     let mut cur = Cursor::new(bytes);
@@ -201,9 +201,9 @@ pub fn parse_with_offsets(bytes: &[u8]) -> Result<(SourceNif, Vec<usize>)> {
     for index in 0..header.num_blocks() {
         let type_name = header
             .block_type_name(index)
-            .expect("индексы типов проверены в header::parse");
-        // У 10.0.1.0…10.1.0.106 перед каждым блоком — `u32`, всегда 0 (так читает и niflib).
-        // Не ноль — признак, что предыдущий блок прочитан не до конца.
+            .expect("type indices are checked in header::parse");
+        // In 10.0.1.0…10.1.0.106 every block is preceded by a `u32`, always 0 (niflib reads it the
+        // same way). Non-zero is a sign that the previous block was not read to the end.
         if (header::VERSION_10_0_1_0..=header::VERSION_10_1_0_106).contains(&header.version) {
             let at = cur.pos();
             let value = cur.u32()?;
@@ -256,9 +256,8 @@ pub fn parse_with_offsets(bytes: &[u8]) -> Result<(SourceNif, Vec<usize>)> {
     ))
 }
 
-/// Типы блоков, которые умеет читать [`parse`]. Список для отчётов и тестов: единственный
-/// источник — `read_block`, тест `supported_types_match_read_block` следит, чтобы они не
-/// разошлись.
+/// Block types [`parse`] can read. A list for reports and tests: the only source is `read_block`,
+/// and the `supported_types_match_read_block` test makes sure they do not diverge.
 pub const SUPPORTED_TYPES: &[&str] = &[
     "NiNode",
     "NiTriStrips",
@@ -298,7 +297,7 @@ pub const SUPPORTED_TYPES: &[&str] = &[
     "NiSkinData",
     "NiSkinPartition",
     "NiBillboardNode",
-    // Читаются и отбрасываются — `anim::IGNORED_TYPES`.
+    // Read and dropped — `anim::IGNORED_TYPES`.
     "NiControllerManager",
     "NiControllerSequence",
     "NiDefaultAVObjectPalette",
@@ -356,7 +355,7 @@ pub const SUPPORTED_TYPES: &[&str] = &[
     "NiAmbientLight",
     "NiPointLight",
     "NiSpotLight",
-    // Частицы — `particles::PARTICLE_TYPES`.
+    // Particles — `particles::PARTICLE_TYPES`.
     "NiParticleSystem",
     "NiMeshParticleSystem",
     "NiPSysData",

@@ -1,16 +1,16 @@
-//! Двери (T2.6): что и как двигает последовательность `Open` меша Oblivion.
+//! Doors (T2.6): what the `Open` sequence of an Oblivion mesh moves, and how.
 //!
-//! У Oblivion дверь открывается анимацией в меше: `Open` поворачивает (или сдвигает) **узел**
-//! створки, часто смещённый от начала координат меша. У Morrowind движения в меше нет: движок
-//! поворачивает саму ссылку на 90° вокруг вертикали, ось — начало координат меша
-//! (`docs/ru/formats/tes3.md`, «Двери»). Поэтому дверь Oblivion в позе файла Morrowind повернёт
-//! вокруг чужой точки, а раму, если она в том же меше, — вместе со створкой.
+//! In Oblivion a door opens by an animation in the mesh: `Open` rotates (or slides) the leaf's
+//! **node**, often offset from the mesh origin. In Morrowind there is no motion in the mesh: the
+//! engine rotates the reference itself by 90° around the vertical, the axis being the mesh origin
+//! (`docs/en/formats/tes3.md`, "Doors"). So Morrowind will rotate an Oblivion door in the file's
+//! pose around someone else's point, and a frame in the same mesh along with the leaf.
 //!
-//! Здесь — измерение: [`door_motion`] по ключам `Open` (`crate::read::motion`) находит створки,
-//! их петли, ось и угол в кадре меша и считает, сколько геометрии стоит на месте. Правило
-//! переноса — [`DoorMotion::hinge`]: одна створка на вертикальной петле — петлю можно унести в
-//! начало координат; остальное (две створки, подъём, рама) Morrowind не выразит без решения о
-//! структуре записей.
+//! Here we measure: [`door_motion`] finds the leaves from the `Open` keys (`crate::read::motion`),
+//! their hinges, axis and angle in the mesh frame, and counts how much geometry stays in place. The
+//! conversion rule is [`DoorMotion::hinge`]: one leaf on a vertical hinge — the hinge can be moved
+//! to the origin; the rest (two leaves, lifting, a frame) Morrowind cannot express without a
+//! decision about the record structure.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -22,67 +22,68 @@ use crate::read::motion::{Rotations, Sequence, TransformKeys};
 use crate::read::{Block, SourceNif};
 use crate::skin::av_affine;
 
-/// Окончание имени узла, которому Gamebryo отдаёт движение, не накопленное корнем.
+/// Name suffix of the node to which Gamebryo gives the motion not accumulated by the root.
 pub const NON_ACCUM: &str = " NonAccum";
 
-/// Имя последовательности открытия (без учёта регистра).
+/// Name of the opening sequence (case-insensitive).
 pub const OPEN_SEQUENCE: &str = "Open";
 
-/// Поворот меньше этого — не поворот (шум ключей), радианы.
+/// A rotation smaller than this is not a rotation (key noise), radians.
 pub const MIN_TURN: f32 = 0.1;
 
-/// Сдвиг меньше этого — не сдвиг, юниты.
+/// A translation smaller than this is not a translation, units.
 pub const MIN_SLIDE: f32 = 4.0;
 
-/// Сдвиг поворачивающейся створки меньше этого — поправка к повороту (калитка `FenceGate`
-/// садится на 7 юнитов), а не отдельное движение, юниты.
+/// A translation of a rotating leaf smaller than this is a correction to the rotation (the
+/// `FenceGate` gate sinks by 7 units), not a separate motion, units.
 pub const BIG_SLIDE: f32 = 32.0;
 
-/// Ось считается вертикальной, если |z| оси не меньше этого.
+/// An axis counts as vertical if the axis's |z| is at least this.
 pub const VERTICAL: f32 = 0.9;
 
-/// Петля ближе этого к началу координат меша уже стоит там, где её ждёт Morrowind, юниты.
+/// A hinge closer than this to the mesh origin already stands where Morrowind expects it, units.
 pub const AT_ORIGIN: f32 = 1.0;
 
-/// Узел, который двигает `Open`.
+/// A node that `Open` moves.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Leaf {
     pub node: String,
-    /// Блок узла в источнике.
+    /// The node's block in the source.
     pub index: usize,
-    /// Начало координат узла в закрытом положении, в кадре меша: через него проходит ось петли.
+    /// The node's origin in the closed position, in the mesh frame: the hinge axis passes through
+    /// it.
     pub pivot: Vec3,
-    /// Ось поворота от закрытого к открытому в кадре меша (единичная; нулевая — поворота нет).
+    /// Rotation axis from closed to open in the mesh frame (unit; zero means no rotation).
     pub axis: Vec3,
-    /// Угол поворота вокруг `axis`, радианы, 0…π.
+    /// Rotation angle around `axis`, radians, 0…π.
     pub angle: f32,
-    /// Сдвиг узла от закрытого к открытому в кадре меша.
+    /// The node's translation from closed to open in the mesh frame.
     pub slide: Vec3,
-    /// Насколько поза файла отличается от первого ключа `Open`, радианы: 0 — файл лежит в
-    /// закрытом положении.
+    /// How much the file's pose differs from the first `Open` key, radians: 0 means the file lies
+    /// in the closed position.
     pub pose_gap: f32,
-    /// Форм под узлом.
+    /// Shapes under the node.
     pub shapes: usize,
 }
 
 impl Leaf {
-    /// Створка поворачивается (а не только сдвигается).
+    /// The leaf rotates (not only slides).
     pub fn turns(&self) -> bool {
         self.angle >= MIN_TURN
     }
 
-    /// Створка сдвигается: подъёмная решётка, раздвижная дверь. У поворачивающейся створки
-    /// считается только большой сдвиг.
+    /// The leaf slides: a portcullis, a sliding door. For a rotating leaf only a large translation
+    /// counts.
     pub fn slides(&self) -> bool {
         self.slide.length() >= if self.turns() { BIG_SLIDE } else { MIN_SLIDE }
     }
 
-    /// Петля вертикальна — такой поворот Morrowind умеет.
+    /// The hinge is vertical — Morrowind can do such a rotation.
     pub fn vertical(&self) -> bool {
         self.axis.z.abs() >= VERTICAL
     }
 
-    /// Угол вокруг +Z меша со знаком, радианы; у невертикальной оси — 0.
+    /// Signed angle around the mesh's +Z, radians; 0 for a non-vertical axis.
     pub fn turn_about_z(&self) -> f32 {
         if self.vertical() {
             self.angle * self.axis.z.signum()
@@ -92,59 +93,60 @@ impl Leaf {
     }
 }
 
-/// Движение двери по её `Open`.
+/// A door's motion from its `Open`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoorMotion {
-    /// Длительность `Open`, секунды.
+    /// Duration of `Open`, seconds.
     pub duration: f32,
-    /// Узлы, которые `Open` поворачивает или сдвигает, в порядке блоков управления. Только
-    /// верхние: узел под другим движущимся узлом (ручка на створке) — часть той же створки.
+    /// Nodes that `Open` rotates or slides, in controller block order. Only the top ones: a node
+    /// under another moving node (a handle on a leaf) is part of the same leaf.
     pub leaves: Vec<Leaf>,
-    /// Движущихся узлов под другими движущимися.
+    /// Moving nodes under other moving ones.
     pub nested: usize,
-    /// Формы под движущимися узлами и вне их (рама, порог, стена).
+    /// Shapes under the moving nodes and outside them (frame, threshold, wall).
     pub moving_shapes: usize,
     pub fixed_shapes: usize,
 }
 
-/// Что Morrowind сможет сделать с дверью.
+/// What Morrowind can do with the door.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DoorKind {
-    /// `Open` ничего не двигает (или его нет): дверь — как статика.
+    /// `Open` moves nothing (or is absent): the door is like a static.
     Still,
-    /// Одна створка на вертикальной петле без сдвига — поворот Morrowind её выражает.
+    /// One leaf on a vertical hinge without translation — Morrowind's rotation expresses it.
     Hinged,
-    /// Несколько створок: у Morrowind ось одна.
+    /// Several leaves: Morrowind has one axis.
     Leaves,
-    /// Сдвиг (решётка, раздвижная): у Morrowind только поворот.
+    /// Translation (portcullis, sliding door): Morrowind has only rotation.
     Sliding,
-    /// Поворот вокруг невертикальной оси (люк, подъёмный мост).
+    /// Rotation around a non-vertical axis (hatch, drawbridge).
     Tilting,
 }
 
-/// Что перенос делает с дверью — для отчёта и переписи.
+/// What the conversion does with the door — for the report and the census.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DoorFate {
-    /// В меше нет `Open`: двери Oblivion открывать нечем (телепорт или закрыта навсегда).
+    /// The mesh has no `Open`: the Oblivion door has nothing to open with (a teleport or closed
+    /// forever).
     NoOpen,
-    /// `Open` есть, но ничего не двигает.
+    /// `Open` is present but moves nothing.
     Still,
-    /// Одна створка, петля уже в начале координат меша: Morrowind повернёт как надо.
+    /// One leaf, the hinge is already at the mesh origin: Morrowind will rotate it correctly.
     AtOrigin,
-    /// Одна створка на смещённой петле, рамы нет: начало координат меша переносится в петлю.
+    /// One leaf on an offset hinge, no frame: the mesh origin is moved to the hinge.
     Rehinged,
-    /// Одна створка, но в меше есть неподвижная геометрия: Morrowind повернёт её вместе со
-    /// створкой.
+    /// One leaf, but the mesh has stationary geometry: Morrowind will rotate it along with the
+    /// leaf.
     Framed,
-    /// Несколько створок.
+    /// Several leaves.
     Leaves,
-    /// Сдвиг: решётка, раздвижная дверь.
+    /// Translation: a portcullis, a sliding door.
     Sliding,
-    /// Поворот вокруг невертикальной оси.
+    /// Rotation around a non-vertical axis.
     Tilting,
 }
 
-/// Участь двери по её движению; `None` — последовательности `Open` нет.
+/// The door's fate from its motion; `None` means there is no `Open` sequence.
 pub fn fate(motion: Option<&DoorMotion>) -> DoorFate {
     let Some(m) = motion else {
         return DoorFate::NoOpen;
@@ -161,8 +163,8 @@ pub fn fate(motion: Option<&DoorMotion>) -> DoorFate {
 }
 
 impl DoorMotion {
-    /// Створка на петле открывается против часовой стрелки (если смотреть сверху), а Morrowind
-    /// поворачивает дверь только по часовой: такая дверь откроется в другую сторону.
+    /// The leaf on its hinge opens counterclockwise (seen from above), while Morrowind rotates a
+    /// door only clockwise: such a door will open the other way.
     pub fn opens_counter_clockwise(&self) -> bool {
         self.kind() == DoorKind::Hinged && self.leaves[0].turn_about_z() > 0.0
     }
@@ -179,9 +181,9 @@ impl DoorMotion {
         }
     }
 
-    /// Петля единственной створки, если её можно унести в начало координат меша: одна створка на
-    /// вертикальной петле, а вне её в меше ничего не стоит (иначе повернулась бы и рама). `None`
-    /// — дверь другого вида или петля уже в начале координат.
+    /// The hinge of the only leaf, if it can be moved to the mesh origin: one leaf on a vertical
+    /// hinge, and nothing in the mesh stands outside it (otherwise the frame would rotate too).
+    /// `None` means a door of another kind or the hinge is already at the origin.
     pub fn hinge(&self) -> Option<Vec3> {
         if self.kind() != DoorKind::Hinged || self.fixed_shapes > 0 {
             return None;
@@ -191,12 +193,12 @@ impl DoorMotion {
     }
 }
 
-/// Кватернион NIF (`w, x, y, z`) → `glam`.
+/// NIF quaternion (`w, x, y, z`) → `glam`.
 fn quat(q: [f32; 4]) -> Quat {
     Quat::from_xyzw(q[1], q[2], q[3], q[0]).normalize()
 }
 
-/// Поворот без масштаба.
+/// Rotation without scale.
 fn rotation_of(a: &Affine3A) -> Quat {
     Quat::from_mat3a(&Mat3A::from_cols(
         a.matrix3.x_axis.normalize_or_zero(),
@@ -206,8 +208,8 @@ fn rotation_of(a: &Affine3A) -> Quat {
     .normalize()
 }
 
-/// Первый и последний поворот дорожки. Углы Эйлера NIF — повороты вокруг X, Y, Z по очереди;
-/// у дверей дорожка, как правило, одна, и порядок на результат не влияет.
+/// The first and last rotation of a track. NIF Euler angles are rotations around X, Y, Z in turn;
+/// doors usually have one track, and the order does not affect the result.
 fn turn_ends(keys: &TransformKeys) -> Option<(Quat, Quat)> {
     match &keys.rotations {
         Rotations::None => None,
@@ -228,13 +230,13 @@ fn turn_ends(keys: &TransformKeys) -> Option<(Quat, Quat)> {
     }
 }
 
-/// Движение двери: `None` — последовательности `Open` в меше нет.
+/// A door's motion: `None` means the mesh has no `Open` sequence.
 pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMotion> {
     let open = sequences
         .iter()
         .find(|s| s.name.eq_ignore_ascii_case(OPEN_SEQUENCE))?;
 
-    // Обход дерева: мировая поза родителя и сам блок, по имени.
+    // Tree traversal: the parent's world pose and the block itself, by name.
     let mut parents: HashMap<usize, (Option<usize>, Affine3A)> = HashMap::new();
     let mut by_name: HashMap<String, usize> = HashMap::new();
     let mut stack: Vec<(usize, Option<usize>, Affine3A)> = source
@@ -279,23 +281,23 @@ pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMot
             _ => continue,
         };
         let (parent, parent_world) = parents[&index];
-        // Кадр, в котором записаны ключи. Обычно это родитель узла. У узла `… NonAccum` — нет:
-        // Gamebryo делит движение между корнем накопления (родителем) и этим узлом, и в ключах
-        // узла лежит всё преобразование пары, а корню остаётся единичное (у `DoorLowerINT03`
-        // ключи Z узла начинаются с −π — поворота его родителя в файле). Их кадр — родитель
-        // корня накопления.
+        // The frame the keys are written in. Usually it is the node's parent. Not for a
+        // `… NonAccum` node: Gamebryo splits the motion between the accumulation root (the parent)
+        // and this node, and the node's keys hold the whole transform of the pair, leaving identity
+        // to the root (for `DoorLowerINT03` the node's Z keys start at −π — its parent's rotation
+        // in the file). Their frame is the accumulation root's parent.
         let frame = match parent.filter(|_| track.node.ends_with(NON_ACCUM)) {
             Some(accum_root) => parents[&accum_root].1,
             None => parent_world,
         };
         let frame_turn = rotation_of(&frame);
-        // Поза узла в файле в том же кадре — с ней сравнивается первый ключ.
+        // The node's pose in the file in the same frame — the first key is compared with it.
         let file_turn = frame_turn.inverse() * rotation_of(&(parent_world * av_affine(av)));
 
         let ends = turn_ends(keys);
         let (axis, angle, pose_gap) = match ends {
             Some((first, last)) => {
-                // Поворот от закрытого к открытому в кадре ключей → в кадр меша.
+                // Rotation from closed to open in the key frame → into the mesh frame.
                 let delta = frame_turn * (last * first.inverse()) * frame_turn.inverse();
                 let (mut axis, mut angle) = delta.normalize().to_axis_angle();
                 if angle > std::f32::consts::PI {
@@ -306,11 +308,12 @@ pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMot
             }
             None => (Vec3::ZERO, 0.0, 0.0),
         };
-        // Петля — там, где узел стоит в файле. Поза интерполятора для этого не годится: у узла
-        // `… NonAccum` она повторяет сдвиг узла-родителя (корня накопления), и с ней петля двери
-        // Деменции выходила вдвое дальше настоящей — (97.6, 5.8) вместо (48.8, 2.9), 2026-10-02.
+        // The hinge is where the node stands in the file. The interpolator pose does not fit for
+        // this: for a `… NonAccum` node it repeats the translation of the parent node (the
+        // accumulation root), and with it the hinge of the Dementia door came out twice as far as
+        // the real one — (97.6, 5.8) instead of (48.8, 2.9), 2026-10-02.
         let pivot = parent_world.transform_point3a(Vec3A::from_array(av.translation));
-        // Сдвиг — разность крайних ключей: она от кадра отсчёта ключей не зависит.
+        // Translation is the difference of the extreme keys: it does not depend on the key frame.
         let slide = match (keys.translations.first(), keys.translations.last()) {
             (Some(first), Some(last)) => {
                 frame.transform_vector3a(Vec3A::from_array(last.1) - Vec3A::from_array(first.1))
@@ -332,7 +335,7 @@ pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMot
         }
     }
 
-    // Узел под другим движущимся узлом — деталь той же створки.
+    // A node under another moving node is a detail of the same leaf.
     let all: BTreeSet<usize> = leaves.iter().map(|l| l.index).collect();
     let before = leaves.len();
     leaves.retain(|leaf| {
@@ -347,7 +350,7 @@ pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMot
     });
     let nested = before - leaves.len();
 
-    // Формы: под каким движущимся узлом (ближайшим сверху) стоит каждая.
+    // Shapes: under which moving node (the nearest above) each one stands.
     let moving: BTreeSet<usize> = leaves.iter().map(|l| l.index).collect();
     let (mut moving_shapes, mut fixed_shapes) = (0usize, 0usize);
     for &index in parents.keys() {
@@ -355,7 +358,7 @@ pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMot
         else {
             continue;
         };
-        // Геометрия только для редактора в игре не видна и рамой не считается.
+        // Editor-only geometry is not visible in the game and does not count as a frame.
         if shape
             .av
             .net
@@ -393,21 +396,21 @@ pub fn door_motion(source: &SourceNif, sequences: &[Sequence]) -> Option<DoorMot
     })
 }
 
-/// Переносит начало координат готового меша в точку `hinge` (в кадре меша): всё, что стоит под
-/// корнем, — геометрия, узлы, `RootCollisionNode` — сдвигается на `−hinge`. Сдвигаются дети
-/// корня, а не сам корень: учитывает ли ванильный движок преобразование корневого узла у
-/// размещённого объекта, не проверено, а сдвиг детей от этого не зависит.
+/// Moves the origin of the finished mesh to point `hinge` (in the mesh frame): everything under the
+/// root — geometry, nodes, `RootCollisionNode` — shifts by `−hinge`. The root's children are
+/// shifted, not the root itself: whether the vanilla engine takes the root node's transform of a
+/// placed object into account is unverified, and shifting the children does not depend on it.
 ///
-/// Чтобы дверь осталась на месте, позицию каждой её ссылки надо сдвинуть на тот же вектор,
-/// повёрнутый и растянутый как ссылка (`transform::exterior`).
+/// For the door to stay in place, the position of each of its references must be shifted by the
+/// same vector, rotated and scaled like the reference (`transform::exterior`).
 pub fn rehinge(converted: &mut Converted, hinge: Vec3) {
     let stream = &mut converted.stream;
     for root in stream.roots.clone() {
         let Some(node) = stream.get_as::<_, NiNode>(root) else {
             continue;
         };
-        // Точка меша x = t + s·R·x_корня, где R = (девять чисел файла)ᵀ: сдвиг в кадре корня —
-        // Rᵀ·hinge / s, а Rᵀ — матрица из чисел файла как есть.
+        // A mesh point x = t + s·R·x_root, where R = (the file's nine numbers)ᵀ: the shift in the
+        // root frame is Rᵀ·hinge / s, and Rᵀ is the matrix of the file's numbers as is.
         let scale = if node.base.scale == 0.0 {
             1.0
         } else {

@@ -1,7 +1,7 @@
-//! Чтение ванильных файлов Morrowind из установки игрока: свободный файл в `Data Files`, иначе
-//! архив `Morrowind.bsa`. Нужно там, где вывод опирается на ванильные данные — скелет, на который
-//! садится броня (T9.2b). Файлов игры в репозитории нет и не будет, поэтому читаем с диска
-//! игрока.
+//! Reading vanilla Morrowind files from the player's install: a loose file in `Data Files`,
+//! otherwise the `Morrowind.bsa` archive. Needed where the output relies on vanilla data — the
+//! skeleton the armor sits on (T9.2b). There are no game files in the repository and there will be
+//! none, so we read from the player's disk.
 
 use std::fs;
 use std::io;
@@ -9,10 +9,10 @@ use std::path::Path;
 
 use tes3::bsa::Archive;
 
-/// Архивы, в которых ищем, по порядку.
+/// Archives to search, in order.
 pub const VANILLA_ARCHIVES: [&str; 3] = ["Morrowind.bsa", "Tribunal.bsa", "Bloodmoon.bsa"];
 
-/// Байты файла `path` (относительно `Data Files`, разделитель `\` или `/`).
+/// Bytes of file `path` (relative to `Data Files`, separator `\` or `/`).
 pub fn read_file(data_files: &Path, path: &str) -> io::Result<Vec<u8>> {
     let loose = path
         .split(['\\', '/'])
@@ -42,24 +42,24 @@ pub fn read_file(data_files: &Path, path: &str) -> io::Result<Vec<u8>> {
     ))
 }
 
-/// Часть тела из ванильного мастера — то, что нужно, чтобы скопировать тело расы (T7.2) и
-/// выбрать NPC голову и причёску (T7.5).
+/// A body part from the vanilla master — what is needed to copy a race body (T7.2) and to choose an
+/// NPC's head and hair (T7.5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VanillaBodyPart {
     pub id: String,
     pub race: String,
     pub mesh: String,
-    /// `MP_*`, как в [`crate::model::BodyPart::part`]: 0 голова, 1 волосы, … 14 хвост.
+    /// `MP_*`, as in [`crate::model::BodyPart::part`]: 0 head, 1 hair, … 14 tail.
     pub part: u8,
-    /// Тело расы (`Skin`), а не одежда или броня.
+    /// A race body (`Skin`), not clothing or armor.
     pub skin: bool,
     pub female: bool,
-    /// Флаг `NOT_PLAYABLE`: особые головы и причёски (ванильные NPC-уникумы).
+    /// The `NOT_PLAYABLE` flag: special heads and hair (unique vanilla NPCs).
     pub not_playable: bool,
     pub vampire: bool,
 }
 
-/// Все `BODY` мастера (байты `.esm`) в порядке файла. Остальные записи не разбираются.
+/// All `BODY` records of the master (`.esm` bytes) in file order. Other records are not parsed.
 pub fn body_parts(master: &[u8]) -> io::Result<Vec<VanillaBodyPart>> {
     use tes3::esp::{Bodypart, BodypartFlags, BodypartType, Plugin};
     let mut plugin = Plugin::new();
@@ -79,13 +79,13 @@ pub fn body_parts(master: &[u8]) -> io::Result<Vec<VanillaBodyPart>> {
         .collect())
 }
 
-/// Существо мастера — то, что нужно, чтобы оно стало донором модели и звуков (T11.3).
+/// A creature of the master — what is needed for it to become a model and sound donor (T11.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VanillaCreature {
     pub id: String,
     pub mesh: String,
     pub soul: u32,
-    /// Что умеет анимация модели: флаги `FLAG` донора.
+    /// What the model's animation can do: the donor's `FLAG` flags.
     pub biped: bool,
     pub weapon_and_shield: bool,
     pub swims: bool,
@@ -94,7 +94,7 @@ pub struct VanillaCreature {
     pub blood_type: u8,
 }
 
-/// Все `CREA` мастера (байты `.esm`) в порядке файла.
+/// All `CREA` records of the master (`.esm` bytes) in file order.
 pub fn creatures(master: &[u8]) -> io::Result<Vec<VanillaCreature>> {
     use tes3::esp::{Creature, CreatureFlags, Plugin};
     let mut plugin = Plugin::new();
@@ -118,17 +118,17 @@ pub fn creatures(master: &[u8]) -> io::Result<Vec<VanillaCreature>> {
         .collect())
 }
 
-/// Тема мастера: то, что нужно, чтобы дописать в неё реплики (T10.6).
+/// A topic of the master: what is needed to add responses to it (T10.6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VanillaTopic {
     pub name: String,
-    /// `DIAL` `DATA`: 0 тема, 1 голос, 2 приветствие, 3 убеждение, 4 журнал.
+    /// `DIAL` `DATA`: 0 topic, 1 voice, 2 greeting, 3 persuasion, 4 journal.
     pub kind: u8,
-    /// ID реплик в порядке файла.
+    /// Response IDs in file order.
     pub infos: Vec<String>,
 }
 
-/// Все темы мастера (байты `.esm`) с ID их реплик, в порядке файла.
+/// All topics of the master (`.esm` bytes) with their response IDs, in file order.
 pub fn topics(master: &[u8]) -> io::Result<Vec<VanillaTopic>> {
     use tes3::esp::{Plugin, TES3Object};
     let mut plugin = Plugin::new();
@@ -156,7 +156,7 @@ pub fn topics(master: &[u8]) -> io::Result<Vec<VanillaTopic>> {
     Ok(out)
 }
 
-/// Глобальные переменные мастера: ID и тип.
+/// Global variables of the master: ID and type.
 pub fn globals(master: &[u8]) -> io::Result<Vec<(String, crate::dialogue::VarType)>> {
     use crate::dialogue::VarType;
     use tes3::esp::{GlobalValue, GlobalVariable, Plugin};

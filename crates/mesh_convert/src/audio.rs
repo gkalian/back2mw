@@ -1,10 +1,10 @@
-//! Звуки: WAV Oblivion → WAV, который движок Morrowind играет в 3D (T10.1).
+//! Sounds: Oblivion WAV → a WAV that the Morrowind engine plays in 3D (T10.1).
 //!
-//! Все 1 533 файла `Oblivion - Sounds.bsa` — PCM 16 бит, как и 709 файлов `Sound\` Morrowind
-//! (`ffprobe`, 2026-09-28), поэтому перекодировать нечего. Отличие одно: у Oblivion 170 файлов
-//! стерео, а у ванили стерео один из 709. Позиционный звук — моно (стерео-буфер нельзя
-//! разместить в пространстве), и стерео сводится в моно средним каналов; частота не меняется.
-//! Моно копируется как есть, байт в байт.
+//! All 1,533 files of `Oblivion - Sounds.bsa` are 16-bit PCM, like the 709 files of Morrowind's
+//! `Sound\` (`ffprobe`, 2026-09-28), so there is nothing to re-encode. There is one difference:
+//! Oblivion has 170 stereo files, while vanilla has one stereo file out of 709. Positional sound is
+//! mono (a stereo buffer cannot be placed in space), so stereo is mixed down to mono by averaging
+//! the channels; the sample rate does not change. Mono is copied as is, byte for byte.
 
 use std::fmt;
 
@@ -15,11 +15,11 @@ const FORMAT_PCM: u16 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioError {
-    /// Нет заголовка `RIFF`…`WAVE`.
+    /// No `RIFF`…`WAVE` header.
     NotWav,
-    /// Чанк выходит за конец файла, или нет `fmt `/`data`.
+    /// A chunk runs past the end of the file, or there is no `fmt `/`data`.
     Truncated { chunk: [u8; 4] },
-    /// Не PCM 16 бит моно или стерео: так файл и копируется, свести нечем.
+    /// Not 16-bit PCM mono or stereo: the file is copied as is, there is nothing to mix it with.
     Unsupported {
         format: u16,
         channels: u16,
@@ -54,7 +54,7 @@ impl fmt::Display for AudioError {
 
 impl std::error::Error for AudioError {}
 
-/// Что сказано в `fmt ` и где лежат сэмплы.
+/// What `fmt ` says and where the samples are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WavInfo {
     pub format: u16,
@@ -71,7 +71,7 @@ fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
 }
 
-/// Разбор чанков: `fmt ` и сэмплы `data`. Прочие чанки (`LIST`, `cue `) пропускаются.
+/// Chunk parsing: `fmt ` and the `data` samples. Other chunks (`LIST`, `cue `) are skipped.
 pub fn read_wav(bytes: &[u8]) -> Result<(WavInfo, &[u8]), AudioError> {
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return Err(AudioError::NotWav);
@@ -79,7 +79,9 @@ pub fn read_wav(bytes: &[u8]) -> Result<(WavInfo, &[u8]), AudioError> {
     let (mut info, mut data) = (None, None);
     let mut at = 12;
     while at + 8 <= bytes.len() {
-        let tag: [u8; 4] = bytes[at..at + 4].try_into().expect("срез ровно 4 байта");
+        let tag: [u8; 4] = bytes[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes");
         let len = usize::try_from(u32_at(bytes, at + 4)).unwrap_or(usize::MAX);
         let body = at + 8;
         let end = body
@@ -98,7 +100,7 @@ pub fn read_wav(bytes: &[u8]) -> Result<(WavInfo, &[u8]), AudioError> {
             b"data" => data = Some(&bytes[body..end]),
             _ => {}
         }
-        // Чанки выровнены на чётный байт.
+        // Chunks are aligned to an even byte.
         at = end + (len & 1);
     }
     match (info, data) {
@@ -108,7 +110,7 @@ pub fn read_wav(bytes: &[u8]) -> Result<(WavInfo, &[u8]), AudioError> {
     }
 }
 
-/// Стерео PCM 16 → моно (новый файл); моно — `None` (копировать как есть).
+/// Stereo 16-bit PCM → mono (a new file); mono gives `None` (copy as is).
 pub fn to_mono(bytes: &[u8]) -> Result<Option<Vec<u8>>, AudioError> {
     let (info, data) = read_wav(bytes)?;
     let unsupported = AudioError::Unsupported {
@@ -126,8 +128,8 @@ pub fn to_mono(bytes: &[u8]) -> Result<Option<Vec<u8>>, AudioError> {
             for frame in data.chunks_exact(4) {
                 let left = i32::from(i16::from_le_bytes([frame[0], frame[1]]));
                 let right = i32::from(i16::from_le_bytes([frame[2], frame[3]]));
-                let mixed =
-                    i16::try_from((left + right) / 2).expect("среднее двух i16 влезает в i16");
+                let mixed = i16::try_from((left + right) / 2)
+                    .expect("the average of two i16 fits into i16");
                 samples.extend(mixed.to_le_bytes());
             }
             Ok(Some(write_wav(info.sample_rate, 1, &samples)))
@@ -136,10 +138,10 @@ pub fn to_mono(bytes: &[u8]) -> Result<Option<Vec<u8>>, AudioError> {
     }
 }
 
-/// WAV PCM 16 бит из сэмплов: `RIFF`, `fmt ` на 16 байт, `data`.
+/// 16-bit PCM WAV from samples: `RIFF`, a 16-byte `fmt `, `data`.
 pub fn write_wav(sample_rate: u32, channels: u16, samples: &[u8]) -> Vec<u8> {
     let block_align = channels * 2;
-    let data_len = u32::try_from(samples.len()).expect("звук меньше 4 ГБ");
+    let data_len = u32::try_from(samples.len()).expect("a sound is smaller than 4 GB");
     let mut out = Vec::with_capacity(44 + samples.len());
     out.extend(b"RIFF");
     out.extend((36 + data_len).to_le_bytes());
@@ -172,7 +174,7 @@ mod tests {
     #[test]
     fn stereo_becomes_the_mean_of_both_channels() {
         let stereo = write_wav(44_100, 2, &pcm(&[100, 300, -32768, -32768, 32767, -32768]));
-        let mono = to_mono(&stereo).unwrap().expect("стерео сводится");
+        let mono = to_mono(&stereo).unwrap().expect("stereo is mixed down");
         let (info, data) = read_wav(&mono).unwrap();
         assert_eq!(
             (info.channels, info.sample_rate, info.bits),
@@ -190,7 +192,7 @@ mod tests {
     #[test]
     fn extra_chunks_are_skipped_and_odd_chunks_are_padded() {
         let mut wav = write_wav(11_025, 2, &pcm(&[10, 20]));
-        // `LIST` нечётной длины между `fmt ` и `data` — со вставкой байта выравнивания.
+        // An odd-length `LIST` between `fmt ` and `data` — with a padding byte inserted.
         let data_at = wav.windows(4).position(|w| w == b"data").unwrap();
         let list = [b"LIST".as_slice(), &3u32.to_le_bytes(), b"abc", &[0]].concat();
         wav.splice(data_at..data_at, list);
@@ -208,7 +210,7 @@ mod tests {
             Err(AudioError::Truncated { chunk: *b"data" })
         );
         let mut adpcm = write_wav(44_100, 2, &pcm(&[1, 2]));
-        adpcm[20] = 2; // формат 2 — MS ADPCM
+        adpcm[20] = 2; // format 2 is MS ADPCM
         assert!(matches!(
             to_mono(&adpcm),
             Err(AudioError::Unsupported { format: 2, .. })

@@ -1,36 +1,36 @@
-//! Лента анимации существа (T11.5d): клипы Oblivion → одна лента ключей Morrowind с метками
-//! групп.
+//! Creature animation tape (T11.5d): Oblivion clips → one Morrowind key tape with group text keys.
 //!
-//! У Oblivion на каждое действие свой клип (`read::clip`), у Morrowind вся анимация существа —
-//! одна лента: `NiKeyframeController` на каждой кости и текстовые ключи `Группа: метка` на корне
-//! накопления, которые режут её на группы (`docs/ru/formats/tes3.md`, «Модель и анимация
-//! существа»). Клипы встают на ленту подряд, через один шаг ключей; какая группа из какого клипа —
-//! `data/creature_groups.tsv` (`super::groups`).
+//! Oblivion has a separate clip for each action (`read::clip`); in Morrowind all of a creature's
+//! animation is one tape: a `NiKeyframeController` on each bone and `Group: key` text keys on the
+//! accumulation root that cut it into groups (`docs/en/formats/tes3.md`, "Creature model and
+//! animation"). Clips are placed on the tape one after another, one key step apart; which group
+//! comes from which clip is set by `data/creature_groups.tsv` (`super::groups`).
 //!
-//! **Ключи.** Каждая дорожка клипа — ключи, углы Эйлера или B-сплайн — снимается с шагом
-//! [`KEY_STEP`] (1/15 с, как у ванили: решение владельца 3) в линейные ключи поворота, сдвига и
-//! масштаба; значения — локальные преобразования кости, как и у Oblivion. Кость без дорожки в
-//! клипе стоит в позе скелета. Ключи, равные обоим соседям, выбрасываются.
+//! **Keys.** Each clip track — keys, Euler angles or a B-spline — is sampled at the [`KEY_STEP`]
+//! step (1/15 s, as in vanilla: owner's decision 3) into linear rotation, translation and scale
+//! keys; the values are the bone's local transforms, as in Oblivion. A bone without a track in the
+//! clip stands in the skeleton's pose. Keys equal to both neighbors are dropped.
 //!
-//! **Корень накопления.** У ванильных существ каждая группа начинается с корнем в одной и той
-//! же точке, а в ударах и реакции на удар корень стоит на месте (перепись 33 существ
-//! `Morrowind.bsa`, 2026-10-02: с места начинаются 31 из 31 ходьбы, 30 из 31 бега, 94 из 96
-//! ударов; корень неподвижен в 88 ударах из 96 и в 51 реакции на удар из 61). Клипы Oblivion
-//! устроены иначе: клип начинается, где ему удобно (бег собаки — в 30 единицах впереди), а выпад
-//! удара и отскок записаны сдвигом корня — там его превращает в движение сам движок. Поэтому
-//! сдвиг корня в плоскости земли у каждого отрезка отсчитывается от точки, где корень стоит в
-//! первом кадре `Idle`, а у видов `attack`, `cast-…`, `turn` и `still` корень в этой точке и
-//! остаётся (`Span::pin_root`).
+//! **Accumulation root.** In vanilla creatures every group starts with the root at the same point,
+//! and in attacks and hit reactions the root stays in place (a census of 33 creatures of
+//! `Morrowind.bsa`, 2026-10-02: 31 of 31 walks, 30 of 31 runs and 94 of 96 attacks start in place;
+//! the root is still in 88 attacks of 96 and in 51 hit reactions of 61). Oblivion clips work
+//! differently: a clip starts wherever it likes (the dog's run is 30 units ahead), and an attack's
+//! lunge and recoil are written as a root shift — there the engine itself turns it into movement.
+//! So for each segment the root's shift in the ground plane is measured from the point where the
+//! root stands in the first frame of `Idle`, and for the kinds `attack`, `cast-…`, `turn` and
+//! `still` the root stays at that point (`Span::pin_root`).
 //!
-//! **Петля.** У ванили поза в `Loop Stop` равна позе в `Loop Start` (расхождение до 0.07°), у
-//! клипов Oblivion — нет (у собаки 3…5.5°: сплайны сжаты с потерями). Последние
-//! [`CLOSE_SECONDS`] петли доводятся до позы её начала; путь корня при этом не трогается.
+//! **Loop.** In vanilla the pose at `Loop Stop` equals the pose at `Loop Start` (a difference of up
+//! to 0.07°), in Oblivion clips it does not (3…5.5° for the dog: the splines are lossily
+//! compressed). The last [`CLOSE_SECONDS`] of a loop are brought to the pose of its start; the
+//! root's path is not touched.
 //!
-//! **Смерть** (решение владельца 1). Клипа смерти у существ Oblivion нет — они умирают
-//! рэгдоллом. Группа `Death1` строится: из первого кадра `Idle` тело за секунду заваливается
-//! набок вокруг продольной оси, проходящей по земле у края габаритов. На том же отрезке, как у
-//! ванильного гуара, лежат `Knockout`, `DeathKnockDown` и `DeathKnockOut`; за ним существо
-//! встаёт — конец `Knockout`.
+//! **Death** (owner's decision 1). Oblivion creatures have no death clip — they die as a ragdoll.
+//! The `Death1` group is built: from the first frame of `Idle` the body topples sideways over one
+//! second around the longitudinal axis running along the ground at the edge of the bounds.
+//! `Knockout`, `DeathKnockDown` and `DeathKnockOut` lie on the same segment, as with the vanilla
+//! guar; after it the creature gets up — the end of `Knockout`.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -48,31 +48,33 @@ use crate::geometry::ConvertError;
 use crate::read::clip::{BoneMotion, Channel, Clip, Rotation};
 use crate::read::{Block, SourceNif};
 
-/// Шаг ключей ленты, секунды: как у ванильных существ Morrowind.
+/// Tape key step, seconds: as in vanilla Morrowind creatures.
 pub const KEY_STEP: f32 = 1.0 / 15.0;
 
-/// Флаги `NiKeyframeController` ванильных существ (1 956 из 1 961): активен, зажат.
+/// `NiKeyframeController` flags of vanilla creatures (1,956 of 1,961): active, clamped.
 const CONTROLLER_FLAGS: u16 = 0x000C;
-/// Длительность своего падения и подъёма, секунды.
+/// Duration of our own fall and rise, seconds.
 const FALL_SECONDS: f32 = 1.0;
-/// За сколько секунд до конца петли поза начинает сводиться к позе начала.
+/// How many seconds before the end of a loop the pose starts converging to the start pose.
 pub const CLOSE_SECONDS: f32 = 0.2;
-/// Допуск сравнения времён.
+/// Tolerance for comparing times.
 const TIME_EPSILON: f32 = 1e-4;
 
-/// Сколько групп могут быть открыты разом — от первой своей метки до `Stop`. Разбирая метки
-/// ленты, движок и Construction Set держат открытые группы в пяти ячейках; шестой места нет, и
-/// оба пишут «Too many shared anim groups. Up the MAX_OPEN_ANIM_GROUPS in TES3HandlerNew.cpp»
-/// (дизассемблер: `TES Construction Set.exe` 0x509BC1, `Morrowind.exe` 0x4C343C; найдено
-/// владельцем 2026-10-02 — на отрезке `Idle` лежало девять групп простоя). Считаются все группы,
-/// кроме `SpellCast` и стоек с оружием: это те, чьи метки — `Start`/`Stop` с петлёй или `Hit`.
+/// How many groups can be open at once — from their first key to `Stop`. When parsing the tape
+/// keys, the engine and the Construction Set keep open groups in five slots; there is no room for a
+/// sixth, and both write "Too many shared anim groups. Up the MAX_OPEN_ANIM_GROUPS in
+/// TES3HandlerNew.cpp" (disassembly: `TES Construction Set.exe` 0x509BC1, `Morrowind.exe` 0x4C343C;
+/// found by the owner 2026-10-02 — nine idle groups lay on the `Idle` segment). All groups count
+/// except `SpellCast` and weapon stances: these are the ones whose keys are `Start`/`Stop` with a
+/// loop or `Hit`.
 pub const MAX_OPEN_GROUPS: usize = 5;
 
-/// Группы своего падения ([`GroupKind::Fall`]) сверх группы самого правила.
+/// Groups of our own fall ([`GroupKind::Fall`]) beyond the rule's own group.
 const FALL_GROUPS: [&str; 3] = ["Knockout", "DeathKnockDown", "DeathKnockOut"];
 const _: () = assert!(FALL_GROUPS.len() < MAX_OPEN_GROUPS);
 
-/// Занимает ли группа ячейку открытых: все виды, кроме заклинаний (`SpellCast` движок не считает).
+/// Whether a group takes an open slot: every kind except spells (the engine does not count
+/// `SpellCast`).
 fn holds_a_slot(kind: GroupKind) -> bool {
     !matches!(
         kind,
@@ -80,47 +82,49 @@ fn holds_a_slot(kind: GroupKind) -> bool {
     )
 }
 
-/// Клип папки существа: имя файла без пути и расширения (в нём стойка) и сам клип.
+/// A clip of a creature folder: the file name without path and extension (it holds the stance) and
+/// the clip itself.
 #[derive(Debug, Clone, Copy)]
 pub struct FolderClip<'a> {
     pub file: &'a str,
     pub clip: &'a Clip,
 }
 
-/// Дорожка ленты: ключи одной кости, времена — от начала ленты.
+/// A tape track: the keys of one bone, times from the start of the tape.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TapeTrack {
     pub bone: String,
     pub rotations: Vec<(f32, Quat)>,
     pub translations: Vec<(f32, Vec3)>,
-    /// Пусто, если масштаб кости везде единица.
+    /// Empty if the bone's scale is one everywhere.
     pub scales: Vec<(f32, f32)>,
 }
 
-/// Лента и что в неё вошло.
+/// The tape and what went into it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tape {
-    /// Корень накопления: на нём висят метки.
+    /// The accumulation root: the text keys hang on it.
     pub accum_root: String,
     pub tracks: Vec<TapeTrack>,
-    /// Метки по времени; значение — одна или несколько строк через `\r\n`.
+    /// Text keys by time; the value is one or more lines separated by `\r\n`.
     pub marks: Vec<(f32, String)>,
     pub length: f32,
-    /// Записанные группы, в порядке таблицы.
+    /// Written groups, in table order.
     pub groups: Vec<String>,
-    /// Группы таблицы, для которых в папке нет клипа.
+    /// Table groups for which the folder has no clip.
     pub missing: Vec<String>,
-    /// Группы, не записанные оттого, что на отрезке их клипа уже лежит [`MAX_OPEN_GROUPS`] групп.
+    /// Groups not written because [`MAX_OPEN_GROUPS`] groups already lie on their clip's segment.
     pub crowded: Vec<String>,
-    /// Файлы клипов, вошедшие в ленту, в порядке ленты.
+    /// Clip files that went into the tape, in tape order.
     pub clips: Vec<String>,
-    /// Дорожки вошедших клипов, чья цель — не кость скелета (морфы, частицы): не переносятся.
+    /// Tracks of the included clips whose target is not a skeleton bone (morphs, particles): not
+    /// carried over.
     pub dropped_tracks: usize,
-    /// Метки `Sound: <EDID>` вошедших клипов: не переносятся (нужен ID звука — T11.6).
+    /// `Sound: <EDID>` keys of the included clips: not carried over (a sound ID is needed — T11.6).
     pub dropped_sounds: usize,
 }
 
-/// Поза кости: то, что хранит ключ.
+/// A bone pose: what a key stores.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Pose {
     rotation: Quat,
@@ -147,12 +151,12 @@ impl Pose {
     }
 }
 
-/// Кватернион NIF (`w, x, y, z`) → `glam`.
+/// NIF quaternion (`w, x, y, z`) → `glam`.
 fn quat(q: [f32; 4]) -> Quat {
     Quat::from_xyzw(q[1], q[2], q[3], q[0]).normalize()
 }
 
-/// Значение между соседними ключами, линейно; до первого и после последнего — крайнее.
+/// The value between neighboring keys, linear; before the first and after the last — the edge one.
 fn lerp_keys<const N: usize>(keys: &[(f32, [f32; N])], time: f32) -> Option<[f32; N]> {
     let first = keys.first()?;
     if time <= first.0 {
@@ -169,8 +173,8 @@ fn lerp_keys<const N: usize>(keys: &[(f32, [f32; N])], time: f32) -> Option<[f32
     keys.last().map(|k| k.1)
 }
 
-/// Поворот из трёх углов Эйлера NIF: вокруг X, затем Y, затем Z (порядок сверен на клипах
-/// существ: первый кадр `idle` против позы скелета, `real_creature_tapes`).
+/// Rotation from three NIF Euler angles: around X, then Y, then Z (the order was checked on
+/// creature clips: the first `idle` frame against the skeleton pose, `real_creature_tapes`).
 pub fn euler(angles: [f32; 3]) -> Quat {
     Quat::from_rotation_z(angles[2])
         * Quat::from_rotation_y(angles[1])
@@ -217,8 +221,8 @@ fn channel_at<const N: usize>(channel: &Channel<N>, time: f32) -> Option<[f32; N
     }
 }
 
-/// Поза кости в момент `time` клипа: канал без ключей стоит в позе интерполятора, а если и она
-/// не задана — в позе скелета.
+/// A bone's pose at clip time `time`: a channel without keys stands in the interpolator's pose, and
+/// if that is not set either — in the skeleton's pose.
 fn sample(motion: &BoneMotion, rest: Pose, time: f32) -> Pose {
     Pose {
         rotation: rotation_at(&motion.rotation, time)
@@ -234,11 +238,11 @@ fn sample(motion: &BoneMotion, rest: Pose, time: f32) -> Pose {
     }
 }
 
-/// Откуда отрезок ленты.
+/// Where a tape segment comes from.
 #[derive(Clone, Copy)]
 enum Source<'a> {
     Clip(FolderClip<'a>),
-    /// Своё падение и подъём.
+    /// Our own fall and rise.
     Fall,
 }
 
@@ -246,16 +250,17 @@ struct Span<'a> {
     start: f32,
     duration: f32,
     source: Source<'a>,
-    /// Группа поворота: поворот корня накопления замирает на первом кадре.
+    /// A turn group: the accumulation root's rotation freezes at the first frame.
     hold_root_rotation: bool,
-    /// Корень накопления стоит на месте: на отрезке только группы видов [`pins_root`].
+    /// The accumulation root stays in place: the segment holds only groups of the [`pins_root`]
+    /// kinds.
     pin_root: bool,
-    /// На отрезке есть петля: конец сводится к позе начала.
+    /// The segment has a loop: its end converges to the start pose.
     close_loop: bool,
 }
 
-/// Вид группы, в которой корень накопления не ходит по земле (у ванили так устроены удары,
-/// заклинания, повороты и реакция на удар).
+/// A group kind in which the accumulation root does not walk along the ground (this is how vanilla
+/// attacks, spells, turns and hit reactions work).
 fn pins_root(kind: GroupKind) -> bool {
     matches!(
         kind,
@@ -268,8 +273,8 @@ fn pins_root(kind: GroupKind) -> bool {
     )
 }
 
-/// Имя последовательности называет действие: точно (`Forward`) или с хвостом-вариантом после
-/// подчёркивания (`AttackLeft_Cross`, `Idle_HandtoHand`, `CastSelf_A`).
+/// The sequence name names an action: exactly (`Forward`) or with a variant tail after an
+/// underscore (`AttackLeft_Cross`, `Idle_HandtoHand`, `CastSelf_A`).
 fn names_action(clip_name: &str, action: &str) -> bool {
     let name = clip_name.to_ascii_lowercase();
     name == action
@@ -278,8 +283,8 @@ fn names_action(clip_name: &str, action: &str) -> bool {
             .is_some_and(|tail| tail.starts_with('_'))
 }
 
-/// Клип для правила: первое действие и первая стойка, для которых в папке есть файл. Из
-/// нескольких подходящих — сначала точное имя действия, потом по имени файла.
+/// The clip for a rule: the first action and the first stance for which the folder has a file.
+/// Among several matching ones — first the exact action name, then by file name.
 fn choose<'a>(rule: &GroupRule, clips: &[FolderClip<'a>]) -> Option<FolderClip<'a>> {
     for action in &rule.actions {
         for stance in &rule.stances {
@@ -307,15 +312,12 @@ fn choose<'a>(rule: &GroupRule, clips: &[FolderClip<'a>]) -> Option<FolderClip<'
     None
 }
 
-/// Времена ключей отрезка длиной `duration`: с шагом и в самом конце.
+/// Key times of a segment of length `duration`: at the step and at the very end.
 fn key_times(duration: f32, step: f32) -> Vec<f32> {
     let mut out = Vec::new();
     let mut k = 0u32;
     loop {
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "число ключей одного клипа — сотни"
-        )]
+        #[expect(clippy::cast_precision_loss, reason = "a clip has hundreds of keys")]
         let t = k as f32 * step;
         if t > duration + TIME_EPSILON {
             break;
@@ -329,7 +331,7 @@ fn key_times(duration: f32, step: f32) -> Vec<f32> {
     out
 }
 
-/// Время метки `Hit` клипа: строка, начинающаяся с `hit` (бывает `Hit.`, `Hit -at xy`).
+/// Time of the clip's `Hit` key: a line starting with `hit` (it can be `Hit.`, `Hit -at xy`).
 fn hit_time(clip: &Clip) -> Option<f32> {
     clip.text_keys.iter().find_map(|(time, text)| {
         text.lines()
@@ -338,8 +340,8 @@ fn hit_time(clip: &Clip) -> Option<f32> {
     })
 }
 
-/// Поворот тела при падении на угол `angle`: вокруг оси вперёд (Y), проходящей по земле на
-/// `half_width` сбоку, — тело опрокидывается через свой край.
+/// Body rotation when falling by angle `angle`: around the forward axis (Y) running along the
+/// ground `half_width` to the side — the body tips over its edge.
 fn fall(angle: f32, half_width: f32) -> Affine3A {
     let pivot = Vec3::new(half_width, 0.0, 0.0);
     Affine3A::from_translation(pivot)
@@ -347,7 +349,7 @@ fn fall(angle: f32, half_width: f32) -> Affine3A {
         * Affine3A::from_translation(-pivot)
 }
 
-/// Угол падения в момент `time` отрезка: секунда ускоряющегося падения, секунда подъёма.
+/// Fall angle at segment time `time`: a second of accelerating fall, a second of rising.
 fn fall_angle(time: f32) -> f32 {
     let quarter = std::f32::consts::FRAC_PI_2;
     if time <= FALL_SECONDS {
@@ -359,7 +361,7 @@ fn fall_angle(time: f32) -> f32 {
     }
 }
 
-/// Убирает ключи, равные обоим соседям: постоянный отрезок держат два ключа.
+/// Removes keys equal to both neighbors: two keys hold a constant segment.
 fn thin<T: Copy>(keys: &mut Vec<(f32, T)>, same: impl Fn(T, T) -> bool) {
     if keys.len() < 3 {
         return;
@@ -375,10 +377,10 @@ fn thin<T: Copy>(keys: &mut Vec<(f32, T)>, same: impl Fn(T, T) -> bool) {
     *keys = out;
 }
 
-/// Строит ленту существа. `skeleton` — файл скелета (тот же, из которого собрано тело), `clips` —
-/// все клипы его папки, `rules` — [`groups::rules`], `step` — шаг ключей ([`KEY_STEP`]). `side` —
-/// как далеко стоящее тело выступает в сторону падения ([`standing_side`]); `None` — половина
-/// ширины `BSBound`.
+/// Builds the creature tape. `skeleton` is the skeleton file (the same one the body was built
+/// from), `clips` are all clips of its folder, `rules` is [`groups::rules`], `step` is the key step
+/// ([`KEY_STEP`]). `side` is how far the standing body sticks out toward the fall
+/// ([`standing_side`]); `None` means half the width of `BSBound`.
 pub fn build_tape(
     skeleton: &SourceNif,
     clips: &[FolderClip<'_>],
@@ -404,7 +406,7 @@ pub fn build_tape(
         })
         .unwrap_or(0.0);
 
-    // Отрезки ленты и метки групп.
+    // Tape segments and group text keys.
     let mut spans: Vec<Span<'_>> = Vec::new();
     let mut span_of_file: HashMap<&str, usize> = HashMap::new();
     let mut marks: Vec<(f32, String)> = Vec::new();
@@ -420,7 +422,7 @@ pub fn build_tape(
         dropped_tracks: 0,
         dropped_sounds: 0,
     };
-    // Сколько групп, занимающих ячейку открытых, уже лежит на отрезке (по номеру в `spans`).
+    // How many groups taking an open slot already lie on a segment (by index in `spans`).
     let mut open_on_span: HashMap<usize, usize> = HashMap::new();
     let mut cursor = 0.0f32;
     let mut idle: Option<FolderClip<'_>> = None;
@@ -469,8 +471,8 @@ pub fn build_tape(
         }
         let clip = chosen.clip;
         let duration = (clip.stop - clip.start).max(0.0);
-        // Шестая группа на том же отрезке не пишется: открытых разом — не больше пяти. Группа,
-        // которая уже лежит на ленте (второй вид `SpellCast`), ячейку не занимает заново.
+        // A sixth group on the same segment is not written: at most five open at once. A group
+        // already on the tape (the second `SpellCast` kind) does not take a slot again.
         let known = span_of_file.get(chosen.file).copied();
         let takes_slot = holds_a_slot(rule.kind) && !tape.groups.contains(&rule.group);
         if takes_slot
@@ -495,7 +497,7 @@ pub fn build_tape(
                 });
                 cursor += duration + step;
                 tape.clips.push(chosen.file.to_owned());
-                // Метки самого клипа — один раз на отрезок, сколько бы групп его ни делило.
+                // The clip's own text keys — once per segment, however many groups share it.
                 for (time, text) in &clip.text_keys {
                     for line in text.lines() {
                         if let Some(to) = groups::mark(line) {
@@ -513,7 +515,7 @@ pub fn build_tape(
             *open_on_span.entry(index).or_default() += 1;
         }
         let span = &mut spans[index];
-        // Клип, который делит с ударом группа с ходящим корнем, корень не держит.
+        // A clip that an attack shares with a group whose root walks does not pin the root.
         span.pin_root &= pins_root(rule.kind);
         span.close_loop |= matches!(rule.kind, GroupKind::Loop | GroupKind::Turn);
         let (start, stop) = (span.start, span.start + span.duration);
@@ -560,7 +562,7 @@ pub fn build_tape(
     }
     tape.length = spans.last().map_or(0.0, |s| s.start + s.duration);
 
-    // Дорожки клипов по имени кости; цели вне скелета считаются и отбрасываются.
+    // Clip tracks by bone name; targets outside the skeleton are counted and dropped.
     let mut clip_tracks: Vec<HashMap<usize, &BoneMotion>> = Vec::with_capacity(spans.len());
     let mut tracked: BTreeSet<usize> = BTreeSet::new();
     let has_fall = spans.iter().any(|s| matches!(s.source, Source::Fall));
@@ -594,7 +596,8 @@ pub fn build_tape(
         );
     }
 
-    // Поза, из которой существо падает: первый кадр `Idle`, а без него — поза скелета.
+    // The pose the creature falls from: the first frame of `Idle`, and without it — the skeleton's
+    // pose.
     let idle_tracks: HashMap<usize, &BoneMotion> = idle
         .map(|chosen| {
             chosen
@@ -618,7 +621,7 @@ pub fn build_tape(
         }
     };
     let root_standing = standing(0).affine();
-    // Точка на земле, из которой начинается каждая группа.
+    // The point on the ground where every group starts.
     let home = standing(0).translation;
 
     for &bone in &tracked {
@@ -639,8 +642,9 @@ pub fn build_tape(
                         };
                         let mut pose = raw(time);
                         if bone == 0 {
-                            // Путь по земле — от точки, где корень стоит в простое; у группы с
-                            // корнем на месте — сама эта точка.
+                            // The path along the ground is measured from the point where the root
+                            // stands at idle; for a group with the root in place it is that point
+                            // itself.
                             let travel = if span.pin_root {
                                 Vec3::ZERO
                             } else {
@@ -666,8 +670,8 @@ pub fn build_tape(
                     }
                 }
             };
-            // Насколько поза конца петли отстоит от позы начала: эту разницу добирают последние
-            // ключи отрезка.
+            // How far the loop's end pose is from its start pose: the last keys of the segment make
+            // up this difference.
             let closing = span.close_loop.then(|| {
                 let (first, last) = (pose_at(0.0), pose_at(span.duration));
                 (
@@ -690,7 +694,8 @@ pub fn build_tape(
                             .rotation
                             .slerp(pose.rotation * rotation, weight)
                             .normalize();
-                        // Путь корня по земле — движение существа, его петля не замыкает.
+                        // The root's path along the ground is the creature's movement; the loop
+                        // does not close it.
                         let shift = if bone == 0 {
                             Vec3::new(0.0, 0.0, translation.z)
                         } else {
@@ -703,7 +708,8 @@ pub fn build_tape(
                 if bone == 0 && span.hold_root_rotation {
                     pose.rotation = *held.get_or_insert(pose.rotation);
                 }
-                // Соседние ключи — по одну сторону сферы: движок интерполирует их напрямую.
+                // Neighboring keys on one side of the sphere: the engine interpolates them
+                // directly.
                 if let Some((_, last)) = track.rotations.last()
                     && last.dot(pose.rotation) < 0.0
                 {
@@ -725,7 +731,7 @@ pub fn build_tape(
         tape.tracks.push(track);
     }
 
-    // Метки: по времени, одновременные — одним ключом в несколько строк.
+    // Text keys: by time, simultaneous ones as one key with several lines.
     marks.sort_by(|a, b| a.0.total_cmp(&b.0));
     for (time, text) in marks {
         match tape.marks.last_mut() {
@@ -741,9 +747,9 @@ pub fn build_tape(
     Ok(tape)
 }
 
-/// Сколько групп ленты открыто разом в худший момент — так, как их считает движок: группа
-/// занимает ячейку на первой своей метке и освобождает на `Stop`; `SpellCast` и метки звуков не
-/// считаются. Больше [`MAX_OPEN_GROUPS`] — предупреждение движка.
+/// How many tape groups are open at once at the worst moment — counted the way the engine counts
+/// them: a group takes a slot at its first key and frees it at `Stop`; `SpellCast` and sound keys
+/// do not count. More than [`MAX_OPEN_GROUPS`] is an engine warning.
 pub fn peak_open_groups(tape: &Tape) -> usize {
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut open: BTreeSet<String> = BTreeSet::new();
@@ -769,7 +775,8 @@ pub fn peak_open_groups(tape: &Tape) -> usize {
     peak
 }
 
-/// Значение ключей в момент `time`: между соседними — `mix`, за краями — крайнее.
+/// The value of the keys at time `time`: between neighbors — `mix`, beyond the edges — the edge
+/// one.
 fn key_at<T: Copy>(keys: &[(f32, T)], time: f32, mix: impl Fn(T, T, f32) -> T) -> Option<T> {
     let first = keys.first()?;
     if time <= first.0 {
@@ -786,10 +793,11 @@ fn key_at<T: Copy>(keys: &[(f32, T)], time: f32, mix: impl Fn(T, T, f32) -> T) -
     keys.last().map(|k| k.1)
 }
 
-/// Как далеко тело, стоящее в первом кадре `Idle` ленты, выступает в сторону +X от оси модели:
-/// через этот край оно опрокидывается при падении. Меряется по самому мешу — кожа
-/// деформируется в позу кадра: габариты `BSBound` уже тела с расставленными лапами, и труп,
-/// повёрнутый вокруг их края, уходил бы в землю. `None` — в теле нет форм.
+/// How far the body standing in the tape's first `Idle` frame sticks out in the +X direction from
+/// the model's axis: it tips over this edge when falling. Measured on the mesh itself — the skin is
+/// deformed into the frame's pose: the `BSBound` bounds are narrower than a body with legs spread,
+/// and a corpse rotated around their edge would sink into the ground. `None` means the body has no
+/// shapes.
 pub fn standing_side(body: &NiStream, tape: &Tape) -> Option<f32> {
     let time = tape
         .marks
@@ -835,8 +843,9 @@ pub fn standing_side(body: &NiStream, tape: &Tape) -> Option<f32> {
     side.map(|s| s.max(0.0))
 }
 
-/// Строит ленту для собранного тела и вешает её на него: сначала черновик, по нему — край
-/// стоящего тела ([`standing_side`]), и с ним — лента, в которой труп ложится на землю.
+/// Builds the tape for the assembled body and hangs it on it: first a draft, from it the edge of
+/// the standing body ([`standing_side`]), and with that — the tape in which the corpse lies on the
+/// ground.
 pub fn animate(
     body: &mut Body,
     skeleton: &SourceNif,
@@ -853,7 +862,7 @@ pub fn animate(
     Ok(tape)
 }
 
-/// Узлы потока по имени в нижнем регистре (первый с таким именем).
+/// Stream nodes by lower-case name (the first with that name).
 fn nodes_by_name(stream: &NiStream) -> HashMap<String, NiLink<NiNode>> {
     let mut out = HashMap::new();
     for (link, node) in stream.objects_of_type_with_link::<NiNode>() {
@@ -924,9 +933,9 @@ fn text_keys(tape: &Tape) -> NiTextKeyExtraData {
     }
 }
 
-/// Вешает ленту на тело: контроллер ключей на каждую кость с дорожкой и метки на корень
-/// накопления — так устроен обычный `<имя>.nif` ванильного существа. Возвращает число
-/// повешенных дорожек.
+/// Hangs the tape on the body: a keyframe controller on each bone with a track and the text keys on
+/// the accumulation root — this is how a vanilla creature's ordinary `<name>.nif` is built. Returns
+/// the number of hung tracks.
 pub fn apply_tape(stream: &mut NiStream, tape: &Tape) -> usize {
     let nodes = nodes_by_name(stream);
     let mut applied = 0;
@@ -956,16 +965,17 @@ pub fn apply_tape(stream: &mut NiStream, tape: &Tape) -> usize {
     applied
 }
 
-/// Пара файлов ванильного существа: `x<имя>.nif` и `x<имя>.kf`.
+/// The pair of files of a vanilla creature: `x<name>.nif` and `x<name>.kf`.
 #[derive(Debug)]
 pub struct Pair {
-    /// Тот же меш без контроллеров ключей и без меток.
+    /// The same mesh without keyframe controllers and without text keys.
     pub skeleton: NiStream,
-    /// `NiSequenceStreamHelper`: метки, имена костей строками и контроллеры с пустой целью.
+    /// `NiSequenceStreamHelper`: text keys, bone names as strings and controllers with an empty
+    /// target.
     pub keys: NiStream,
 }
 
-/// Делит полный меш с лентой ([`apply_tape`]) на пару, какую движок берёт вместо него.
+/// Splits the full mesh with a tape ([`apply_tape`]) into the pair the engine takes instead of it.
 pub fn split_pair(full: &NiStream, tape: &Tape) -> Pair {
     let mut skeleton = full.clone();
     let controllers: Vec<_> = skeleton
@@ -990,7 +1000,8 @@ pub fn split_pair(full: &NiStream, tape: &Tape) -> Pair {
     }
     skeleton.retain_reachable();
 
-    // `.kf`: цепочки строятся с конца, чтобы у каждого блока уже была ссылка на следующий.
+    // `.kf`: the chains are built from the end, so every block already has a reference to the next
+    // one.
     let mut keys = NiStream::new();
     let mut next_controller: NiLink<NiTimeController> = NiLink::default();
     let mut next_name: NiLink<NiExtraData> = NiLink::default();
@@ -1009,9 +1020,10 @@ pub fn split_pair(full: &NiStream, tape: &Tape) -> Pair {
             .insert(NiStringExtraData {
                 base: NiExtraData {
                     next: next_name,
-                    // Длина строки и её `u32`-счётчик — так пишет ваниль (9 у `Bip01`).
+                    // String length and its `u32` counter — the way vanilla writes it (9 for
+                    // `Bip01`).
                     bytes_remaining: u32::try_from(track.bone.len() + 4)
-                        .expect("имя кости — короткая строка"),
+                        .expect("a bone name is a short string"),
                     ..NiExtraData::default()
                 },
                 value: track.bone.clone(),

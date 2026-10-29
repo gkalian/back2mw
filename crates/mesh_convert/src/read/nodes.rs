@@ -7,7 +7,7 @@ use super::error::Result;
 pub struct NiNode {
     pub av: AvObject,
     pub children: Vec<BlockRef>,
-    /// Динамические эффекты (свет). У статики пусто, но читаются — иначе съедем.
+    /// Dynamic effects (lights). Empty for statics, but read — otherwise we drift.
     pub effects: Vec<BlockRef>,
 }
 

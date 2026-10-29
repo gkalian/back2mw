@@ -1,27 +1,28 @@
-//! Частицы: `NiParticleSystem` Oblivion → эмиттер Morrowind (T2.7).
+//! Particles: Oblivion `NiParticleSystem` → a Morrowind emitter (T2.7).
 //!
-//! У Oblivion система частиц — узел сцены со списком воздействий `NiPSys*` (эмиттер — одно из
-//! них) и контроллерами; у Morrowind — геометрия `NiParticles` под `NiBSParticleNode`, один
-//! контроллер `NiParticleSystemController` с числами эмиттера и цепочка воздействий на нём.
-//! Числа эмиттера у двух поколений Gamebryo значат одно и то же (скорость, склонение от +Z и
-//! угол вокруг Z с разбросами, жизнь, радиус частицы, темп рождения), поэтому переносятся как
-//! есть; устройство выхода снято с ванили (`tests/real_vanilla_particles.rs`, 577 систем
-//! `Morrowind.bsa`; `docs/ru/formats/tes3.md`, «Частицы»):
+//! In Oblivion a particle system is a scene node with a list of `NiPSys*` modifiers (the emitter is
+//! one of them) and controllers; in Morrowind it is `NiParticles` geometry under a
+//! `NiBSParticleNode`, one `NiParticleSystemController` with the emitter numbers and a chain of
+//! modifiers on it. The emitter numbers mean the same in both Gamebryo generations (speed,
+//! declination from +Z and angle around Z with their variations, lifetime, particle radius, birth
+//! rate), so they are carried over as is; the output structure is taken from vanilla
+//! (`tests/real_vanilla_particles.rs`, 577 systems of `Morrowind.bsa`; `docs/en/formats/tes3.md`,
+//! "Particles"):
 //!
 //! ```text
-//! узел-родитель
-//! ├─ NiNode «… Emitter»            пустой, с меткой sgoKeep: кадр эмиттера
-//! └─ NiBSParticleNode              флаги 0xAA (0x2A — частицы в мире), NiZBufferProperty 1, sgoKeep
-//!    └─ NiAutoNormalParticles      (NiRotatingParticles, если частицы вращаются)
-//!       ├─ свойства: текстура, альфа, материал
-//!       ├─ данные: пул вершин, размеры, (цвета — если есть цвет по возрасту)
-//!       └─ NiParticleSystemController → воздействия: тяготение → вращение → цвет → рост и затухание
+//! parent node
+//! ├─ NiNode "… Emitter"            empty, with the sgoKeep mark: the emitter frame
+//! └─ NiBSParticleNode              flags 0xAA (0x2A — particles in the world), NiZBufferProperty 1, sgoKeep
+//!    └─ NiAutoNormalParticles      (NiRotatingParticles if the particles rotate)
+//!       ├─ properties: texture, alpha, material
+//!       ├─ data: vertex pool, sizes, (colors — if there is color by age)
+//!       └─ NiParticleSystemController → modifiers: gravity → rotation → color → grow and fade
 //! ```
 //!
-//! Что не выражается и теряется ([`Loss`]): форма объёма (цилиндр и сфера становятся коробкой),
-//! кривая темпа рождения (остаётся средний темп), турбулентность тяготения, сопротивление,
-//! ветер, коллайдеры, скорость родителя. Что не переносится вовсе ([`Refusal`]): частицы-меши,
-//! эмиттер-меш, система без эмиттера или без контроллера рождения.
+//! What cannot be expressed and is lost ([`Loss`]): the volume shape (a cylinder and a sphere
+//! become a box), the birth rate curve (the average rate remains), gravity turbulence, drag, wind,
+//! colliders, parent velocity. What is not carried over at all ([`Refusal`]): mesh particles, a
+//! mesh emitter, a system without an emitter or without a birth controller.
 
 use std::collections::HashMap;
 
@@ -39,15 +40,15 @@ use crate::read::psys::{EmitterShape, ModifierKind, ParticleSystem};
 use crate::read::{Block, SourceNif};
 use crate::skin::av_affine;
 
-/// Системы частиц меша по номеру блока `NiParticleSystem`.
+/// The mesh's particle systems by `NiParticleSystem` block number.
 #[derive(Debug, Clone, Default)]
 pub struct Systems {
     by_index: HashMap<usize, ParticleSystem>,
 }
 
 impl Systems {
-    /// Читает системы вторым проходом. Не прочиталось — систем нет: меш переносится без
-    /// частиц, как раньше.
+    /// Reads the systems in a second pass. If it fails, there are no systems: the mesh is carried
+    /// over without particles, as before.
     pub fn read(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Self {
         Self {
             by_index: crate::read::psys::systems(bytes, source, offsets)
@@ -58,7 +59,7 @@ impl Systems {
         }
     }
 
-    /// Набор из уже прочитанных систем.
+    /// A set of already read systems.
     pub fn from_systems(systems: Vec<ParticleSystem>) -> Self {
         Self {
             by_index: systems.into_iter().map(|s| (s.index, s)).collect(),
@@ -78,61 +79,63 @@ impl Systems {
     }
 }
 
-/// Почему система не переносится.
+/// Why a system is not carried over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Refusal {
-    /// Частицы — меши (`NiMeshParticleSystem`): у Morrowind частица — спрайт.
+    /// The particles are meshes (`NiMeshParticleSystem`): in Morrowind a particle is a sprite.
     MeshParticles,
-    /// Среди воздействий нет эмиттера.
+    /// There is no emitter among the modifiers.
     NoEmitter,
-    /// Эмиттер рождает частицы на поверхности меша, а меша нет (ссылки пусты или ведут не на
-    /// геометрию).
+    /// The emitter spawns particles on a mesh surface, but there is no mesh (the references are
+    /// empty or do not point to geometry).
     MeshEmitter,
-    /// Нет `NiPSysEmitterCtlr` или темп рождения не задан: когда и сколько рождать, неизвестно.
+    /// No `NiPSysEmitterCtlr`, or the birth rate is not set: it is unknown when and how many to
+    /// spawn.
     NoBirthRate,
-    /// Частицы появляются по событию (последовательность действия или зажатая): ловушка,
-    /// открытие врат, вспышка по скрипту. У Morrowind такой эмиттер нечем запустить, а
-    /// зацикленный он горел бы всегда; в покое у Oblivion частиц нет — нет и у нас.
+    /// The particles appear on an event (an action sequence or a clamped one): a trap, a gate
+    /// opening, a scripted flash. In Morrowind there is nothing to trigger such an emitter, and
+    /// looped it would burn constantly; at rest Oblivion has no particles — so neither do we.
     Triggered,
-    /// Пул пуст.
+    /// The pool is empty.
     EmptyPool,
 }
 
-/// Что потеряно при переносе.
+/// What was lost in the conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Loss {
-    /// Объём — цилиндр или сфера: у Morrowind только коробка, взята описанная.
+    /// The volume is a cylinder or a sphere: Morrowind has only a box, the circumscribed one is
+    /// taken.
     VolumeShape,
-    /// Частицы рождались на поверхности меша: у Morrowind — в коробке вокруг него; скорость по
-    /// нормалям меша стала скоростью вдоль оси эмиттера.
+    /// The particles were spawned on a mesh surface: in Morrowind, in a box around it; the speed
+    /// along the mesh normals became speed along the emitter axis.
     MeshSurface,
-    /// Темп рождения меняется во времени: взят средний.
+    /// The birth rate changes over time: the average is taken.
     RateCurve,
-    /// Турбулентность тяготения.
+    /// Gravity turbulence.
     Turbulence,
-    /// Воздействие без пары: сопротивление, ветер, коллайдер, скорость родителя.
+    /// A modifier without a counterpart: drag, wind, collider, parent velocity.
     Modifier(&'static str),
 }
 
-/// Тяготение Morrowind.
+/// Morrowind gravity.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Gravity {
     pub strength: f32,
     pub decay: f32,
-    /// Точечное (к `position`), иначе плоское (вдоль `direction`).
+    /// Point (toward `position`), otherwise planar (along `direction`).
     pub point: bool,
     pub position: Vec3,
     pub direction: Vec3,
 }
 
-/// Числа эмиттера Morrowind для одной системы.
+/// Morrowind emitter numbers for one system.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
     pub name: String,
-    /// Кадр системы и кадр эмиттера относительно узла-родителя системы.
+    /// The system's frame and the emitter's frame relative to the system's parent node.
     pub system_frame: Affine3A,
     pub emitter_frame: Affine3A,
-    /// Частицы живут в мире, а не в кадре системы.
+    /// The particles live in the world, not in the system's frame.
     pub world_space: bool,
     pub pool: u16,
     pub speed: f32,
@@ -145,34 +148,35 @@ pub struct Plan {
     pub size: f32,
     pub lifespan: f32,
     pub lifespan_variation: f32,
-    /// Размеры объёма эмиттера по X, Y, Z его кадра.
+    /// Emitter volume sizes along X, Y, Z of its frame.
     pub volume: Vec3,
     pub birth_rate: f32,
-    /// Окно работы контроллера и рождения, секунды.
+    /// The controller's and birth's active window, seconds.
     pub start: f32,
     pub stop: f32,
-    /// Контроллер не зациклен (флаг «зажать»): эффект проигрывается один раз.
+    /// The controller is not looped (the "clamp" flag): the effect plays once.
     pub once: bool,
     pub grow: Option<(f32, f32)>,
     pub gravity: Vec<Gravity>,
-    /// Скорость вращения, случайная ли ось, ось.
+    /// Rotation speed, whether the axis is random, the axis.
     pub rotation: Option<(f32, bool, Vec3)>,
-    /// Ключи цвета по доле жизни.
+    /// Color keys by fraction of lifetime.
     pub color_keys: Vec<(f32, Vec4)>,
-    /// Порождение при смерти: поколений, доля, множитель, разброс скорости и направления.
+    /// Spawning on death: generations, fraction, multiplier, speed and direction variation.
     pub spawn: Option<(u16, f32, u16, f32, f32)>,
     pub losses: Vec<Loss>,
 }
 
-/// Поправка силы тяготения: движок Morrowind ускоряет частицу в 1.6 раза сильнее, чем записано
-/// в `NiGravity` (константа OpenMW, `GravityAffector::operate`, подобрана под ваниль; у нас не
-/// проверено). Сила Oblivion — само ускорение, поэтому делится.
+/// Gravity strength correction: the Morrowind engine accelerates a particle 1.6 times more than
+/// written in `NiGravity` (an OpenMW constant, `GravityAffector::operate`, tuned to vanilla; not
+/// verified by us). Oblivion's strength is the acceleration itself, so it is divided.
 pub const GRAVITY_MAGIC: f32 = 1.6;
 
-/// Самое короткое окно контроллера, секунды: у нулевого окна движку не из чего сделать цикл.
+/// The shortest controller window, seconds: with a zero window the engine has nothing to make a
+/// cycle from.
 pub const MIN_WINDOW: f32 = 1.0 / 15.0;
 
-/// Мировые позы узлов и форм источника и их родители.
+/// World poses of the source nodes and shapes, and their parents.
 fn poses(source: &SourceNif) -> HashMap<usize, (Option<usize>, Affine3A)> {
     let mut out: HashMap<usize, (Option<usize>, Affine3A)> = HashMap::new();
     let mut stack: Vec<(usize, Option<usize>, Affine3A)> = source
@@ -199,8 +203,8 @@ fn poses(source: &SourceNif) -> HashMap<usize, (Option<usize>, Affine3A)> {
     out
 }
 
-/// Коробка вокруг мешей-источников эмиттера: кадр первого меша со сдвигом в центр коробки и её
-/// размеры по осям этого кадра. `None` — геометрии нет.
+/// A box around the emitter's source meshes: the first mesh's frame shifted to the box center and
+/// the box sizes along the axes of that frame. `None` means there is no geometry.
 fn mesh_box(
     source: &SourceNif,
     world: &HashMap<usize, (Option<usize>, Affine3A)>,
@@ -233,14 +237,14 @@ fn mesh_box(
     Some((frame * Affine3A::from_translation(center), hi - lo))
 }
 
-/// Узел-родитель блока (системы частиц среди детей узлов).
+/// The block's parent node (particle systems among node children).
 fn parent_of(source: &SourceNif, child: usize) -> Option<usize> {
     source.blocks.iter().position(
         |b| matches!(b, Block::Node(n) if n.children.iter().any(|c| c.index() == Some(child))),
     )
 }
 
-/// Что эмиттер Morrowind сделает из системы Oblivion.
+/// What the Morrowind emitter will make of the Oblivion system.
 pub fn plan(source: &SourceNif, system: &ParticleSystem) -> Result<Plan, Refusal> {
     if system.mesh_particles {
         return Err(Refusal::MeshParticles);
@@ -294,7 +298,7 @@ pub fn plan(source: &SourceNif, system: &ParticleSystem) -> Result<Plan, Refusal
         losses.push(Loss::RateCurve);
     }
 
-    // Кадры: родитель системы, сама система, узел эмиттера.
+    // Frames: the system's parent, the system itself, the emitter node.
     let parent = parent_of(source, system.index);
     let parent_world = parent
         .and_then(|p| world.get(&p))
@@ -308,8 +312,9 @@ pub fn plan(source: &SourceNif, system: &ParticleSystem) -> Result<Plan, Refusal
     };
     let emitter_frame =
         parent_world.inverse() * mesh_frame.unwrap_or_else(|| frame_of(emitter.object));
-    // У эмиттера-меша направление задаёт тип скорости: вдоль оси — склонение и угол этой оси,
-    // случайно — во все стороны, по нормалям — как записано у эмиттера (ось +Z его кадра).
+    // For a mesh emitter the direction is set by the velocity type: along the axis — the
+    // declination and angle of that axis, random — in all directions, along normals — as written in
+    // the emitter (the +Z axis of its frame).
     let (declination, declination_variation, planar_angle, planar_angle_variation) =
         match (emitter.shape, emitter.velocity_type) {
             (EmitterShape::Mesh, 2) => {
@@ -330,9 +335,9 @@ pub fn plan(source: &SourceNif, system: &ParticleSystem) -> Result<Plan, Refusal
             ),
         };
 
-    // Темп выше, чем пул успевает освобождать, ничего не добавляет: больше пула частиц не
-    // будет. Срез держит число в разумных пределах (у ванили до 1 500, у Oblivion встречается
-    // 10 миллионов).
+    // A rate higher than the pool can free adds nothing: there will be no more particles than the
+    // pool. The cap keeps the number within reason (vanilla has up to 1,500, Oblivion has 10
+    // million).
     let shortest_life =
         (emitter.life_span - emitter.life_span_variation.abs() / 2.0).max(MIN_WINDOW);
     let birth_rate = birth_rate.min(f32::from(system.pool) / shortest_life);
@@ -382,7 +387,8 @@ pub fn plan(source: &SourceNif, system: &ParticleSystem) -> Result<Plan, Refusal
                 if *turbulence != 0.0 {
                     plan.losses.push(Loss::Turbulence);
                 }
-                // Ось и точка тяготения — в кадре своего объекта; у Morrowind — в кадре частиц.
+                // Gravity's axis and point are in the frame of its object; in Morrowind, in the
+                // particles' frame.
                 let to_system = system_world.inverse() * frame_of(*object);
                 plan.gravity.push(Gravity {
                     strength: *strength / GRAVITY_MAGIC,
@@ -437,32 +443,33 @@ pub fn plan(source: &SourceNif, system: &ParticleSystem) -> Result<Plan, Refusal
     Ok(plan)
 }
 
-/// Радиус ограничивающей сферы системы в её кадре: дальше частица не улетит.
+/// Radius of the system's bounding sphere in its frame: a particle will not fly farther.
 pub fn reach(plan: &Plan) -> f32 {
     let speed = plan.speed + plan.speed_variation.abs() / 2.0;
     let life = plan.lifespan + plan.lifespan_variation.abs() / 2.0;
     speed.abs() * life.max(0.0) + plan.volume.length() / 2.0 + plan.size.abs()
 }
 
-/// Флаги узла частиц у ванили: 0x20 — играть сразу, 0x80 — частицы в кадре узла (имена битов —
-/// по OpenMW); 0x0A — как у прочих узлов. У костра `light_fire.nif` — 0xAA.
+/// Particle node flags in vanilla: 0x20 — play right away, 0x80 — particles in the node's frame
+/// (bit names after OpenMW); 0x0A — as for other nodes. The campfire `light_fire.nif` has 0xAA.
 pub const PARTICLE_NODE_FLAGS: u16 = 0x00AA;
-/// То же без «в кадре узла»: частицы остаются в мире, когда эмиттер уходит.
+/// The same without "in the node's frame": particles stay in the world when the emitter moves away.
 pub const PARTICLE_NODE_WORLD_FLAGS: u16 = 0x002A;
-/// Флаги узла-эмиттера (костёр, 123 из 577 ванильных систем).
+/// Emitter node flags (campfire, 123 of 577 vanilla systems).
 pub const EMITTER_NODE_FLAGS: u16 = 0x00A2;
-/// Флаги геометрии частиц (501 из 577).
+/// Particle geometry flags (501 of 577).
 pub const PARTICLES_FLAGS: u16 = 0x0002;
-/// Флаги контроллера: активен, цикл — петля (501 из 577).
+/// Controller flags: active, the cycle is a loop (501 of 577).
 pub const CONTROLLER_LOOP: u16 = 0x0008;
-/// Активен, цикл зажат: эффект проигрывается один раз (72 из 577).
+/// Active, the cycle is clamped: the effect plays once (72 of 577).
 pub const CONTROLLER_ONCE: u16 = 0x000C;
-/// `NiZBufferProperty` узла частиц: проверять глубину, не писать (у всех 577).
+/// The particle node's `NiZBufferProperty`: test depth, do not write it (all 577).
 pub const Z_TEST_ONLY: u16 = 0x0001;
-/// Метка узла для оптимизатора сцены движка: «не сливать» (у 513 из 577 узлов частиц).
+/// A node mark for the engine's scene optimizer: "do not merge" (513 of 577 particle nodes).
 pub const KEEP_NODE: &str = "sgoKeep";
 
-/// `NiAVObject` с кадром `frame`: поворот без масштаба, масштаб — длина первой оси.
+/// A `NiAVObject` with frame `frame`: rotation without scale, the scale is the length of the first
+/// axis.
 fn av_object(
     name: String,
     frame: &Affine3A,
@@ -480,7 +487,8 @@ fn av_object(
         },
         flags,
         translation: Vec3::from(frame.translation),
-        // В файле матрица лежит по строкам — транспонированной к `glam` (см. `skin::affine`).
+        // In the file the matrix is stored by rows — transposed relative to `glam` (see
+        // `skin::affine`).
         rotation: (Mat3::from(frame.matrix3) * (1.0 / scale)).transpose(),
         scale,
         properties,
@@ -492,8 +500,9 @@ fn keep_mark(stream: &mut NiStream) -> NiLink<NiExtraData> {
     stream
         .insert(NiStringExtraData {
             base: NiExtraData {
-                // Длина строки и её `u32`-счётчик — так пишет ваниль (11 у `sgoKeep`).
-                bytes_remaining: u32::try_from(KEEP_NODE.len() + 4).expect("короткая строка"),
+                // String length and its `u32` counter — the way vanilla writes it (11 for
+                // `sgoKeep`).
+                bytes_remaining: u32::try_from(KEEP_NODE.len() + 4).expect("a short string"),
                 ..NiExtraData::default()
             },
             value: KEEP_NODE.to_owned(),
@@ -501,9 +510,9 @@ fn keep_mark(stream: &mut NiStream) -> NiLink<NiExtraData> {
         .cast()
 }
 
-/// Строит эмиттер Morrowind по плану. `properties` — уже сконвертированные свойства системы
-/// (текстура, альфа, материал). Возвращает двух детей для узла-родителя: узел-эмиттер и узел
-/// частиц.
+/// Builds a Morrowind emitter from the plan. `properties` are the system's already converted
+/// properties (texture, alpha, material). Returns two children for the parent node: the emitter
+/// node and the particle node.
 pub fn build(
     stream: &mut NiStream,
     plan: &Plan,
@@ -511,7 +520,7 @@ pub fn build(
 ) -> [NiLink<NiAVObject>; 2] {
     let pool = usize::from(plan.pool);
 
-    // Узел-эмиттер: пустой, в его кадре рождаются частицы.
+    // The emitter node: empty, particles are born in its frame.
     let mark = keep_mark(stream);
     let emitter = stream.insert(NiNode {
         base: av_object(
@@ -524,7 +533,7 @@ pub fn build(
         ..NiNode::default()
     });
 
-    // Данные: пул вершин и размеров; цвета — только если цвет меняется с возрастом.
+    // Data: the pool of vertices and sizes; colors only if the color changes with age.
     let geometry = NiGeometryData {
         vertices: vec![Vec3::ZERO; pool],
         bound: NiBound {
@@ -552,7 +561,7 @@ pub fn build(
         properties,
         NiLink::null(),
     );
-    // Вращающиеся частицы — другой тип геометрии с кватернионами в данных.
+    // Rotating particles are another geometry type, with quaternions in the data.
     let particles: NiLink<NiAVObject> = if plan.rotation.is_some() {
         let data = stream.insert(NiRotatingParticlesData {
             base: particles_data,
@@ -636,8 +645,8 @@ pub fn build(
         av.controller = controller.cast();
     }
 
-    // Воздействия — цепочкой с конца: тяготение → вращение → цвет → рост и затухание, как в
-    // ванильных цепочках.
+    // Modifiers — chained from the end: gravity → rotation → color → grow and fade, as in vanilla
+    // chains.
     let mut next: NiLink<NiParticleModifier> = NiLink::null();
     let base = |next: NiLink<NiParticleModifier>| NiParticleModifier {
         next,
@@ -700,7 +709,7 @@ pub fn build(
         c.particle_modifier = next;
     }
 
-    // Узел частиц: глубина проверяется, но не пишется — частицы не закрывают друг друга.
+    // The particle node: depth is tested but not written — particles do not occlude each other.
     let z_buffer = stream.insert(NiZBufferProperty {
         base: NiProperty {
             flags: Z_TEST_ONLY,

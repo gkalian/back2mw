@@ -1,14 +1,15 @@
-//! Кожа лица NPC (T8.8, решение владельца 2026-09-30 — полное запекание `.egt`).
+//! NPC face skin (T8.8, owner's decision 2026-09-30 — full baking of `.egt`).
 //!
-//! У Oblivion лицо — текстура расы (`ICON` части головы), умноженная на карту детализации лица:
-//! `база × карта / 128` (карта с центром 128 — `Egt::detail`). Сверено на глаз по готовым картам
-//! `textures\faces\oblivion.esm\<FormID>_0.dds` (2026-09-30): высокий эльф с человеческой базой
-//! выходит золотистым, тёмный эльф — пепельным, черты лица — от карты. Ванильный движок так
-//! складывать не умеет, поэтому результат запекается в свою текстуру на лицо и пишется DDS DXT1
-//! с мип-уровнями (256×256 — 43 832 байта против 349 652 у несжатой BGRA). Свой кодировщик — потому
-//! что DXT-кодека среди зависимостей нет, а новые зависимости не заводим.
+//! In Oblivion a face is the race texture (the head part's `ICON`) multiplied by the face detail
+//! map: `base × map / 128` (the map centered at 128 — `Egt::detail`). Checked by eye against the
+//! ready-made maps `textures\faces\oblivion.esm\<FormID>_0.dds` (2026-09-30): a High Elf with a
+//! human base comes out golden, a Dark Elf ashen, the facial features come from the map. The
+//! vanilla engine cannot combine them like that, so the result is baked into a texture of its own
+//! per face and written as DDS DXT1 with mip levels (256×256 is 43,832 bytes versus 349,652 for
+//! uncompressed BGRA). Our own encoder — because there is no DXT codec among the dependencies, and
+//! we do not add new dependencies.
 
-/// Картинка RGB, строки сверху вниз.
+/// An RGB image, rows top to bottom.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rgb {
     pub width: u32,
@@ -23,10 +24,10 @@ impl Rgb {
         self.pixels[(y * self.width + x) as usize]
     }
 
-    /// Билинейная выборка в долях стороны (`u`, `v` в 0…1, центр пикселя — (i + ½) / сторона),
-    /// края зажаты.
+    /// Bilinear sampling in fractions of the side (`u`, `v` in 0…1, the pixel center is (i + ½) /
+    /// side), edges clamped.
     fn sample(&self, u: f32, v: f32) -> [f32; 3] {
-        #[expect(clippy::cast_precision_loss, reason = "стороны текстур — до 4096")]
+        #[expect(clippy::cast_precision_loss, reason = "texture sides are up to 4096")]
         let (fx, fy) = (
             (u * self.width as f32 - 0.5).max(0.0),
             (v * self.height as f32 - 0.5).max(0.0),
@@ -34,7 +35,7 @@ impl Rgb {
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "неотрицательно и меньше стороны"
+            reason = "non-negative and less than the side"
         )]
         let (x0, y0) = (fx.floor() as u32, fy.floor() as u32);
         let (tx, ty) = (fx.fract(), fy.fract());
@@ -48,16 +49,16 @@ impl Rgb {
     }
 }
 
-/// Кожа: база (текстура расы, RGBA) × карта детализации / 128 — по каналам, в размере большей из
-/// двух по каждой стороне (у `Oblivion.esm` база 128 или 256, карта 256 или 32); меньшая
-/// растягивается билинейно. Альфа базы не переносится: лицо непрозрачно.
+/// Skin: base (race texture, RGBA) × detail map / 128 — per channel, at the larger of the two sizes
+/// on each side (in `Oblivion.esm` the base is 128 or 256, the map 256 or 32); the smaller one is
+/// stretched bilinearly. The base's alpha is not carried over: the face is opaque.
 pub fn compose(base: &Rgb, detail: &Rgb) -> Rgb {
     let width = base.width.max(detail.width);
     let height = base.height.max(detail.height);
     let mut pixels = Vec::with_capacity((width * height) as usize);
     for y in 0..height {
         for x in 0..width {
-            #[expect(clippy::cast_precision_loss, reason = "стороны текстур — до 4096")]
+            #[expect(clippy::cast_precision_loss, reason = "texture sides are up to 4096")]
             let (u, v) = (
                 (x as f32 + 0.5) / width as f32,
                 (y as f32 + 0.5) / height as f32,
@@ -68,7 +69,7 @@ pub fn compose(base: &Rgb, detail: &Rgb) -> Rgb {
                 #[expect(
                     clippy::cast_possible_truncation,
                     clippy::cast_sign_loss,
-                    reason = "зажато в 0…255 и округлено"
+                    reason = "clamped to 0…255 and rounded"
                 )]
                 let level = (b[k] * d[k] / 128.0).round().clamp(0.0, 255.0) as u8;
                 level
@@ -82,7 +83,7 @@ pub fn compose(base: &Rgb, detail: &Rgb) -> Rgb {
     }
 }
 
-/// Уровень вдвое меньше: среднее 2×2 (у нечётной стороны крайний пиксель повторяется).
+/// A level half the size: the 2×2 average (on an odd side the edge pixel is repeated).
 fn half(img: &Rgb) -> Rgb {
     let width = (img.width / 2).max(1);
     let height = (img.height / 2).max(1);
@@ -96,7 +97,9 @@ fn half(img: &Rgb) -> Rgb {
                     sum[k] += u32::from(p[k]);
                 }
             }
-            pixels.push(sum.map(|s| u8::try_from((s + 2) / 4).expect("среднее байтов — байт")));
+            pixels.push(
+                sum.map(|s| u8::try_from((s + 2) / 4).expect("the average of bytes is a byte")),
+            );
         }
     }
     Rgb {
@@ -110,7 +113,7 @@ fn to565(c: [f32; 3]) -> u16 {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "зажато в 0…31/63 и округлено"
+        reason = "clamped to 0…31/63 and rounded"
     )]
     let q = |v: f32, max: f32| (v / 255.0 * max).round().clamp(0.0, max) as u16;
     (q(c[0], 31.0) << 11) | (q(c[1], 63.0) << 5) | q(c[2], 31.0)
@@ -127,8 +130,9 @@ fn dist(a: [f32; 3], b: [f32; 3]) -> f32 {
     (0..3).map(|k| (a[k] - b[k]).powi(2)).sum()
 }
 
-/// Блок 4×4 → 8 байт DXT1 (четырёхцветный режим, без прозрачности). Концы — крайние проекции на
-/// главную ось цветов блока (степенной метод по ковариации); индексы — ближайший цвет палитры.
+/// A 4×4 block → 8 bytes of DXT1 (four-color mode, no transparency). The endpoints are the extreme
+/// projections onto the principal axis of the block's colors (power iteration on the covariance);
+/// the indices are the nearest palette color.
 fn encode_block(px: &[[f32; 3]; 16]) -> [u8; 8] {
     let mean: [f32; 3] = std::array::from_fn(|k| px.iter().map(|p| p[k]).sum::<f32>() / 16.0);
     let mut cov = [[0.0f32; 3]; 3];
@@ -139,11 +143,12 @@ fn encode_block(px: &[[f32; 3]; 16]) -> [u8; 8] {
             }
         }
     }
-    // Старт — столбец ковариации канала с наибольшей дисперсией: у [1, 1, 1] при противоходе
-    // каналов (R растёт, B падает) произведение с ковариацией нулевое, и ось терялась.
+    // The start is the covariance column of the channel with the largest variance: with [1, 1, 1],
+    // when channels go opposite ways (R rises, B falls), the product with the covariance is zero
+    // and the axis got lost.
     let widest = (0..3)
         .max_by(|&a, &b| cov[a][a].total_cmp(&cov[b][b]))
-        .expect("три канала");
+        .expect("three channels");
     let mut axis: [f32; 3] = std::array::from_fn(|i| cov[i][widest]);
     if axis.iter().all(|v| v.abs() < 1e-6) {
         axis = [1.0, 1.0, 1.0];
@@ -176,8 +181,8 @@ fn encode_block(px: &[[f32; 3]; 16]) -> [u8; 8] {
     out[..2].copy_from_slice(&c0.to_le_bytes());
     out[2..4].copy_from_slice(&c1.to_le_bytes());
     if c0 == c1 {
-        // Один цвет: все индексы 0. Четырёхцветный режим требует c0 > c1, но при равенстве
-        // декодер даёт трёхцветный, где индекс 0 — тот же c0.
+        // One color: all indices 0. The four-color mode requires c0 > c1, but when they are equal
+        // the decoder uses the three-color mode, where index 0 is the same c0.
         return out;
     }
     let (p0, p1) = (from565(c0), from565(c1));
@@ -193,7 +198,7 @@ fn encode_block(px: &[[f32; 3]; 16]) -> [u8; 8] {
             .min_by(|&a, &b| {
                 dist(*p, palette[a as usize]).total_cmp(&dist(*p, palette[b as usize]))
             })
-            .expect("палитра из четырёх");
+            .expect("a palette of four");
         indices |= best << (2 * i);
     }
     out[4..].copy_from_slice(&indices.to_le_bytes());
@@ -204,7 +209,7 @@ fn encode_level(img: &Rgb, out: &mut Vec<u8>) {
     for by in 0..img.height.div_ceil(4) {
         for bx in 0..img.width.div_ceil(4) {
             let px: [[f32; 3]; 16] = std::array::from_fn(|i| {
-                let i = u32::try_from(i).expect("16 пикселей блока");
+                let i = u32::try_from(i).expect("16 pixels in a block");
                 let (x, y) = (4 * bx + i % 4, 4 * by + i / 4);
                 img.at(x, y).map(f32::from)
             });
@@ -213,7 +218,7 @@ fn encode_level(img: &Rgb, out: &mut Vec<u8>) {
     }
 }
 
-/// DDS DXT1 со всеми мип-уровнями до 1×1, как у ванильных текстур `Morrowind.bsa`.
+/// DDS DXT1 with all mip levels down to 1×1, like the vanilla textures of `Morrowind.bsa`.
 pub fn encode_dds_dxt1(img: &Rgb) -> Vec<u8> {
     const DDSD_CAPS: u32 = 0x1;
     const DDSD_HEIGHT: u32 = 0x2;
@@ -227,10 +232,10 @@ pub fn encode_dds_dxt1(img: &Rgb) -> Vec<u8> {
     const DDSCAPS_MIPMAP: u32 = 0x40_0000;
     let mut levels = vec![img.clone()];
     while levels.last().is_some_and(|l| l.width > 1 || l.height > 1) {
-        let next = half(levels.last().expect("не пусто"));
+        let next = half(levels.last().expect("not empty"));
         levels.push(next);
     }
-    let count = u32::try_from(levels.len()).expect("уровней — единицы");
+    let count = u32::try_from(levels.len()).expect("a handful of levels");
     let linear = img.width.div_ceil(4).max(1) * img.height.div_ceil(4).max(1) * 8;
     let mut out = Vec::new();
     out.extend(b"DDS ");
@@ -251,7 +256,7 @@ pub fn encode_dds_dxt1(img: &Rgb) -> Vec<u8> {
         out.extend(v.to_le_bytes());
     }
     out.extend([0u8; 44]);
-    // DDS_PIXELFORMAT: размер, флаги, FourCC, биты и четыре маски.
+    // DDS_PIXELFORMAT: size, flags, FourCC, bits and four masks.
     out.extend(32u32.to_le_bytes());
     out.extend(DDPF_FOURCC.to_le_bytes());
     out.extend(b"DXT1");

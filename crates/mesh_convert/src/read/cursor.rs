@@ -1,11 +1,12 @@
 use super::error::{Error, Result};
 
-/// Курсор по байтам с позицией, по образцу `tes4_read::container`. Позиция нужна
-/// в каждой ошибке: размеров блоков в NIF 20.0.0.x нет, и единственная проверка
-/// раскладки — где именно остановился курсор.
+/// A byte cursor with a position, modeled on `tes4_read::container`. The position is needed in
+/// every error: NIF 20.0.0.x has no block sizes, and the only layout check is where exactly the
+/// cursor stopped.
 ///
-/// Несёт версию файла и `BSVER` (T2.3): у 10.2.0.0 несколько полей стоят иначе, чем у
-/// 20.0.0.4, и ридер блока спрашивает версию здесь, а не получает её параметром.
+/// It carries the file version and `BSVER` (T2.3): in 10.2.0.0 several fields are placed
+/// differently than in 20.0.0.4, and a block reader asks for the version here rather than getting
+/// it as a parameter.
 #[derive(Debug)]
 pub struct Cursor<'a> {
     data: &'a [u8],
@@ -14,7 +15,7 @@ pub struct Cursor<'a> {
     bsver: u32,
 }
 
-/// Версия по умолчанию — 20.0.0.4 с `BSVER` 11: так написаны синтетические тесты блоков.
+/// The default version is 20.0.0.4 with `BSVER` 11: the synthetic block tests are written that way.
 const DEFAULT_VERSION: u32 = 0x1400_0004;
 const DEFAULT_BSVER: u32 = 11;
 
@@ -28,7 +29,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Версия файла и `BSVER` из заголовка.
+    /// File version and `BSVER` from the header.
     pub fn set_version(&mut self, version: u32, bsver: u32) {
         self.version = version;
         self.bsver = bsver;
@@ -67,7 +68,7 @@ impl<'a> Cursor<'a> {
         let slice = self.bytes(N)?;
         Ok(slice
             .try_into()
-            .expect("bytes(N) вернул ровно N байт, иначе была бы ошибка"))
+            .expect("bytes(N) returned exactly N bytes, otherwise there would have been an error"))
     }
 
     pub fn u8(&mut self) -> Result<u8> {
@@ -90,8 +91,8 @@ impl<'a> Cursor<'a> {
         Ok(f32::from_le_bytes(self.array()?))
     }
 
-    /// `bool` в NIF 20.x — один байт. Значение, отличное от 0 и 1, — признак того,
-    /// что раскладка съехала раньше, поэтому это ошибка, а не «истина».
+    /// A `bool` in NIF 20.x is one byte. A value other than 0 and 1 is a sign that the layout went
+    /// off earlier, so it is an error, not "true".
     pub fn bool(&mut self) -> Result<bool> {
         let at = self.pos;
         match self.u8()? {
@@ -101,7 +102,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// `N` подряд идущих `f32`: вектор, цвет, кватернион, матрица.
+    /// `N` consecutive `f32`: a vector, a color, a quaternion, a matrix.
     pub fn floats<const N: usize>(&mut self) -> Result<[f32; N]> {
         let mut out = [0.0f32; N];
         for slot in &mut out {
@@ -110,8 +111,8 @@ impl<'a> Cursor<'a> {
         Ok(out)
     }
 
-    /// `count` элементов по `elem_size` байт: проверяет, что они вообще помещаются,
-    /// до того как под них выделять память. Заявленное в файле число не доверено.
+    /// `count` elements of `elem_size` bytes: checks that they fit at all before allocating memory
+    /// for them. The number claimed in the file is not trusted.
     pub fn check_array(&self, count: usize, elem_size: usize) -> Result<()> {
         let need = count.saturating_mul(elem_size);
         if self.remaining() < need {
@@ -124,14 +125,14 @@ impl<'a> Cursor<'a> {
         Ok(())
     }
 
-    /// `count` массивов из `N` `f32` каждый.
+    /// `count` arrays of `N` `f32` each.
     pub fn float_arrays<const N: usize>(&mut self, count: usize) -> Result<Vec<[f32; N]>> {
         self.check_array(count, N * 4)?;
         (0..count).map(|_| self.floats::<N>()).collect()
     }
 
-    /// Длина из файла как `usize`. Значение, не влезающее в `usize`, заведомо больше
-    /// любого файла, поэтому ошибка та же, что и у «мало данных».
+    /// A length from the file as `usize`. A value that does not fit into `usize` is certainly
+    /// larger than any file, so the error is the same as for "not enough data".
     pub fn len_u32(&mut self) -> Result<usize> {
         let at = self.pos;
         let raw = self.u32()?;
@@ -142,7 +143,7 @@ impl<'a> Cursor<'a> {
         })
     }
 
-    /// Строка до `\n` включительно; сам `\n` в результат не входит.
+    /// A line up to and including `\n`; the `\n` itself is not part of the result.
     pub fn line(&mut self) -> Result<&'a [u8]> {
         let rest = &self.data[self.pos..];
         let end = rest
@@ -157,21 +158,21 @@ impl<'a> Cursor<'a> {
         Ok(&rest[..end])
     }
 
-    /// Строка с однобайтовой длиной (экспортная информация в заголовке).
+    /// A string with a one-byte length (export info in the header).
     pub fn short_string(&mut self) -> Result<String> {
         let len = usize::from(self.u8()?);
         Ok(latin1(self.bytes(len)?))
     }
 
-    /// Строка с четырёхбайтовой длиной (имена типов блоков и строки в блоках).
+    /// A string with a four-byte length (block type names and strings in blocks).
     pub fn sized_string(&mut self) -> Result<String> {
         let len = self.len_u32()?;
         Ok(latin1(self.bytes(len)?))
     }
 }
 
-/// Байты → строка без потерь: в заголовках и именах типов бывает не-UTF-8, и
-/// заменять символы молча не нужно.
+/// Bytes → string without loss: headers and type names can contain non-UTF-8, and characters should
+/// not be silently replaced.
 pub fn latin1(bytes: &[u8]) -> String {
     bytes.iter().map(|&b| char::from(b)).collect()
 }

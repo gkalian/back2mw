@@ -1,9 +1,10 @@
-//! T2.4: инструмент сверки фактов о SpeedTree с кодом `Oblivion.exe` (`docs/ru/formats/spt.md`).
+//! T2.4: a tool for checking facts about SpeedTree against the code of `Oblivion.exe`
+//! (`docs/en/formats/spt.md`).
 //!
-//! Не проверка, а печать: `BACK2MW_OBLIVION_EXE` — путь к exe, `BACK2MW_DISASM` — список через
-//! запятую: `0x7a6cd0` (функция до `ret`, не больше 400 команд), `0x7a6cd0+120` (столько
-//! команд), `f32@0xa8c694`, `f64@0xa89c50`, `bytes@0xa8c740+64`. Exe только читается как
-//! данные — ничего не запускается.
+//! Not a check but a printout: `BACK2MW_OBLIVION_EXE` is the path to the exe, `BACK2MW_DISASM` a
+//! comma-separated list: `0x7a6cd0` (a function up to `ret`, at most 400 instructions),
+//! `0x7a6cd0+120` (that many instructions), `f32@0xa8c694`, `f64@0xa89c50`, `bytes@0xa8c740+64`.
+//! The exe is only read as data — nothing is run.
 //!
 //! ```text
 //! BACK2MW_OBLIVION_EXE='D:\...\Oblivion.exe' BACK2MW_DISASM=0x7a6cd0 \
@@ -12,7 +13,7 @@
 
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter, Mnemonic};
 
-/// Раздел PE: виртуальный адрес, размер, смещение в файле.
+/// A PE section: virtual address, size, file offset.
 struct Section {
     va: u32,
     size: u32,
@@ -38,7 +39,7 @@ impl Image {
     fn load(path: &str) -> Self {
         let bytes = std::fs::read(path).expect("Oblivion.exe");
         let pe = u32_at(&bytes, 0x3c) as usize;
-        assert_eq!(&bytes[pe..pe + 4], b"PE\0\0", "не PE");
+        assert_eq!(&bytes[pe..pe + 4], b"PE\0\0", "not a PE");
         let count = usize::from(u16_at(&bytes, pe + 6));
         let optional = usize::from(u16_at(&bytes, pe + 20));
         let base = u32_at(&bytes, pe + 24 + 28);
@@ -61,28 +62,32 @@ impl Image {
         }
     }
 
-    /// VA всех вхождений `needle` в данных разделов.
+    /// VAs of all occurrences of `needle` in the section data.
     fn find(&self, needle: &[u8]) -> Vec<u32> {
         let mut out = Vec::new();
         for s in &self.sections {
             let raw = &self.bytes[s.raw as usize..(s.raw + s.raw_size) as usize];
             for (i, w) in raw.windows(needle.len()).enumerate() {
                 if w == needle {
-                    out.push(self.base + s.va + u32::try_from(i).expect("образ меньше 4 ГБ"));
+                    out.push(
+                        self.base
+                            + s.va
+                            + u32::try_from(i).expect("the image is smaller than 4 GB"),
+                    );
                 }
             }
         }
         out
     }
 
-    /// Байты начиная с VA (до конца раздела).
+    /// Bytes starting at a VA (to the end of the section).
     fn at(&self, va: u32) -> &[u8] {
         let rva = va - self.base;
         let s = self
             .sections
             .iter()
             .find(|s| rva >= s.va && rva < s.va + s.size.max(s.raw_size))
-            .unwrap_or_else(|| panic!("VA {va:#x} вне разделов"));
+            .unwrap_or_else(|| panic!("VA {va:#x} outside the sections"));
         let off = (s.raw + (rva - s.va)) as usize;
         &self.bytes[off..(s.raw + s.raw_size) as usize]
     }
@@ -118,7 +123,7 @@ fn number(s: &str) -> u32 {
 }
 
 #[test]
-#[ignore = "инструмент: BACK2MW_OBLIVION_EXE, BACK2MW_DISASM"]
+#[ignore = "tool: BACK2MW_OBLIVION_EXE, BACK2MW_DISASM"]
 fn disassemble() {
     let exe = std::env::var("BACK2MW_OBLIVION_EXE").expect("BACK2MW_OBLIVION_EXE");
     let img = Image::load(&exe);
@@ -132,19 +137,19 @@ fn disassemble() {
             let b = img.at(number(addr));
             println!("{}", f64::from_le_bytes(b[..8].try_into().unwrap()));
         } else if let Some(text) = item.strip_prefix("findstr@") {
-            // `findstr@.?AVTESObjectTREE@@`: VA всех вхождений строки.
+            // `findstr@.?AVTESObjectTREE@@`: VAs of all occurrences of the string.
             for va in img.find(text.as_bytes()) {
                 println!("{va:#x}");
             }
         } else if let Some(value) = item.strip_prefix("finddw@") {
-            // `finddw@0xb39e18`: VA всех выровненных по 4 `u32`, равных значению.
+            // `finddw@0xb39e18`: VAs of all 4-aligned `u32` equal to the value.
             for va in img.find(&number(value).to_le_bytes()) {
                 if va % 4 == 0 {
                     println!("{va:#x}");
                 }
             }
         } else if let Some(rest) = item.strip_prefix("u32@") {
-            // `u32@0x7a7cbc+18`: столько `u32` подряд (таблицы переходов).
+            // `u32@0x7a7cbc+18`: that many `u32` in a row (jump tables).
             let (addr, count) = rest.split_once('+').unwrap_or((rest, "1"));
             let b = img.at(number(addr));
             let words: Vec<String> = (0..number(count) as usize)
@@ -152,8 +157,8 @@ fn disassemble() {
                 .collect();
             println!("{}", words.join(" "));
         } else if let Some(rest) = item.strip_prefix("scan@") {
-            // `scan@0x783000-0x7b8000=0x1f4`: команды, у которых непосредственный операнд или
-            // смещение в памяти равны значению (линейный разбор — на данных может сбиться).
+            // `scan@0x783000-0x7b8000=0x1f4`: instructions whose immediate operand or memory
+            // displacement equals the value (a linear sweep — it can go astray on data).
             let (range, value) = rest.split_once('=').unwrap();
             let (from, to) = range.split_once('-').unwrap();
             let (from, to, value) = (number(from), number(to), u64::from(number(value)));

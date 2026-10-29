@@ -1,11 +1,11 @@
-//! Внешний мир `Oblivion.esm`: спеки `WRLD`, `CELL`, `LAND`, `REFR`, `LTEX`, `REGN`, `WTHR`,
-//! `CLMT` на всех записях. Требует `BACK2MW_GAME_DATA`.
+//! The exterior world of `Oblivion.esm`: the `WRLD`, `CELL`, `LAND`, `REFR`, `LTEX`, `REGN`,
+//! `WTHR`, `CLMT` specs on all records. Needs `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test -p tes4_read --test real_world -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Внешний мир».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Exterior world".
 
 mod common;
 
@@ -15,7 +15,7 @@ use tes4_read::{
 };
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_exterior_record_of_oblivion_parses() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -61,17 +61,17 @@ fn every_exterior_record_of_oblivion_parses() {
         "worldspace {}, CELL {cells}, LAND {lands}, REFR {refs}",
         worlds.len()
     );
-    // Тот же счёт, что плоский обход: ни одна ячейка и ни один LAND не потерялись по дороге.
+    // The same count as the flat traversal: not a single cell or LAND was lost on the way.
     assert_eq!(lands, plugin.records_of(*b"LAND").count());
 
-    // Лист карты мира (`ICON` + `MNAM`): у пяти миров, у остальных `MNAM` нет или из нулей. Четыре
-    // мира Дрожащих островов делят один лист и один `MNAM`.
+    // The world map sheet (`ICON` + `MNAM`): five worlds have it, the others have no `MNAM` or an
+    // all-zero one. Four Shivering Isles worlds share one sheet and one `MNAM`.
     let mapped: Vec<&str> = worlds
         .iter()
         .filter(|(_, w)| w.map_texture.is_some() && w.map_size.is_some())
         .map(|(_, w)| w.editor_id.as_str())
         .collect();
-    println!("WRLD с листом карты: {mapped:?}");
+    println!("WRLD with a map sheet: {mapped:?}");
     assert_eq!(
         mapped,
         [
@@ -104,11 +104,11 @@ fn every_exterior_record_of_oblivion_parses() {
         .count();
     let se_lands = se.cells.iter().filter(|c| c.land.is_some()).count();
     println!(
-        "SEWorld: ячеек {} (с XCLC {with_grid}), LAND {se_lands}",
+        "SEWorld: cells {} (with XCLC {with_grid}), LAND {se_lands}",
         se.cells.len()
     );
 
-    // Интерьеры: каждая ячейка и каждая ссылка читаются, `XCLL` и `XTEL` — полной длины.
+    // Interiors: every cell and every reference is read, `XCLL` and `XTEL` have full length.
     let interiors = interior_cells(&plugin);
     let (mut lit, mut doors, mut refs) = (0usize, 0usize, 0usize);
     for c in &interiors {
@@ -124,7 +124,7 @@ fn every_exterior_record_of_oblivion_parses() {
         }
     }
     println!(
-        "интерьеров {}, с XCLL {lit}, REFR {refs}, из них дверей-телепортов {doors}",
+        "interiors {}, with XCLL {lit}, REFR {refs}, of them teleport doors {doors}",
         interiors.len()
     );
 }

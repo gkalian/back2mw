@@ -105,7 +105,7 @@ fn faction(edid: &str, name: Option<&str>, flags: u8) -> Faction {
     }
 }
 
-/// Прогон `convert_npc` на готовом окружении.
+/// A run of `convert_npc` on a ready environment.
 fn run(n: &Npc) -> (Option<tes3_out::Npc>, NpcReport, Vec<tes3_out::Faction>) {
     let races = races();
     let mut classes = ClassRegistry::new(HashMap::from([(0x44, class())]));
@@ -155,11 +155,11 @@ fn level_follows_the_owner_rule() {
     n.level = 10;
     n.calc_min = 5;
     n.calc_max = 25;
-    assert_eq!(level(&n), 15, "середина calcMin…calcMax");
+    assert_eq!(level(&n), 15, "the middle of calcMin…calcMax");
     n.calc_max = 0;
-    assert_eq!(level(&n), 15, "без calcMax — calcMin + смещение");
+    assert_eq!(level(&n), 15, "without calcMax — calcMin + offset");
     n.level = -8;
-    assert_eq!(level(&n), 1, "не ниже 1");
+    assert_eq!(level(&n), 1, "at least 1");
 }
 
 #[test]
@@ -186,15 +186,15 @@ fn npc_takes_race_class_head_first_wander_and_known_items() {
     );
     assert!(
         n.class.starts_with("obs4001_Commoner_"),
-        "класс с услугами NPC"
+        "a class with the NPC's services"
     );
-    // Мужских голов без особой две, по ID: 01, 02; 0x5003 нечётное → вторая.
+    // There are two male heads without a special one, by ID: 01, 02; 0x5003 is odd → the second.
     assert_eq!(n.head, "b_n_nord_m_head_02");
     assert_eq!(n.hair, "b_n_nord_m_hair_01");
     assert!(n.mesh.is_empty());
     assert_eq!(
         n.ai.wander_distance, MAX_WANDER,
-        "первый wander, 5000 зажато"
+        "the first wander, 5000 clamped"
     );
     assert_eq!(n.inventory, [(2, "ob_Bread_a1".to_owned())]);
     assert_eq!(n.spells, ["ob_Flare_b1"]);
@@ -213,7 +213,7 @@ fn visible_faction_wins_and_others_are_counted() {
     assert_eq!(rank, 3);
     assert_eq!(report.factions_dropped, 2);
     assert_eq!(factions.len(), 1);
-    assert_eq!(factions[0].ranks.len(), 4, "ранги до ранга NPC");
+    assert_eq!(factions[0].ranks.len(), 4, "ranks up to the NPC's rank");
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn beast_gets_its_skeleton_and_unknown_race_is_skipped() {
     let n2 = out.unwrap();
     assert_eq!(n2.mesh, BEAST_MESH);
     assert_eq!(n2.head, "b_n_argonian_m_head_01");
-    assert!(n2.hair.is_empty(), "причёсок нет — пусто");
+    assert!(n2.hair.is_empty(), "no hair — empty");
 
     let mut n = npc();
     n.race = 0x99;
@@ -233,7 +233,7 @@ fn beast_gets_its_skeleton_and_unknown_race_is_skipped() {
     assert_eq!(report.skipped, 1);
 }
 
-/// Плагин с расой, классом, фракцией, пакетом и двумя NPC; второй в набор не входит.
+/// A plugin with a race, a class, a faction, a package and two NPCs; the second is not in the set.
 fn actor_plugin() -> Vec<u8> {
     use tes4_read::GameFormat::Tes4 as F;
     use tes4_read::synth;
@@ -315,7 +315,7 @@ fn actor_plugin() -> Vec<u8> {
             .concat(),
         )
     };
-    // Список 0xA1 → предмет 0xA5: экипировка NPC лежит в списках.
+    // List 0xA1 → item 0xA5: an NPC's equipment lies in lists.
     let mut lvlo = 1i16.to_le_bytes().to_vec();
     lvlo.extend([0, 0]);
     lvlo.extend(0xA5u32.to_le_bytes());
@@ -352,7 +352,7 @@ fn actors_of_a_plugin_convert_together() {
     assert_eq!(
         inventory_of(&plugin, Some, &wanted).unwrap(),
         std::collections::BTreeSet::from([0xA1, 0xA5]),
-        "список и то, что в нём"
+        "the list and what is in it"
     );
     let mut vanilla = vanilla();
     vanilla.push(body("b_n_high elf_m_chest", "High Elf", 3, false));
@@ -373,13 +373,13 @@ fn actors_of_a_plugin_convert_together() {
     let (form_id, n) = &out.npcs[0];
     assert_eq!(*form_id, 0x5003);
     assert!(n.race.starts_with("ob_GoldenSaint_"));
-    assert_eq!(n.head, "b_n_high elf_m_head_01", "голова донора");
+    assert_eq!(n.head, "b_n_high elf_m_head_01", "the donor's head");
     assert_eq!(n.ai.wander_distance, 300);
     assert_eq!(n.inventory, [(1, "ob_Bread_a1".to_owned())]);
     assert_eq!((out.races.len(), out.bodies.len()), (1, 1));
     assert_eq!((out.classes.len(), out.factions.len()), (1, 1));
     assert_eq!(n.faction.as_ref().unwrap().1, 1);
-    // Лицо: у синтетической расы нет частей головы — список пуст, но источник есть.
+    // Face: the synthetic race has no head parts — the list is empty, but the source exists.
     let face = &out.faces[&0x5003];
     assert!(!face.female && face.parts.is_empty() && face.hair.is_none());
 }
@@ -402,14 +402,14 @@ fn leveled_spells_expand_by_npc_level() {
             },
         ),
     ]);
-    // Уровень 6: из «брать всё» — 0xB1 и вложенный список; из него одна строка — наибольший
-    // уровень ≤ 6 (4), меньший FormID — 0xB3.
+    // Level 6: from "use all" — 0xB1 and a nested list; from it one row — the highest level ≤ 6
+    // (4), the smaller FormID — 0xB3.
     assert_eq!(
         expand_spells(&[0x900, 0xB1, 0xC0], 6, &lists),
         [0xB1, 0xB3, 0xC0]
     );
     assert_eq!(expand_spells(&[0x901], 0, &lists), Vec::<u32>::new());
-    // Круг не зацикливает.
+    // A cycle does not loop.
     let circle = HashMap::from([(
         0x1,
         SpellList {
@@ -420,8 +420,8 @@ fn leveled_spells_expand_by_npc_level() {
     assert_eq!(expand_spells(&[0x1], 5, &circle), [0xB1]);
 }
 
-/// T8.7: части головы — по `INDX`, уши своего пола; глазам (7, 8) — текстура `EYES` NPC, прочим —
-/// своя; без `EYES` — своя у всех.
+/// T8.7: head parts — by `INDX`, ears of their own sex; the eyes (7, 8) get the NPC's `EYES`
+/// texture, the rest their own; without `EYES` everyone keeps their own.
 #[test]
 fn eye_parts_get_the_npc_eyes_texture() {
     let part = |index: u32, model: &str| tes4_read::HeadPart {
@@ -462,16 +462,16 @@ fn eye_parts_get_the_npc_eyes_texture() {
 
 #[test]
 fn face_coefficients_are_the_npc_offset_on_top_of_the_race() {
-    // Лицо расы плюс отклонение NPC, по номерам.
+    // The race face plus the NPC deviation, by index.
     assert_eq!(
         with_race(&[0.5, -1.0, 2.0], &[4.0, 3.0, 0.0]),
         [4.5, 2.0, 2.0]
     );
-    // У расы без своего лица (имперец: все нули или поля нет) остаётся лицо NPC.
+    // A race without its own face (Imperial: all zeros or no field) leaves the NPC's face.
     assert_eq!(with_race(&[0.5, -1.0], &[]), [0.5, -1.0]);
     assert_eq!(with_race(&[0.5, -1.0], &[0.0, 0.0]), [0.5, -1.0]);
-    // NPC без коэффициентов получает лицо расы, а не человеческую заготовку.
+    // An NPC without coefficients gets the race face, not the human template.
     assert_eq!(with_race(&[], &[4.0, 3.0]), [4.0, 3.0]);
-    // Разной длины: недостающее — ноль.
+    // Different lengths: the missing part is zero.
     assert_eq!(with_race(&[1.0], &[4.0, 3.0]), [5.0, 3.0]);
 }

@@ -22,7 +22,7 @@ fn write(path: &Path, bytes: &[u8]) {
     fs::write(path, bytes).unwrap();
 }
 
-/// Подготовка из двух плагинов: общий меш и по своей текстуре.
+/// Staging from two plugins: a shared mesh and a texture each.
 fn two_plugin_stage(root: &Path) {
     write(&root.join("Mod1.esp"), b"ESP");
     write(&root.join("Mod2.esp"), b"ESP2");
@@ -52,7 +52,7 @@ fn packing_gives_every_plugin_its_own_archive_and_keeps_plugins_loose() {
 
     let packed = pack_stage_into_bsa(&t.0).unwrap();
     assert_eq!(packed.archives, ["Mod1.bsa", "Mod2.bsa"]);
-    assert_eq!(packed.packed, 3, "общий меш считается один раз");
+    assert_eq!(packed.packed, 3, "a shared mesh is counted once");
     assert!(packed.left_loose.is_empty());
     assert!(!t.0.join("Meshes").exists() && !t.0.join("Textures").exists());
     assert!(t.0.join("Mod1.esp").is_file() && t.0.join("Mod2.esp").is_file());
@@ -66,10 +66,10 @@ fn packing_gives_every_plugin_its_own_archive_and_keeps_plugins_loose() {
     );
     assert!(
         archive.get("textures\\ob_a.dds").is_none(),
-        "чужая текстура"
+        "someone else's texture"
     );
 
-    // и установка берёт плагины и архивы, больше ничего
+    // and the installation takes plugins and archives, nothing else
     let data = t.0.join("Data Files");
     fs::create_dir_all(&data).unwrap();
     let r = install::install(&t.0, &data).unwrap();
@@ -115,7 +115,7 @@ fn a_source_folder_without_oblivion_esm_fails_with_a_clear_message() {
     assert!(err.to_string().contains("Oblivion.esm"), "{err}");
     assert!(
         !t.0.join("Data Files").exists(),
-        "в игру ничего не записано"
+        "nothing is written into the game"
     );
 }
 
@@ -185,7 +185,7 @@ fn a_previous_build_is_cleared_only_where_the_assets_file_marks_it_ours() {
     left.sort();
     assert_eq!(left, ["Notes", "readme.txt"]);
 
-    // Без файла ассетов папка — не наша: ничего не трогаем.
+    // Without the assets file the folder is not ours: touch nothing.
     write(&t.0.join("Mod.esp"), b"ESP");
     clear_previous_build(&t.0).unwrap();
     assert!(t.0.join("Mod.esp").is_file());

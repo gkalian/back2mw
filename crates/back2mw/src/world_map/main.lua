@@ -1,27 +1,27 @@
 --[[
-	back2mw: карта перенесённого мира.
+	back2mw: a map of the carried-over world.
 
-	Карта мира Morrowind одна на всю игру и кончается раньше, чем начинаются миры, которые
-	back2mw ставит восточнее Вварденфелла. Этот мод читает описания листов карты, которые
-	конвертер кладёт в `worlds\*.json`, и, пока игрок стоит в ячейках такого мира, показывает
-	в окне карты его лист вместо ванильной карты мира. Вне этих ячеек окно не трогается.
+	The Morrowind world map is one for the whole game and ends before the worlds that
+	back2mw places east of Vvardenfell begin. This mod reads the map sheet descriptions that
+	the converter puts into `worlds\*.json` and, while the player stands in the cells of such a world,
+	shows its sheet in the map window instead of the vanilla world map. Outside those cells the window is left alone.
 
-	Лист можно приближать колесом мыши и двигать, зажав левую кнопку; при открытии окна он
-	встаёт так, чтобы игрок был посередине.
+	The sheet can be zoomed with the mouse wheel and dragged while holding the left button; when the window
+	opens, it is positioned so that the player is in the middle.
 
-	Файл общий для всех плагинов back2mw: конвертер пишет его одинаковым при каждой сборке.
-	Имена элементов окна карты (`MenuMap_world` и остальные) взяты из строк Morrowind.exe.
+	The file is shared by all back2mw plugins: the converter writes it identically on every build.
+	The names of the map window elements (`MenuMap_world` and the rest) are taken from the strings of Morrowind.exe.
 ]]
 
--- Папка описаний относительно `Data Files\MWSE` — так её ждёт `json.loadfile`.
+-- The descriptions folder relative to `Data Files\MWSE` — this is where `json.loadfile` expects it.
 local WORLDS_DIR = "mods\\back2mw\\map\\worlds"
 local LOG_PREFIX = "[back2mw map] "
--- Сторона ячейки Morrowind в юнитах.
+-- Side of a Morrowind cell in units.
 local CELL_UNITS = 8192
--- Сторона метки игрока в пикселях.
+-- Side of the player marker in pixels.
 local MARKER_SIZE = 9
--- Увеличение листа: 1 — лист вписан в окно целиком. С какого начинать, шаг колеса и предел —
--- сколько пикселей экрана на пиксель листа (дальше одна муть).
+-- Sheet zoom: 1 means the whole sheet fits the window. Where to start, the wheel step and the limit —
+-- how many screen pixels per sheet pixel (beyond that it is just blur).
 local ZOOM_START = 2
 local ZOOM_STEP = 1.25
 local MAX_SCREEN_PER_TEXEL = 4
@@ -35,20 +35,20 @@ local ids = {
 	marker = tes3ui.registerID("back2mw_map_marker"),
 }
 
--- Описания листов, по имени файла.
+-- Sheet descriptions, by file name.
 local worlds = {}
--- Мир, чей лист сейчас показан в окне; nil — ванильная карта.
+-- The world whose sheet is shown in the window now; nil means the vanilla map.
 local shown = nil
--- Элементы ванильной карты, которые мы спрятали: вернуть видимыми ровно их.
+-- Vanilla map elements we hid: make exactly these visible again.
 local hidden = {}
--- Вид листа: увеличение и точка листа (доли ширины и высоты) в середине окна.
+-- Sheet view: the zoom and the sheet point (fractions of width and height) in the middle of the window.
 local view = { zoom = ZOOM_START, centerX = 0.5, centerY = 0.5 }
--- Последнее известное место игрока: обработчики мыши перерисовывают лист без него.
+-- The last known player position: the mouse handlers redraw the sheet without it.
 local last = nil
--- Перетаскивание: где была мышь и середина вида в момент нажатия.
+-- Dragging: where the mouse and the middle of the view were at the moment of the press.
 local drag = nil
--- Дерево окна карты пишется в журнал один раз за запуск: по нему видно, что делать, если
--- у игрока окно устроено иначе (другая версия MWSE, мод интерфейса).
+-- The map window tree is written to the log once per launch: it shows what to do if
+-- the player's window is built differently (another MWSE version, a UI mod).
 local dumped = false
 
 local function log(text, ...)
@@ -59,7 +59,7 @@ local function isNumber(value)
 	return type(value) == "number"
 end
 
--- Описание годно, если в нём есть всё, что нужно для показа.
+-- A description is valid if it has everything needed for display.
 local function valid(world)
 	if type(world) ~= "table" or world.format ~= 1 then
 		return false
@@ -109,7 +109,7 @@ local function loadWorlds()
 	end
 end
 
--- Где игрок на карте мира: снаружи — он сам, в интерьере — последняя наружная точка.
+-- Where the player is on the world map: outside — the player itself, in an interior — the last exterior point.
 local function playerPlace()
 	local cell = tes3.getPlayerCell()
 	if not cell or not tes3.player then
@@ -150,7 +150,7 @@ local function dump(element, depth, budget)
 	end
 end
 
--- Возвращает ванильную карту мира, если мы её прятали.
+-- Restores the vanilla world map if we hid it.
 local function restore(menu)
 	for _, element in ipairs(hidden) do
 		element.visible = true
@@ -171,9 +171,9 @@ local function clamp01(value)
 	return math.max(0, math.min(1, value))
 end
 
--- Место листа вдоль одной оси: лист шире окна — середина вида зажимается так, чтобы за краем
--- листа не было пустоты; уже — лист стоит посередине. Возвращает выравнивание (0 — левые края
--- листа и окна совпадают, 1 — правые) и зажатую середину.
+-- The sheet's place along one axis: a sheet wider than the window clamps the middle of the view so that there is
+-- no emptiness beyond the sheet's edge; a narrower one stands in the middle. Returns the alignment (0 — the left
+-- edges of the sheet and the window coincide, 1 — the right ones) and the clamped middle.
 local function place(center, canvas, room)
 	if canvas <= room then
 		return 0.5, 0.5
@@ -184,13 +184,13 @@ local function place(center, canvas, room)
 	return clamp01(left / (room - canvas)), center
 end
 
--- Где игрок на листе, в долях ширины и высоты.
+-- Where the player is on the sheet, in fractions of width and height.
 local function along(world, x, y)
 	local rect = world.sheet
 	return (x - rect.left) / (rect.right - rect.left), (rect.top - y) / (rect.top - rect.bottom)
 end
 
--- Размеры и положение листа и метки по текущему виду.
+-- Sizes and positions of the sheet and the marker for the current view.
 local function layout(menu, host, overlay, world, x, y)
 	local roomX, roomY = host.width, host.height
 	if roomX < 64 or roomY < 64 then
@@ -199,7 +199,7 @@ local function layout(menu, host, overlay, world, x, y)
 	overlay.width = roomX
 	overlay.height = roomY
 
-	-- Увеличение 1 — лист вписан в окно целиком, с сохранением пропорций.
+	-- Zoom 1 means the whole sheet fits the window, keeping the proportions.
 	local fit = math.min(roomX / world.width, roomY / world.height)
 	view.zoom = math.max(1, math.min(view.zoom, math.max(1, MAX_SCREEN_PER_TEXEL / fit)))
 	local width = math.max(32, math.floor(world.width * fit * view.zoom))
@@ -226,8 +226,8 @@ local function layout(menu, host, overlay, world, x, y)
 			marker.visible = false
 		else
 			marker.visible = true
-			-- 0 — метка прижата к левому (верхнему) краю, 1 — к правому (нижнему): середина
-			-- метки должна попасть в точку игрока.
+			-- 0 — the marker is pressed to the left (top) edge, 1 — to the right (bottom): the middle
+			-- of the marker must land on the player's point.
 			marker.absolutePosAlignX = clamp01((alongX * width - MARKER_SIZE / 2) / (width - MARKER_SIZE))
 			marker.absolutePosAlignY = clamp01((alongY * height - MARKER_SIZE / 2) / (height - MARKER_SIZE))
 		end
@@ -235,7 +235,7 @@ local function layout(menu, host, overlay, world, x, y)
 	return width, height
 end
 
--- Перерисовать лист после колеса или перетаскивания.
+-- Redraw the sheet after the wheel or dragging.
 local function redraw()
 	local menu = tes3ui.findMenu(ids.menu)
 	local host = menu and menu:findChild(ids.world)
@@ -274,7 +274,7 @@ local onMouseHeld = guarded(function(e)
 	if not canvas or canvas.width <= 0 or canvas.height <= 0 then
 		return
 	end
-	-- Лист едет за мышью: середина вида — в обратную сторону.
+	-- The sheet follows the mouse: the middle of the view moves the opposite way.
 	view.centerX = drag.centerX - (e.relativeX - drag.x) / canvas.width
 	view.centerY = drag.centerY - (e.relativeY - drag.y) / canvas.height
 	redraw()
@@ -285,7 +285,7 @@ local onMouseUp = guarded(function()
 	tes3ui.captureMouseDrag(false)
 end)
 
--- Поставить вид так, чтобы игрок был посередине (у края листа — насколько пускает край).
+-- Set the view so that the player is in the middle (at the sheet's edge — as far as the edge allows).
 local function centerOnPlayer()
 	if last then
 		view.centerX, view.centerY = along(last.world, last.x, last.y)
@@ -305,7 +305,7 @@ local function show(menu, world, x, y, recenter)
 	end
 	if not dumped then
 		dumped = true
-		-- Путь от окна до карты мира и всё, что под ней: по ним видно, во что вписан лист.
+		-- The path from the window to the world map and everything under it: it shows what the sheet is fitted into.
 		local chain, element = {}, host
 		while element do
 			table.insert(chain, 1, string.format("%s %sx%s", tostring(element.name), tostring(element.width),
@@ -319,7 +319,7 @@ local function show(menu, world, x, y, recenter)
 
 	local overlay = host:findChild(ids.overlay)
 	if overlay and shown ~= world then
-		-- Другой мир — другой лист: проще пересоздать.
+		-- Another world — another sheet: simpler to recreate.
 		overlay:destroy()
 		overlay = nil
 	end
@@ -334,7 +334,7 @@ local function show(menu, world, x, y, recenter)
 		overlay:register("mouseDown", onMouseDown)
 		overlay:register("mouseStillPressed", onMouseHeld)
 		overlay:register("mouseRelease", onMouseUp)
-		-- Мышь над листом и меткой должна доходить до блока с обработчиками.
+		-- The mouse over the sheet and the marker must reach the block with the handlers.
 		local canvas = overlay:createBlock({ id = ids.canvas })
 		canvas.consumeMouseEvents = false
 		local sheet = canvas:createImage({ id = ids.sheet, path = world.texture })
@@ -353,7 +353,7 @@ local function show(menu, world, x, y, recenter)
 	end
 	overlay.visible = true
 
-	-- Ванильная карта мира прячется, пока показан лист.
+	-- The vanilla world map is hidden while the sheet is shown.
 	for _, child in ipairs(host.children) do
 		if child.name ~= "back2mw_map" and child.visible then
 			child.visible = false
@@ -393,7 +393,7 @@ local function safeUpdate()
 	end
 end
 
--- Игрок открыл меню: лист встаёт игроком в середину (увеличение остаётся).
+-- The player opened the menu: the sheet is centered on the player (the zoom stays).
 local function onMenuEnter()
 	drag = nil
 	local ok, message = pcall(update, true)
@@ -402,7 +402,7 @@ local function onMenuEnter()
 	end
 end
 
--- Раз в секунду: только пока окно карты на экране, остальное ловят события.
+-- Once a second: only while the map window is on screen, the events catch the rest.
 local function onTick()
 	local menu = tes3ui.findMenu(ids.menu)
 	if menu and menu.visible then
@@ -411,7 +411,7 @@ local function onTick()
 end
 
 local function onMapActivated()
-	-- Окно создано заново: прежние элементы вместе с ним пропали.
+	-- The window was recreated: the old elements are gone with it.
 	shown = nil
 	hidden = {}
 	drag = nil
@@ -423,7 +423,7 @@ local function onLoaded()
 	hidden = {}
 	safeUpdate()
 	if #worlds > 0 then
-		-- Окно карты бывает закреплено и видно на ходу: метку надо двигать и без смены ячейки.
+		-- The map window can be pinned and visible while moving: the marker has to move even without a cell change.
 		timer.start({ type = timer.simulate, duration = 1, iterations = -1, callback = onTick })
 	end
 end

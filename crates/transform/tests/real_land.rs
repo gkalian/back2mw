@@ -1,11 +1,11 @@
-//! T3.5: слияние 2×2 на реальном `LAND` Oblivion и стороны света квадрантов текстур.
-//! Требует `BACK2MW_GAME_DATA`.
+//! T3.5: the 2×2 merge on real Oblivion `LAND` and the cardinal directions of texture quadrants.
+//! Needs `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p transform --test real_land -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «LAND».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "LAND".
 
 mod common;
 
@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tes4_read::{Cell, FromFields, Land, OPACITY_SIDE, Plugin, find_worldspace};
 use transform::land::{SourceHeights, SourceQuad, decode_source_heights, stitch_heights};
 
-/// Высоты и ландшафт всех ячеек worldspace по координатам.
+/// Heights and landscape of all worldspace cells by coordinates.
 fn lands(plugin: &Plugin, world: &str) -> BTreeMap<(i32, i32), Land> {
     let tree = find_worldspace(plugin, world).unwrap().unwrap();
     let mut out = BTreeMap::new();
@@ -32,7 +32,7 @@ fn heights(land: &Land) -> Option<SourceHeights> {
     Some(decode_source_heights(h.offset, &h.deltas))
 }
 
-/// Счёт сшивок: (полных четвёрок, неполных, с расхождением, максимальное расхождение).
+/// Stitch counts: (full foursomes, partial ones, with a divergence, the maximum divergence).
 fn stitch_all(
     lands: &BTreeMap<(i32, i32), Land>,
     swap_west_east: bool,
@@ -66,7 +66,7 @@ fn stitch_all(
     (full, partial, bad, worst)
 }
 
-/// Прозрачность слоя на сетке 17×17 (`y * 17 + x`).
+/// A layer's opacity on the 17×17 grid (`y * 17 + x`).
 fn grid(opacity: &[(u16, f32)]) -> [[f32; OPACITY_SIDE]; OPACITY_SIDE] {
     let mut g = [[0.0; OPACITY_SIDE]; OPACITY_SIDE];
     for &(p, o) in opacity {
@@ -76,11 +76,11 @@ fn grid(opacity: &[(u16, f32)]) -> [[f32; OPACITY_SIDE]; OPACITY_SIDE] {
     g
 }
 
-/// Для каждой перестановки «номер квадранта → место (x, y) в ячейке» считает, на скольких
-/// отсчётах общей кромки соседних квадрантов прозрачность одной и той же текстуры совпала
-/// (и не ноль), и на скольких разошлась.
+/// For each permutation "quadrant number → place (x, y) in the cell" counts at how many samples of
+/// the shared edge of neighboring quadrants the opacity of the same texture matched (and was
+/// non-zero), and at how many it diverged.
 fn quadrant_votes(lands: &BTreeMap<(i32, i32), Land>) -> Vec<([usize; 4], usize, usize)> {
-    // Место квадранта: 0 — (0,0) юго-запад, 1 — (1,0), 2 — (0,1), 3 — (1,1).
+    // Quadrant place: 0 — (0,0) south-west, 1 — (1,0), 2 — (0,1), 3 — (1,1).
     let mut perms = Vec::new();
     for a in 0..4 {
         for b in 0..4 {
@@ -100,12 +100,12 @@ fn quadrant_votes(lands: &BTreeMap<(i32, i32), Land>) -> Vec<([usize; 4], usize,
     for perm in perms {
         let (mut agree, mut disagree) = (0usize, 0usize);
         for land in lands.values() {
-            // place[место] = номер квадранта в файле.
+            // place[place] = the quadrant number in the file.
             let mut place = [0usize; 4];
             for (q, &p) in perm.iter().enumerate() {
                 place[p] = q;
             }
-            // Пары (запад, восток) и (юг, север) по местам.
+            // Pairs (west, east) and (south, north) by place.
             for (a, b, horizontal) in [(0, 1, true), (2, 3, true), (0, 2, false), (1, 3, false)] {
                 let (qa, qb) = (&land.quadrants[place[a]], &land.quadrants[place[b]]);
                 for la in &qa.layers {
@@ -138,7 +138,7 @@ fn quadrant_votes(lands: &BTreeMap<(i32, i32), Land>) -> Vec<([usize; 4], usize,
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn source_land_stitches_without_seams() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -146,38 +146,40 @@ fn source_land_stitches_without_seams() {
         let lands = lands(&plugin, world);
         let (full, partial, bad, worst) = stitch_all(&lands, false);
         println!(
-            "{world}: LAND {}, четвёрок полных {full}, неполных {partial}, со швом {bad}, худшее расхождение {worst}",
+            "{world}: LAND {}, full foursomes {full}, partial {partial}, with a seam {bad}, worst divergence {worst}",
             lands.len()
         );
         let (cfull, _, cbad, _) = stitch_all(&lands, true);
-        println!("{world}: контроль (запад↔восток): со швом {cbad} из {cfull}");
-        // Расхождения — единичные трещины в самих данных (2026-09-25: SEWorld — диагональ на
-        // юго-западном краю мира, ровно 1032 юнита; Tamriel — 8…56 юнитов), а не порядок ячеек.
+        println!("{world}: control (west↔east): with a seam {cbad} of {cfull}");
+        // The divergences are single cracks in the data itself (2026-09-25: SEWorld — a diagonal at
+        // the south-western edge of the world, exactly 1032 units; Tamriel — 8…56 units), not the
+        // cell order.
         assert!(
             bad * 50 < full,
-            "{world}: швы расходятся массово: {bad} из {full}"
+            "{world}: seams diverge massively: {bad} of {full}"
         );
-        assert!(cbad * 2 > cfull, "{world}: контрольный опыт не упал");
+        assert!(cbad * 2 > cfull, "{world}: the control did not fail");
 
         let votes = quadrant_votes(&lands);
         for (perm, agree, disagree) in votes.iter().take(4) {
-            println!("{world}: квадрант→место {perm:?}: совпало {agree}, разошлось {disagree}");
+            println!("{world}: quadrant→place {perm:?}: matched {agree}, diverged {disagree}");
         }
         assert_eq!(
             votes[0].0,
             [0, 1, 2, 3],
-            "{world}: лучшая перестановка не OpenMW"
+            "{world}: the best permutation is not OpenMW's"
         );
     }
 }
 
-/// Пятнистость текстур земли `SEWorld`: сколько патчей не совпадает ни с одним из четырёх
-/// соседей по ячейке (одиночное пятно) и сколько соседних пар патчей разного цвета. Одиночки
-/// убирает `land::absorb_lonely_patches` — по всему миру, через границы ячеек; здесь счёт идёт
-/// внутри ячейки, поэтому остаток — патчи на краю ячейки, продолжающие пятно соседней. Числа —
-/// в `docs/ru/formats/tes4.md`, «Внешний мир → Morrowind».
+/// Spottiness of the `SEWorld` ground textures: how many patches match none of their four neighbors
+/// within the cell (a lone spot) and how many neighboring patch pairs differ in color. Lone patches
+/// are removed by `land::absorb_lonely_patches` — across the whole world, across cell borders; here
+/// the count is within a cell, so the remainder is patches at a cell's edge continuing a spot of
+/// the neighboring cell. The numbers are in `docs/en/formats/tes4.md`, "Exterior world →
+/// Morrowind".
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn land_texture_patchiness_of_seworld() {
     use transform::IdAllocator;
     use transform::exterior::{BaseObject, ExteriorSource, Offset, convert_exterior};
@@ -198,7 +200,8 @@ fn land_texture_patchiness_of_seworld() {
     let (mut patches, mut lonely, mut pairs, mut borders) = (0usize, 0usize, 0usize, 0usize);
     let mut per_cell: BTreeMap<usize, usize> = BTreeMap::new();
     for land in &out.lands {
-        // В записи — дисковый порядок; перестановка — инволюция и возвращает геометрический.
+        // The record is in disk order; the permutation is an involution and gives back the
+        // geometric one.
         let grid = transpose_texture_data(&land.textures);
         let distinct: BTreeSet<u16> = grid.iter().flatten().copied().collect();
         *per_cell.entry(distinct.len()).or_default() += 1;
@@ -228,41 +231,44 @@ fn land_texture_patchiness_of_seworld() {
         }
     }
     println!(
-        "SEWorld: ячеек {}, патчей {patches}, одиночных пятен {lonely}, границ между разными \
-         текстурами {borders} из {pairs} пар, LTEX {}",
+        "SEWorld: cells {}, patches {patches}, lone spots {lonely}, borders between different \
+         textures {borders} of {pairs} pairs, LTEX {}",
         out.lands.len(),
         out.land_textures.len()
     );
-    println!("  разных текстур в ячейке → ячеек: {per_cell:?}");
+    println!("  distinct textures per cell → cells: {per_cell:?}");
     println!(
-        "  патчей-одиночек получили текстуру соседей: {}",
+        "  lone patches that got their neighbors' texture: {}",
         out.report.absorbed_patches
     );
-    // По всему миру одиночек не осталось: повторный проход ничего не находит.
+    // No lone patches remain across the whole world: a repeated pass finds nothing.
     let mut world: BTreeMap<(i32, i32), _> = out
         .lands
         .iter()
         .map(|land| (land.grid, transpose_texture_data(&land.textures)))
         .collect();
     assert_eq!(transform::land::absorb_lonely_patches(&mut world), 0);
-    // Замер 2026-10-02: по сумме прозрачности слоя — 8 791 одиночное пятно и 141 ячейка с десятью
-    // и более текстурами; по видимой доле — 7 215 пятен, 61 321 граница, 54 такие ячейки; после
-    // поглощения одиночек — числа в сообщении выше.
-    assert!(out.report.absorbed_patches > 0, "контроль: одиночки были");
+    // Measured 2026-10-02: by the sum of layer opacity — 8,791 lone spots and 141 cells with ten or
+    // more textures; by the visible share — 7,215 spots, 61,321 borders, 54 such cells; after
+    // absorbing the lone patches — the numbers in the message above.
+    assert!(
+        out.report.absorbed_patches > 0,
+        "control: there were lone patches"
+    );
     assert!(
         lonely * 100 < patches,
-        "одиночных пятен внутри ячеек {lonely} из {patches}"
+        "lone spots within cells {lonely} of {patches}"
     );
 }
 
-/// Наибольший индекс `LTEX` плюс один у `Morrowind.esm` (2026-09-25, `real_vanilla_grid`).
+/// The largest `LTEX` index plus one in `Morrowind.esm` (2026-09-25, `real_vanilla_grid`).
 const VANILLA_MAX_LTEX: u16 = 107;
 
-/// T3.6a: сколько `LTEX` запишет конвертер для worldspace (с дочерними, слитыми
-/// `merge_children`, и текстурой по умолчанию под индексом 0). Числа — в
-/// `docs/ru/formats/tes3.md`, «Что НЕ проверено», п. 4.
+/// T3.6a: how many `LTEX` the converter will write for a worldspace (with the children merged by
+/// `merge_children` and the default texture at index 0). The numbers are in
+/// `docs/en/formats/tes3.md`, "What is NOT verified", item 4.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn land_textures_written_for_tamriel_and_seworld() {
     use transform::IdAllocator;
     use transform::exterior::{BaseObject, ExteriorSource, Offset, convert_exterior};
@@ -281,12 +287,12 @@ fn land_textures_written_for_tamriel_and_seworld() {
         .unwrap();
         let max_index = out.land_textures.iter().map(|t| t.index).max().unwrap_or(0);
         println!(
-            "{name}: LTEX {}, наибольший индекс {max_index}, без текстуры {}",
+            "{name}: LTEX {}, largest index {max_index}, without a texture {}",
             out.land_textures.len(),
             out.report.missing_land_textures
         );
-        // Что реально стоит в `VTEX` после выбора текстуры на патч: значение v ссылается на
-        // `LTEX` с индексом v − 1, 0 — текстура движка по умолчанию.
+        // What actually stands in `VTEX` after choosing a texture per patch: value v references the
+        // `LTEX` with index v − 1, 0 is the engine's default texture.
         let mut in_vtex: BTreeSet<u16> = BTreeSet::new();
         let mut per_cell: BTreeMap<usize, usize> = BTreeMap::new();
         let mut high_cells = Vec::new();
@@ -299,18 +305,18 @@ fn land_textures_written_for_tamriel_and_seworld() {
             in_vtex.extend(cell);
         }
         println!(
-            "{name}: в VTEX разных значений {}, ячеек со ссылкой за {VANILLA_MAX_LTEX} — {} из {}",
+            "{name}: distinct VTEX values {}, cells referencing beyond {VANILLA_MAX_LTEX} — {} of {}",
             in_vtex.len(),
             high_cells.len(),
             out.lands.len()
         );
-        println!("  разных текстур в ячейке → ячеек: {per_cell:?}");
+        println!("  distinct textures per cell → cells: {per_cell:?}");
         println!(
-            "  примеры ячеек за пределом: {:?}",
+            "  examples of cells beyond the limit: {:?}",
             &high_cells[..high_cells.len().min(10)]
         );
         written.insert(name, out.land_textures.len());
     }
-    // Контрольный опыт: полный прогон `SEWorld` 2026-09-25 записал 43 `LTEX`.
+    // Control: the full run of `SEWorld` on 2026-09-25 wrote 43 `LTEX`.
     assert_eq!(written["SEWorld"], 43);
 }

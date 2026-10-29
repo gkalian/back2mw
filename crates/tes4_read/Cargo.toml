@@ -1,13 +1,13 @@
 [package]
 name = "tes4_read"
-description = "Чтение плагинов TES4/TES5. Про TES3 этот крейт не знает ничего."
+description = "Reading TES4/TES5 plugins. This crate knows nothing about TES3."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+# Message language: shared by all crates, has no dependencies itself.
 lang = { path = "../lang" }
 flate2.workspace = true
 

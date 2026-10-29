@@ -1,16 +1,17 @@
-//! Интерьеры: внутренние ячейки Oblivion → внутренние ячейки Morrowind.
+//! Interiors: Oblivion interior cells → Morrowind interior cells.
 //!
-//! * **Какие.** Только достижимые дверями-телепортами из переносимого worldspace — и дальше по
-//!   цепочке дверей (дом → подвал). Интерьеры других земель плагина не нужны: в них не попасть.
-//! * **Имя** ячейки Morrowind — её ID: по нему ведут двери и работает `COC`. Берётся `FULL`
-//!   (без него — `EDID`); совпавшие без учёта регистра получают номер: « 2», « 3» — в порядке
-//!   `FormID`. Длиннее [`MAX_CELL_NAME_LEN`] — обрезается.
-//! * **Свет** (`XCLL` → `AMBI`): рассеянный — как есть, направленный — «солнечный», цвет тумана —
-//!   как есть. Плотность тумана — [`fog_density`].
-//! * **Вода** — если в `DATA` стоит флаг воды, на уровне `XCLW` (без него — 0).
-//! * **Размещения** — по тем же правилам, что снаружи (`exterior`), без смещения: у внутренней
-//!   ячейки свои координаты.
-//! * **Сетка путей** — `crate::pathgrid`, координаты как есть.
+//! * **Which.** Only those reachable by teleport doors from the carried-over worldspace — and
+//!   further along the chain of doors (house → cellar). Interiors of the plugin's other lands are
+//!   not needed: they cannot be reached.
+//! * **The name** of a Morrowind cell is its ID: doors lead by it and `COC` works by it. `FULL` is
+//!   taken (without it `EDID`); names matching case-insensitively get a number: " 2", " 3" — in
+//!   `FormID` order. A name longer than [`MAX_CELL_NAME_LEN`] is truncated.
+//! * **Light** (`XCLL` → `AMBI`): ambient — as is, directional — "sunlight", fog color — as is. Fog
+//!   density — [`fog_density`].
+//! * **Water** — if `DATA` has the water flag, at the `XCLW` level (without it, 0).
+//! * **Placements** — by the same rules as outside (`exterior`), without the offset: an interior
+//!   cell has its own coordinates.
+//! * **Path grid** — `crate::pathgrid`, coordinates as is.
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
@@ -18,36 +19,38 @@ use tes4_read::{CELL_HAS_WATER, Cell, CellLighting, PathGrid, Placement, Plugin,
 
 use crate::exterior::{ExteriorError, placements_in, read};
 
-/// Предел длины имени ячейки: самое длинное в ванили — 50 знаков
-/// («Forgotten Vaults of Anudnabia, Forge of Hilbongard», `Bloodmoon.esm`, 2026-09-26, `esmtool
-/// dump`). Предел движка не измерялся — 50 он заведомо держит.
+/// Cell name length limit: the longest in vanilla is 50 characters ("Forgotten Vaults of Anudnabia,
+/// Forge of Hilbongard", `Bloodmoon.esm`, 2026-09-26, `esmtool dump`). The engine limit was not
+/// measured — it certainly handles 50.
 pub const MAX_CELL_NAME_LEN: usize = 50;
 
-/// Дальность, от которой считается плотность тумана, юниты: одна ячейка Morrowind.
+/// The distance from which fog density is computed, units: one Morrowind cell.
 pub const FOG_REFERENCE_DISTANCE: f32 = 8192.0;
 
-/// Внутренняя ячейка источника. `FormID` уже абсолютные.
+/// A source interior cell. The `FormID`s are already absolute.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceInterior {
     pub form_id: u32,
     pub editor_id: String,
     pub name: Option<String>,
     pub lighting: Option<CellLighting>,
-    /// Уровень воды, если вода есть.
+    /// Water level, if there is water.
     pub water_height: Option<f32>,
     pub placements: Vec<Placement>,
     pub path_grid: Option<PathGrid>,
 }
 
-/// Интерьеры плагина, в которые ведут двери `start` (`FormID` дверей на том конце, абсолютные),
-/// и все, что достижимы из них дверями же. Порядок — по `FormID` ячейки.
+/// The plugin's interiors that the doors `start` lead into (`FormID`s of the doors at the other
+/// end, absolute), and all those reachable from them through doors as well. Ordered by cell
+/// `FormID`.
 pub fn reachable_interiors(
     plugin: &Plugin,
     map: &impl Fn(u32) -> Option<u32>,
     start: impl IntoIterator<Item = u32>,
 ) -> Result<Vec<SourceInterior>, ExteriorError> {
     let cells = interior_cells(plugin);
-    // Где стоит каждая ссылка — по заголовкам, без разбора всех 1 855 ячеек `Oblivion.esm`.
+    // Where each reference stands — from the headers, without parsing all 1,855 cells of
+    // `Oblivion.esm`.
     let mut home: HashMap<u32, usize> = HashMap::new();
     for (i, c) in cells.iter().enumerate() {
         for r in &c.children {
@@ -92,8 +95,8 @@ pub fn reachable_interiors(
     Ok(out)
 }
 
-/// Имена ячеек Morrowind, по одному на интерьер, в том же порядке: уникальные без учёта
-/// регистра, не длиннее [`MAX_CELL_NAME_LEN`].
+/// Morrowind cell names, one per interior, in the same order: unique case-insensitively, no longer
+/// than [`MAX_CELL_NAME_LEN`].
 pub fn unique_names(interiors: &[SourceInterior]) -> Vec<String> {
     let mut taken: BTreeSet<String> = BTreeSet::new();
     interiors
@@ -114,10 +117,11 @@ pub fn unique_names(interiors: &[SourceInterior]) -> Vec<String> {
         .collect()
 }
 
-/// Плотность тумана Morrowind (0…1) из дальности тумана Oblivion: `1 − far / 8192`, зажато.
-/// Туман выключен (`far` ≤ 0, у 62 из 162 интерьеров `SEWorld`) — 0. Медиана `far` у интерьеров
-/// `SEWorld` — 2 250 юнитов, это 0.73; у ванильных интерьеров почти всегда 0.75 или 1
-/// (2026-09-26, `real_interiors`, `esmtool dump`). Как движок рисует эти значения — не проверено.
+/// Morrowind fog density (0…1) from the Oblivion fog distance: `1 − far / 8192`, clamped. Fog off
+/// (`far` ≤ 0, in 62 of 162 interiors of `SEWorld`) gives 0. The median `far` of `SEWorld`
+/// interiors is 2,250 units, which is 0.73; vanilla interiors almost always have 0.75 or 1
+/// (2026-09-26, `real_interiors`, `esmtool dump`). How the engine draws these values is not
+/// verified.
 pub fn fog_density(lighting: &CellLighting) -> f32 {
     if lighting.fog_far <= 0.0 {
         return 0.0;
@@ -230,7 +234,8 @@ mod read_tests {
 
     #[test]
     fn interiors_are_found_through_chains_of_doors_and_only_those() {
-        // Дом 0x10 (дверь 0x11 в подвал), подвал 0x20 (дверь 0x21 обратно), чужой дом 0x30.
+        // House 0x10 (door 0x11 to the cellar), cellar 0x20 (door 0x21 back), someone else's house
+        // 0x30.
         let sub = synth::group(
             F,
             &[0; 4],
@@ -246,7 +251,7 @@ mod read_tests {
         let bytes = synth::plugin(F, &synth::header_fields(0), &[top]);
         let plugin = Plugin::parse(&bytes).unwrap();
 
-        // Снаружи ведут в дом (0x12) и в никуда (0x999).
+        // From outside they lead into the house (0x12) and nowhere (0x999).
         let found = reachable_interiors(&plugin, &Some, [0x12, 0x999]).unwrap();
         let names: Vec<&str> = found.iter().filter_map(|c| c.name.as_deref()).collect();
         assert_eq!(names, ["House", "Cellar"]);

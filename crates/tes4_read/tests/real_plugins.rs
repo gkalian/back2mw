@@ -1,6 +1,6 @@
-//! Тесты на реальных плагинах Oblivion. Требуют BACK2MW_GAME_DATA.
+//! Tests on real Oblivion plugins. They need BACK2MW_GAME_DATA.
 //!
-//! Запуск:
+//! Running:
 //! ```
 //! DATA='C:\path\to\back2mw-data'
 //! BACK2MW_GAME_DATA="$DATA\\tes" \
@@ -16,25 +16,25 @@ use std::time::Instant;
 use tes4_read::schema::FromFields;
 use tes4_read::{Plugin, Stat};
 
-/// Разбирает `Oblivion.esm` целиком и печатает статистику.
+/// Parses the whole `Oblivion.esm` and prints statistics.
 ///
-/// Числа отсюда переносятся в `docs/ru/formats/tes4.md`.
+/// The numbers from here go to `docs/en/formats/tes4.md`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn oblivion_esm_parses_completely() {
     let path = common::game_file("Oblivion.esm");
 
     let t0 = Instant::now();
-    let bytes = std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("не удалось прочитать {}: {e}", path.display()));
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
     let read_ms = t0.elapsed().as_millis();
 
     let t1 = Instant::now();
-    let plugin =
-        Plugin::parse(&bytes).unwrap_or_else(|e| panic!("Plugin::parse упал на Oblivion.esm: {e}"));
+    let plugin = Plugin::parse(&bytes)
+        .unwrap_or_else(|e| panic!("Plugin::parse failed on Oblivion.esm: {e}"));
     let parse_ms = t1.elapsed().as_millis();
 
-    // Подсчёт по типам записей
+    // Counting by record type
     let mut type_counts: HashMap<[u8; 4], usize> = HashMap::new();
     let mut compressed_count = 0usize;
     let mut total_records = 0usize;
@@ -47,36 +47,36 @@ fn oblivion_esm_parses_completely() {
         }
     }
 
-    // Топ-20 по числу записей
+    // Top 20 by number of records
     let mut sorted_types: Vec<([u8; 4], usize)> = type_counts.into_iter().collect();
     sorted_types.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     sorted_types.truncate(20);
 
     println!("=== Oblivion.esm ===");
-    println!("  формат:         {:?}", plugin.format);
-    println!("  размер файла:   {} МиБ", bytes.len() / 1_048_576);
-    println!("  чтение с диска: {} мс", read_ms);
-    println!("  разбор:         {} мс", parse_ms);
-    println!("  групп верхнего уровня: {}", plugin.groups.len());
-    println!("  всего записей:  {}", total_records);
-    println!("  из них сжаты:   {}", compressed_count);
-    println!("  топ-20 типов:");
+    println!("  format:         {:?}", plugin.format);
+    println!("  file size:      {} MiB", bytes.len() / 1_048_576);
+    println!("  disk read:      {} ms", read_ms);
+    println!("  parse:          {} ms", parse_ms);
+    println!("  top-level groups: {}", plugin.groups.len());
+    println!("  total records:  {}", total_records);
+    println!("  of them compressed: {}", compressed_count);
+    println!("  top 20 types:");
     for (tag, count) in &sorted_types {
         let tag_str = String::from_utf8_lossy(tag);
         println!("    {tag_str:6} {:>6}", count);
     }
 }
 
-/// Разбирает все TES4-плагины в каталоге и печатает таблицу «файл → записей».
+/// Parses all TES4 plugins in the directory and prints a "file → records" table.
 ///
-/// Morrowind-плагины (TES3) пропускаются по магии первых 4 байт, а не по имени файла.
+/// Morrowind plugins (TES3) are skipped by the magic of the first 4 bytes, not by file name.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_oblivion_plugin_parses() {
     let dir = common::game_data_dir();
 
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("не удалось прочитать каталог {}: {e}", dir.display()))
+        .unwrap_or_else(|e| panic!("could not read the directory {}: {e}", dir.display()))
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| {
@@ -88,8 +88,8 @@ fn every_oblivion_plugin_parses() {
         .collect();
     entries.sort();
 
-    println!("=== Все TES4-плагины в BACK2MW_GAME_DATA ===");
-    println!("{:<40} {:>10}", "Файл", "Записей");
+    println!("=== All TES4 plugins in BACK2MW_GAME_DATA ===");
+    println!("{:<40} {:>10}", "File", "Records");
     println!("{}", "-".repeat(52));
 
     let mut tes4_count = 0;
@@ -101,7 +101,7 @@ fn every_oblivion_plugin_parses() {
             Ok(b) => b,
             Err(e) => {
                 println!(
-                    "{:<40} ОШИБКА ЧТЕНИЯ: {e}",
+                    "{:<40} READ ERROR: {e}",
                     path.file_name().unwrap_or_default().to_string_lossy()
                 );
                 error_count += 1;
@@ -109,11 +109,11 @@ fn every_oblivion_plugin_parses() {
             }
         };
 
-        // Пропускаем не-TES4 по магии
+        // Skip non-TES4 by magic
         if bytes.len() < 4 || &bytes[..4] != b"TES4" {
             let magic = String::from_utf8_lossy(&bytes[..4.min(bytes.len())]);
             println!(
-                "{:<40} (пропущен, магия: {:?})",
+                "{:<40} (skipped, magic: {:?})",
                 path.file_name().unwrap_or_default().to_string_lossy(),
                 magic
             );
@@ -133,7 +133,7 @@ fn every_oblivion_plugin_parses() {
             }
             Err(e) => {
                 println!(
-                    "{:<40} ОШИБКА: {e}",
+                    "{:<40} ERROR: {e}",
                     path.file_name().unwrap_or_default().to_string_lossy()
                 );
                 error_count += 1;
@@ -142,52 +142,50 @@ fn every_oblivion_plugin_parses() {
     }
 
     println!("{}", "-".repeat(52));
-    println!(
-        "Разобрано TES4: {tes4_count}, пропущено не-TES4: {tes3_count}, ошибок: {error_count}"
-    );
-    assert_eq!(error_count, 0, "есть плагины, которые не удалось разобрать");
+    println!("Parsed TES4: {tes4_count}, skipped non-TES4: {tes3_count}, errors: {error_count}");
+    assert_eq!(error_count, 0, "some plugins could not be parsed");
 }
 
-/// Исследует STAT-запись с пустыми данными (FormID=0008060C).
+/// Investigates the STAT record with empty data (FormID=0008060C).
 ///
-/// Этот тест устанавливает факты о конкретной записи, которую ожидала «Ловушка»
-/// в карточке T1.0. Числа переносятся в `docs/ru/formats/tes4.md`.
+/// This test establishes facts about a specific record that the "Pitfall" in task card T1.0
+/// anticipated. The numbers go to `docs/en/formats/tes4.md`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn inspect_empty_stat_record() {
     let path = common::game_file("Oblivion.esm");
-    let bytes = std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("не удалось прочитать {}: {e}", path.display()));
-    let plugin =
-        Plugin::parse(&bytes).unwrap_or_else(|e| panic!("Plugin::parse упал на Oblivion.esm: {e}"));
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
+    let plugin = Plugin::parse(&bytes)
+        .unwrap_or_else(|e| panic!("Plugin::parse failed on Oblivion.esm: {e}"));
 
     let target_id = 0x0008_060C;
     let record = plugin
         .records_of(*b"STAT")
         .find(|r| r.header.form_id == target_id)
-        .unwrap_or_else(|| panic!("не нашли STAT FormID={target_id:08X}"));
+        .unwrap_or_else(|| panic!("STAT FormID={target_id:08X} not found"));
 
-    println!("=== Проблемный STAT FormID={target_id:08X} ===");
+    println!("=== Problematic STAT FormID={target_id:08X} ===");
     println!("  flags:      {:#010x}", record.header.flags);
     println!("  data.len(): {}", record.data.len());
     println!("  was_compressed: {}", record.header.was_compressed());
 }
 
-/// Читает все STAT из Oblivion.esm через спеку и проверяет, что ошибок нет.
+/// Reads all STAT records from Oblivion.esm through the spec and checks that there are no errors.
 ///
-/// Записи с пустыми данными (data.len() == 0) подсчитываются отдельно: они не
-/// несут ни EDID, ни MODL и через Stat::from_record проходить не обязаны.
-/// Это ожидаемое поведение (см. карточку T1.0, «Ловушки»).
+/// Records with empty data (data.len() == 0) are counted separately: they carry neither EDID nor
+/// MODL and do not have to pass through Stat::from_record. This is expected behavior (see task card
+/// T1.0, "Pitfalls").
 ///
-/// Числа отсюда переносятся в `docs/ru/formats/tes4.md`.
+/// The numbers from here go to `docs/en/formats/tes4.md`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_stat_reads_through_the_spec() {
     let path = common::game_file("Oblivion.esm");
-    let bytes = std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("не удалось прочитать {}: {e}", path.display()));
-    let plugin =
-        Plugin::parse(&bytes).unwrap_or_else(|e| panic!("Plugin::parse упал на Oblivion.esm: {e}"));
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
+    let plugin = Plugin::parse(&bytes)
+        .unwrap_or_else(|e| panic!("Plugin::parse failed on Oblivion.esm: {e}"));
 
     let mut total = 0usize;
     let mut empty_data = 0usize;
@@ -199,14 +197,14 @@ fn every_stat_reads_through_the_spec() {
     let mut max_modl_len = 0usize;
     let mut max_modl_example = String::new();
 
-    // Ошибки на непустых записях: собираем по видам, печатаем первые 5 каждого вида
+    // Errors on non-empty records: grouped by kind, the first 5 of each kind are printed
     let mut errors_by_kind: HashMap<String, Vec<String>> = HashMap::new();
 
     for record in plugin.records_of(*b"STAT") {
         total += 1;
 
-        // Записи с пустыми данными не несут никаких полей — пропускаем.
-        // Это ожидаемое поведение Oblivion.esm (как минимум FormID=0008060C).
+        // Records with empty data carry no fields — skip them. This is the expected behavior of
+        // Oblivion.esm (at least FormID=0008060C).
         if record.data.is_empty() {
             empty_data += 1;
             continue;
@@ -244,25 +242,25 @@ fn every_stat_reads_through_the_spec() {
         }
     }
 
-    println!("=== STAT в Oblivion.esm ===");
-    println!("  всего STAT:             {}", total);
-    println!("  с пустыми данными:      {}", empty_data);
-    println!("  без MODL:               {}", without_modl);
-    println!("  EDID с не-ASCII:        {}", non_ascii_edid);
-    println!("  MODL с не-ASCII:        {}", non_ascii_modl);
+    println!("=== STAT in Oblivion.esm ===");
+    println!("  STAT total:             {}", total);
+    println!("  with empty data:        {}", empty_data);
+    println!("  without MODL:           {}", without_modl);
+    println!("  EDID with non-ASCII:    {}", non_ascii_edid);
+    println!("  MODL with non-ASCII:    {}", non_ascii_modl);
     println!(
-        "  макс. длина EDID:       {} («{}»)",
+        "  max EDID length:        {} (\"{}\")",
         max_edid_len, max_edid_example
     );
     println!(
-        "  макс. длина MODL:       {} («{}»)",
+        "  max MODL length:        {} (\"{}\")",
         max_modl_len, max_modl_example
     );
 
     if errors_by_kind.is_empty() {
-        println!("  ошибок спеки (непустые): 0 ✓");
+        println!("  spec errors (non-empty): 0 ✓");
     } else {
-        println!("  ОШИБКИ СПЕКИ (непустые):");
+        println!("  SPEC ERRORS (non-empty):");
         let mut kinds: Vec<&String> = errors_by_kind.keys().collect();
         kinds.sort();
         for kind in kinds {
@@ -276,31 +274,32 @@ fn every_stat_reads_through_the_spec() {
 
     assert!(
         errors_by_kind.is_empty(),
-        "Stat::from_record упал на {} видах ошибок (см. вывод выше)",
+        "Stat::from_record failed on {} kinds of errors (see the output above)",
         errors_by_kind.len()
     );
 }
 
-/// T3.6a: сколько разных `LTEX` просят ячейки worldspace (`BTXT` и `ATXT` по всем квадрантам,
-/// 0 — текстура по умолчанию, не считается). `SEWorld` — контрольный опыт: на выходе прогона у
-/// него 43 `LTEX` вместе с текстурой по умолчанию (2026-09-25), значит, здесь должно быть 42.
+/// T3.6a: how many distinct `LTEX` worldspace cells ask for (`BTXT` and `ATXT` across all
+/// quadrants; 0 is the default texture and is not counted). `SEWorld` is the control: the run's
+/// output for it has 43 `LTEX` including the default texture (2026-09-25), so here there must be 42.
 ///
-/// Числа отсюда — в `docs/ru/formats/tes3.md`, «Что НЕ проверено», п. 4.
+///
+/// The numbers from here are in `docs/en/formats/tes3.md`, "What is NOT verified", item 4.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn land_textures_used_by_tamriel_and_seworld() {
     use std::collections::BTreeSet;
     use tes4_read::{Cell, Land, find_worldspace};
 
-    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("read Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
     let all_ltex = plugin.records_of(*b"LTEX").count();
-    println!("LTEX в Oblivion.esm: {all_ltex}");
+    println!("LTEX in Oblivion.esm: {all_ltex}");
     let mut used_by = HashMap::new();
     for name in ["Tamriel", "SEWorld"] {
         let tree = find_worldspace(&plugin, name)
-            .expect("обход")
-            .expect("worldspace есть");
+            .expect("traversal")
+            .expect("the worldspace exists");
         let (mut cells, mut lands, mut max_layers) = (0usize, 0usize, 0usize);
         let mut used: BTreeSet<u32> = BTreeSet::new();
         for c in &tree.cells {
@@ -318,21 +317,21 @@ fn land_textures_used_by_tamriel_and_seworld() {
         }
         used.remove(&0);
         println!(
-            "{name}: ячеек {cells}, с LAND {lands}, разных LTEX {}, слоёв на квадрант до {max_layers}",
+            "{name}: cells {cells}, with LAND {lands}, distinct LTEX {}, layers per quadrant up to {max_layers}",
             used.len()
         );
         used_by.insert(name, used);
     }
     let (tamriel, se) = (&used_by["Tamriel"], &used_by["SEWorld"]);
     println!(
-        "общих у Tamriel и SEWorld: {}, вместе: {}",
+        "shared by Tamriel and SEWorld: {}, together: {}",
         tamriel.intersection(se).count(),
         tamriel.union(se).count()
     );
     assert_eq!(
         se.len(),
         42,
-        "контрольный опыт: SEWorld на выходе — 43 с текстурой по умолчанию"
+        "control: SEWorld output has 43 including the default texture"
     );
     assert!(tamriel.len() <= all_ltex);
 }

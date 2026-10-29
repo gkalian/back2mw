@@ -1,31 +1,32 @@
-//! Раскладка готового мода в `output/` и стадия `package` (T1.10, T1.15).
+//! Layout of the finished mod in `output/` and the `package` stage (T1.10, T1.15).
 //!
-//! **Один плагин Oblivion — один плагин Morrowind с тем же именем** (`Mod1.esp` → `Mod1.esp`,
-//! `Oblivion.esm` → `Oblivion.esm`). Плагины не сливаются: у каждого свой порядок загрузки,
-//! свои мастера и своя судьба у игрока. Меши, текстуры и иконки лежат общими папками — один и
-//! тот же меш нужен многим плагинам, а путь у него один (`transform::paths`). Какой ассет нужен
-//! какому плагину, записано в [`ASSETS_FILE`]: по нему собирается **отдельный BSA на каждый
-//! плагин** (`Mod1.bsa`). Ассет, нужный двум плагинам, попадает в оба архива.
+//! **One Oblivion plugin gives one Morrowind plugin with the same name** (`Mod1.esp` → `Mod1.esp`,
+//! `Oblivion.esm` → `Oblivion.esm`). Plugins are not merged: each has its own load order, its own
+//! masters and its own fate with the player. Meshes, textures and icons live in shared folders —
+//! the same mesh is needed by many plugins, and it has a single path (`transform::paths`). Which
+//! asset is needed by which plugin is recorded in [`ASSETS_FILE`]: from it **a separate BSA per
+//! plugin** is built (`Mod1.bsa`). An asset needed by two plugins goes into both archives.
 //!
 //! ```text
 //! output/Mod1.esp, output/Oblivion.esm, …
 //! output/Meshes/…, output/Textures/…, output/Icons/…, output/BookArt/…, output/Sound/…
-//! output/MWSE/…                      карта мира для MWSE-Lua (`--lua-map`, `crate::world_map`)
-//! output/back2mw-assets.tsv          плагин <TAB> путь ассета; в игру не ставится
+//! output/MWSE/…                      world map for MWSE-Lua (`--lua-map`, `crate::world_map`)
+//! output/back2mw-assets.tsv          plugin <TAB> asset path; not installed into the game
 //! ```
 //!
-//! Стадия `package` кладёт в `output/package/`:
+//! The `package` stage puts into `output/package/`:
 //!
-//! * `back2mw.zip` — loose-файлы: все плагины, `Meshes/…`, `Textures/…`, `Icons/…`, `BookArt/…`,
+//! * `back2mw.zip` — loose files: all plugins, `Meshes/…`, `Textures/…`, `Icons/…`, `BookArt/…`,
 //!   `Sound/…`, `MWSE/…`;
-//! * с `--bsa` дополнительно `<плагин>.bsa` на каждый плагин и `back2mw-bsa.zip` (плагины, их
-//!   архивы, звуки и файлы MWSE — их из архива никто не читает — и файлы, не вошедшие в архив
-//!   из-за совпадения хеша).
+//! * with `--bsa`, additionally `<plugin>.bsa` per plugin and `back2mw-bsa.zip` (the plugins, their
+//!   archives, the sounds and the MWSE files — nobody reads those from an archive — and the files
+//!   left out of the archive because of a hash collision).
 //!
-//! **Не проверено игрой:** подхватывает ли Morrowind архивы — обычно их нужно перечислить в
-//! `Morrowind.ini` (`[Archives]`), а установка этого файла не трогает.
+//! **Not verified in the game:** whether Morrowind picks up the archives — usually they have to be
+//! listed in `Morrowind.ini` (`[Archives]`), and the installation does not touch that file.
 //!
-//! Zip детерминирован: файлы отсортированы, время изменения фиксировано, права одинаковы.
+//! The zip is deterministic: files are sorted, the modification time is fixed, the permissions are
+//! the same.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
@@ -36,21 +37,22 @@ use tes3_out::ArchiveFile;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime, ZipWriter};
 
-/// Каталог упаковки внутри `output/`.
+/// Packaging directory inside `output/`.
 pub const PACKAGE_DIR: &str = "package";
 pub const LOOSE_ZIP: &str = "back2mw.zip";
 pub const BSA_ZIP: &str = "back2mw-bsa.zip";
-/// Какой ассет нужен какому плагину.
+/// Which asset is needed by which plugin.
 pub const ASSETS_FILE: &str = "back2mw-assets.tsv";
-/// Папки ассетов мода. `MWSE` — дополнение с картой мира (`crate::world_map`).
+/// The mod's asset folders. `MWSE` is the add-on with the world map (`crate::world_map`).
 pub const ASSET_DIRS: [&str; 6] = ["Meshes", "Textures", "Icons", "BookArt", "Sound", "MWSE"];
 
-/// Звуки в BSA не кладутся: ванильный движок читает `.wav`/`.mp3` только с диска. В трёх
-/// ванильных архивах нет ни одного звука из 13 809 файлов, а звуки `SEWorld.bsa`, прописанного в
-/// `[Archives]`, игра не нашла — `Sound file not found` на каждый (игра, 2026-09-30).
+/// Sounds are not put into BSA: the vanilla engine reads `.wav`/`.mp3` only from disk. The three
+/// vanilla archives contain not a single sound among 13,809 files, and the sounds of `SEWorld.bsa`
+/// listed in `[Archives]` were not found by the game — `Sound file not found` for each (game,
+/// 2026-09-30).
 ///
-/// Файлы `MWSE` — тоже только с диска: мод и его описания читает MWSE, а не движок, и про
-/// архивы он не знает.
+/// `MWSE` files are also disk-only: the mod and its descriptions are read by MWSE, not the engine,
+/// and it knows nothing about archives.
 pub fn is_loose_only(relative: &str) -> bool {
     relative
         .split('/')
@@ -58,14 +60,14 @@ pub fn is_loose_only(relative: &str) -> bool {
         .is_some_and(|d| d.eq_ignore_ascii_case("Sound") || d.eq_ignore_ascii_case("MWSE"))
 }
 
-/// Файл мода: путь относительно `Data Files` (всегда `/`) и путь на диске.
+/// A mod file: the path relative to `Data Files` (always `/`) and the path on disk.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ModFile {
     pub relative: String,
     pub path: PathBuf,
 }
 
-/// Плагин или архив Morrowind в корне `output/`.
+/// A Morrowind plugin or archive in the root of `output/`.
 pub fn is_plugin(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".esp") || lower.ends_with(".esm")
@@ -75,13 +77,13 @@ fn is_bsa(name: &str) -> bool {
     name.to_ascii_lowercase().ends_with(".bsa")
 }
 
-/// Архив плагина: то же имя, расширение `.bsa` (`Mod1.esp` → `Mod1.bsa`).
+/// A plugin's archive: the same name, extension `.bsa` (`Mod1.esp` → `Mod1.bsa`).
 pub fn bsa_name(plugin: &str) -> String {
     let stem = plugin.rsplit_once('.').map_or(plugin, |(stem, _)| stem);
     format!("{stem}.bsa")
 }
 
-/// Плагины в корне `output/`, по имени.
+/// Plugins in the root of `output/`, by name.
 pub fn plugins_in(output_dir: &Path) -> io::Result<Vec<String>> {
     let mut out = Vec::new();
     for entry in fs::read_dir(output_dir)? {
@@ -95,8 +97,9 @@ pub fn plugins_in(output_dir: &Path) -> io::Result<Vec<String>> {
     Ok(out)
 }
 
-/// Файлы мода в `output/`: плагины и архивы из корня, `Meshes/**`, `Textures/**`, `Icons/**`,
-/// `BookArt/**`, `Sound/**`, `MWSE/**`, по порядку путей. Всё прочее (в том числе `package/` и [`ASSETS_FILE`]) не входит.
+/// Mod files in `output/`: plugins and archives from the root, `Meshes/**`, `Textures/**`,
+/// `Icons/**`, `BookArt/**`, `Sound/**`, `MWSE/**`, in path order. Nothing else (including
+/// `package/` and [`ASSETS_FILE`]) is included.
 pub fn collect_mod_files(output_dir: &Path) -> io::Result<Vec<ModFile>> {
     let plugins = match plugins_in(output_dir) {
         Ok(p) => p,
@@ -153,10 +156,10 @@ fn walk(dir: &Path, relative: &str, out: &mut Vec<ModFile>) -> io::Result<()> {
     Ok(())
 }
 
-/// Ассеты по плагинам: плагин → пути относительно `Data Files` (`/`).
+/// Assets by plugin: plugin → paths relative to `Data Files` (`/`).
 pub type PluginAssets = BTreeMap<String, BTreeSet<String>>;
 
-/// Пишет [`ASSETS_FILE`]. Строки отсортированы: вывод детерминирован.
+/// Writes [`ASSETS_FILE`]. Lines are sorted: the output is deterministic.
 pub fn write_assets(output_dir: &Path, assets: &PluginAssets) -> io::Result<()> {
     let mut text = String::new();
     for (plugin, files) in assets {
@@ -170,7 +173,7 @@ pub fn write_assets(output_dir: &Path, assets: &PluginAssets) -> io::Result<()> 
     fs::write(output_dir.join(ASSETS_FILE), text)
 }
 
-/// Читает [`ASSETS_FILE`]; нет файла — пусто.
+/// Reads [`ASSETS_FILE`]; no file means empty.
 pub fn read_assets(output_dir: &Path) -> io::Result<PluginAssets> {
     let path = output_dir.join(ASSETS_FILE);
     let text = match fs::read_to_string(&path) {
@@ -198,20 +201,20 @@ pub fn read_assets(output_dir: &Path) -> io::Result<PluginAssets> {
     Ok(out)
 }
 
-/// Архив одного плагина.
+/// One plugin's archive.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginBsa {
-    /// Имя архива (`Mod1.bsa`).
+    /// Archive name (`Mod1.bsa`).
     pub name: String,
     pub bytes: Vec<u8>,
-    /// Пути (`/`), вошедшие в архив.
+    /// Paths (`/`) that went into the archive.
     pub packed: Vec<String>,
-    /// Пути, не вошедшие из-за совпадения хеша: остаются отдельными файлами.
+    /// Paths left out because of a hash collision: they stay as separate files.
     pub rejected: Vec<String>,
 }
 
-/// Собирает по архиву на каждый плагин из [`ASSETS_FILE`]. Плагин без ассетов архива не получает.
-/// Звуки ([`is_loose_only`]) в архив не входят и остаются отдельными файлами.
+/// Builds one archive per plugin from [`ASSETS_FILE`]. A plugin without assets gets no archive.
+/// Sounds ([`is_loose_only`]) do not go into the archive and stay as separate files.
 pub fn build_plugin_bsas(output_dir: &Path) -> io::Result<Vec<PluginBsa>> {
     let assets = read_assets(output_dir)?;
     let mut out = Vec::new();
@@ -241,12 +244,12 @@ pub fn build_plugin_bsas(output_dir: &Path) -> io::Result<Vec<PluginBsa>> {
     Ok(out)
 }
 
-/// Что получилось.
+/// What came out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageReport {
     pub files: usize,
     pub loose_zip: PathBuf,
-    /// Архивы плагинов и `back2mw-bsa.zip`, если просили `--bsa`.
+    /// Plugin archives and `back2mw-bsa.zip`, if `--bsa` was requested.
     pub bsa: Option<(Vec<PathBuf>, PathBuf)>,
 }
 
@@ -268,13 +271,13 @@ fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> io::Result<()> {
     Ok(())
 }
 
-/// Упаковывает `output/` в `output/package/`. `with_bsa` — ещё и архивы плагинов.
+/// Packs `output/` into `output/package/`. `with_bsa` also builds the plugin archives.
 pub fn package(output_dir: &Path, with_bsa: bool) -> io::Result<PackageReport> {
     package_to(output_dir, &output_dir.join(PACKAGE_DIR), with_bsa)
 }
 
-/// То же, но zip и архивы кладутся в `dir`: окно собирает мод во временной подготовке, а
-/// раздаточный zip нужен в папке результата.
+/// The same, but the zip and the archives go into `dir`: the window builds the mod in temporary
+/// staging, while the distribution zip is needed in the result folder.
 pub fn package_to(output_dir: &Path, dir: &Path, with_bsa: bool) -> io::Result<PackageReport> {
     let files = collect_mod_files(output_dir)?;
     let mut loaded: Vec<(String, Vec<u8>)> = Vec::with_capacity(files.len());
@@ -301,7 +304,8 @@ pub fn package_to(output_dir: &Path, dir: &Path, with_bsa: bool) -> io::Result<P
             rejected.extend(archive.rejected);
             entries.push((archive.name, archive.bytes));
         }
-        // Файлы с занятым хешем в BSA не вошли, звуки туда не кладутся: они в zip отдельно.
+        // Files with a taken hash did not go into the BSA, and sounds are never put there: they are
+        // in the zip separately.
         entries.extend(
             loaded
                 .iter()

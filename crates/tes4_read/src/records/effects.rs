@@ -1,14 +1,14 @@
 use crate::error::{Error, Result};
 use crate::schema::Fields;
 
-/// Эффект Oblivion (`EFIT`) у зелий, ингредиентов, сигильских камней, зачарований и заклинаний
+/// An Oblivion effect (`EFIT`) on potions, ingredients, sigil stones, enchantments and spells
 /// (T2.1b).
 ///
-/// `EFIT` — 24 байта у всех 5 253 эффектов `ALCH`/`INGR`/`ENCH`/`SPEL` `Oblivion.esm`
-/// (2026-09-25, `docs/ru/formats/tes4.md`, «Эффекты»): код эффекта (`MGEF`), величина, площадь,
-/// длительность, дальность (0 на себя, 1 касание, 2 цель), актёрское значение (атрибут 0…7,
-/// навык 12…32, иначе −1 или не важно). Перед каждым `EFIT` стоит `EFID` с тем же кодом, у
-/// эффекта-скрипта после — `SCIT`: их не читаем.
+/// `EFIT` is 24 bytes in all 5,253 effects of `ALCH`/`INGR`/`ENCH`/`SPEL` in `Oblivion.esm`
+/// (2026-09-25, `docs/en/formats/tes4.md`, "Effects"): the effect code (`MGEF`), magnitude, area,
+/// duration, range (0 self, 1 touch, 2 target), the actor value (attribute 0…7, skill 12…32,
+/// otherwise −1 or irrelevant). Each `EFIT` is preceded by an `EFID` with the same code, and a
+/// script effect is followed by `SCIT`: we do not read them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EffectItem {
     pub code: [u8; 4],
@@ -20,7 +20,7 @@ pub struct EffectItem {
 }
 
 impl EffectItem {
-    /// Код как строка (`REHE`, `FOAT`); не ASCII — `?`.
+    /// The code as a string (`REHE`, `FOAT`); non-ASCII becomes `?`.
     pub fn code_str(&self) -> String {
         self.code
             .iter()
@@ -36,10 +36,14 @@ impl EffectItem {
 }
 
 fn u32_at(raw: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
-/// Все `EFIT` записи по порядку.
+/// All `EFIT` of the record in order.
 pub fn read_effects(fields: &Fields<'_>, record: &'static str) -> Result<Vec<EffectItem>> {
     fields
         .all(*b"EFIT")
@@ -53,12 +57,12 @@ pub fn read_effects(fields: &Fields<'_>, record: &'static str) -> Result<Vec<Eff
                 });
             }
             Ok(EffectItem {
-                code: raw[0..4].try_into().expect("срез ровно 4 байта"),
+                code: raw[0..4].try_into().expect("the slice is exactly 4 bytes"),
                 magnitude: u32_at(raw, 4),
                 area: u32_at(raw, 8),
                 duration: u32_at(raw, 12),
                 range: u32_at(raw, 16),
-                actor_value: i32::from_le_bytes(raw[20..24].try_into().expect("4 байта")),
+                actor_value: i32::from_le_bytes(raw[20..24].try_into().expect("4 bytes")),
             })
         })
         .collect()

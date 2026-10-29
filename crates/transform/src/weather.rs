@@ -1,9 +1,10 @@
-//! Погода: `WTHR` Oblivion → один из десяти типов Morrowind, списки шансов региона и климата →
-//! `WEAT` региона Morrowind.
+//! Weather: Oblivion `WTHR` → one of Morrowind's ten types, region and climate chance lists → the
+//! Morrowind region's `WEAT`.
 //!
-//! У Morrowind погода — не запись, а тип с параметрами в `Morrowind.ini`; регион держит только
-//! шансы на каждый тип. Поэтому переносится не сама погода, а её тип. Какой погоде какой тип —
-//! контент, он в `data/weather.tsv`; погоду из модов, которой там нет, определяет класс `WTHR`.
+//! In Morrowind weather is not a record but a type with parameters in `Morrowind.ini`; a region
+//! holds only the chances for each type. So it is not the weather itself that is carried over but
+//! its type. Which weather gets which type is content, it lives in `data/weather.tsv`; weather from
+//! mods that is not there is classified by the `WTHR` class.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -11,10 +12,10 @@ use std::sync::OnceLock;
 use tes3_out::WeatherChances;
 use tes4_read::{WEATHER_CLOUDY, WEATHER_PLEASANT, WEATHER_RAINY, WEATHER_SNOW, Weather};
 
-/// `data/weather.tsv`, встроенный в сборку.
+/// `data/weather.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/weather.tsv");
 
-/// Тип погоды Morrowind в порядке `WEAT`.
+/// Morrowind weather type in `WEAT` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MwWeather {
     Clear,
@@ -60,7 +61,7 @@ impl MwWeather {
     }
 }
 
-/// Разбор таблицы: `EDID` (без учёта регистра) → тип.
+/// Table parsing: `EDID` (case-insensitive) → type.
 pub fn parse_table(text: &str) -> Result<HashMap<String, MwWeather>, String> {
     let mut out = HashMap::new();
     for (n, line) in text.lines().enumerate() {
@@ -104,11 +105,11 @@ pub fn parse_table(text: &str) -> Result<HashMap<String, MwWeather>, String> {
 fn table() -> &'static HashMap<String, MwWeather> {
     static CELL: OnceLock<HashMap<String, MwWeather>> = OnceLock::new();
     CELL.get_or_init(|| {
-        parse_table(TABLE).expect("data/weather.tsv встроен в сборку и проверен тестом")
+        parse_table(TABLE).expect("data/weather.tsv is built into the binary and checked by a test")
     })
 }
 
-/// Тип погоды Morrowind и откуда он взят: `true` — из таблицы, `false` — по классу.
+/// The Morrowind weather type and where it came from: `true` — from the table, `false` — by class.
 #[must_use]
 pub fn classify(weather: &Weather) -> (MwWeather, bool) {
     if let Some(&kind) = table().get(&weather.editor_id.to_ascii_lowercase()) {
@@ -129,9 +130,10 @@ pub fn classify(weather: &Weather) -> (MwWeather, bool) {
     (kind, false)
 }
 
-/// Шансы по типам, сведённые к сумме 100: Construction Set требует ровно 100, а у Oblivion сумма
-/// бывает любой (у `SENSSouthweather` — 80). Метод наибольшего остатка, при равенстве остатков —
-/// тип раньше в порядке `WEAT`. Отрицательные и нулевые шансы не учитываются. `None` — шансов нет.
+/// Chances by type, normalized to a sum of 100: the Construction Set requires exactly 100, while in
+/// Oblivion the sum can be anything (`SENSSouthweather` has 80). The largest remainder method; on
+/// equal remainders the type earlier in `WEAT` order wins. Negative and zero chances are ignored.
+/// `None` means there are no chances.
 #[must_use]
 pub fn chances(list: impl IntoIterator<Item = (MwWeather, u64)>) -> Option<WeatherChances> {
     let mut by_kind = [0u64; 10];
@@ -149,15 +151,15 @@ pub fn chances(list: impl IntoIterator<Item = (MwWeather, u64)>) -> Option<Weath
         rest.push((c * 100 % total, i));
     }
     let missing = 100 - share.iter().sum::<u64>();
-    // Больший остаток — раньше; при равенстве — меньший номер типа.
+    // The larger remainder first; on a tie the smaller type number.
     rest.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     for &(_, i) in rest
         .iter()
-        .take(usize::try_from(missing).expect("не больше 10"))
+        .take(usize::try_from(missing).expect("no more than 10"))
     {
         share[i] += 1;
     }
-    let s = share.map(|v| u8::try_from(v).expect("доля не больше 100"));
+    let s = share.map(|v| u8::try_from(v).expect("a share is no more than 100"));
     debug_assert_eq!(MwWeather::ALL.len(), s.len());
     Some(WeatherChances {
         clear: s[0],
@@ -187,19 +189,19 @@ mod tests {
     #[test]
     fn embedded_table_parses_and_never_uses_blight() {
         let t = parse_table(TABLE).unwrap();
-        assert!(t.len() >= 37, "все 37 WTHR Oblivion.esm: {}", t.len());
+        assert!(t.len() >= 37, "all 37 WTHR of Oblivion.esm: {}", t.len());
         assert!(t.values().all(|&k| k != MwWeather::Blight));
         assert!(parse_table("X\tblight\n").is_err());
         assert!(parse_table("X\tsunny\n").is_err());
         assert!(
             parse_table("X\tclear\nx\train\n").is_err(),
-            "повтор без учёта регистра"
+            "a case-insensitive repeat"
         );
     }
 
     #[test]
     fn table_wins_over_class_and_class_is_the_fallback() {
-        // У тумана класс «облачно» — таблица знает лучше.
+        // Fog has the "cloudy" class — the table knows better.
         assert_eq!(
             classify(&weather("SEFog", WEATHER_CLOUDY)),
             (MwWeather::Foggy, true)
@@ -217,7 +219,7 @@ mod tests {
 
     #[test]
     fn chances_sum_to_a_hundred() {
-        // SENSSouthweather: туман 40, пасмурно 20, дождь 10, гроза 10 — сумма 80.
+        // SENSSouthweather: fog 40, overcast 20, rain 10, thunder 10 — the sum is 80.
         let c = chances([
             (MwWeather::Foggy, 40),
             (MwWeather::Overcast, 20),
@@ -226,7 +228,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!((c.foggy, c.overcast, c.rain, c.thunder), (50, 25, 13, 12));
-        // Три равные доли: остаток уходит первому по порядку WEAT.
+        // Three equal shares: the remainder goes to the first in WEAT order.
         let c = chances([
             (MwWeather::Rain, 1),
             (MwWeather::Clear, 1),
@@ -234,7 +236,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!((c.clear, c.cloudy, c.rain), (34, 33, 33));
-        // Два WTHR одного типа складываются.
+        // Two WTHR of the same type add up.
         let c = chances([(MwWeather::Clear, 30), (MwWeather::Clear, 70)]).unwrap();
         assert_eq!(c.clear, 100);
         assert_eq!(chances([]), None);

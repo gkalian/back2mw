@@ -1,22 +1,25 @@
-//! Диалоги: отбор реплик Oblivion, которые можно перенести (T10.5).
+//! Dialogue: selecting the Oblivion responses that can be carried over (T10.5).
 //!
-//! Правила — решения владельца (`docs/ru/types/dial.md`): переносятся реплики квестов
-//! со стартом с игрой, без условий на квест; разговоры NPC между собой — нет; условие без фильтра
-//! в Morrowind отбрасывает реплику целиком. Соответствие функций условий фильтрам — контент, он в
-//! `data/conditions.tsv`. Условия квеста (до первой стадии) действуют на все его реплики, поэтому
-//! проверяются вместе с условиями реплики.
+//! The rules are the owner's decisions (`docs/en/types/dial.md`): responses of quests that start
+//! with the game and have no conditions on the quest are carried over; NPC-to-NPC conversations are
+//! not; a condition without a filter in Morrowind drops the response entirely. The mapping of
+//! condition functions to filters is content, it lives in `data/conditions.tsv`. The quest's
+//! conditions (before the first stage) apply to all its responses, so they are checked together
+//! with the response's conditions.
 //!
-//! Решения владельца 2026-09-28 после замера (по букве решения 1 оставалось 194 реплики из
-//! ~2 170: у `Generic`, `MQ00`, `NQD*` условия квеста `GetPlayerInSEWorld` и
-//! `GetIsPlayableRace`): `GetPlayerInSEWorld` вычисляется по переносимому миру,
-//! `GetIsPlayableRace` — фильтры «Not Race», «или» разворачивается в копии реплики.
+//! Owner's decisions 2026-09-28 after measuring (by the letter of decision 1, 194 responses out of
+//! ~2,170 remained: `Generic`, `MQ00`, `NQD*` have the quest conditions `GetPlayerInSEWorld` and
+//! `GetIsPlayableRace`): `GetPlayerInSEWorld` is computed from the carried-over world,
+//! `GetIsPlayableRace` becomes "Not Race" filters, and "or" is expanded into copies of the
+//! response.
 //!
-//! Решение владельца 2026-10-01: тема типа Conversation с парой в `data/voice_topics.tsv` — не
-//! разговор NPC между собой, а оклик проходящему игроку (`HELLO` → голос `Hello`), и отбирается
-//! как прочие голосовые темы ([`selection_kind`]).
+//! Owner's decision 2026-10-01: a Conversation topic with a pair in `data/voice_topics.tsv` is not
+//! an NPC-to-NPC conversation but a call to the passing player (`HELLO` → the `Hello` voice), and
+//! is selected like the other voice topics ([`selection_kind`]).
 //!
-//! Как отобранное становится `DIAL`/`INFO` Morrowind — [`convert`] (T10.6); здесь только решение
-//! «да/нет» и причина отказа, чтобы числа отбора можно было проверить до записи.
+//! How the selection becomes Morrowind `DIAL`/`INFO` is [`convert`] (T10.6); here there is only the
+//! "yes/no" decision and the reason for refusal, so the selection numbers can be checked before
+//! writing.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -25,26 +28,26 @@ use tes4_read::{
     TopicTree,
 };
 
-/// `data/conditions.tsv`, встроенный в сборку.
+/// `data/conditions.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/conditions.tsv");
 
-/// Встроенная таблица, разобранная один раз на прогон.
+/// The built-in table, parsed once per run.
 pub static CONDITIONS: std::sync::LazyLock<ConditionTable> =
     std::sync::LazyLock::new(ConditionTable::builtin);
 
-/// Скрипт-метка переносимых NPC и его переменная (решение 2): общие реплики — с фильтром
-/// `Local ob_npc = 0`, который у NPC без переменной не проходит.
+/// The marker script of carried-over NPCs and its variable (decision 2): shared responses get the
+/// filter `Local ob_npc = 0`, which an NPC without the variable does not pass.
 pub const NPC_SCRIPT: &str = "ob_npc";
 pub const NPC_VARIABLE: &str = "ob_npc";
 
-/// Номер `GetIsID`: по нему реплика привязана к конкретному NPC.
+/// The number of `GetIsID`: it ties a response to a specific NPC.
 const GET_IS_ID: u32 = 72;
 
-/// Вид фильтра Morrowind, в который переходит условие. Как именно — T10.6; смысл каждого — в
-/// шапке `data/conditions.tsv`.
+/// The kind of Morrowind filter a condition turns into. How exactly is T10.6; the meaning of each
+/// is in the header of `data/conditions.tsv`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum FilterKind {
-    /// Условие на квест: реплика не переносится.
+    /// A condition on the quest: the response is not carried over.
     Quest,
     Id,
     Race,
@@ -79,14 +82,15 @@ pub enum FilterKind {
     TalkedToPc,
     ShouldAttack,
     Weather,
-    /// Говорящий — играбельной расы: фильтры «Not Race» на неиграбельные расы переносимых NPC.
+    /// The speaker is of a playable race: "Not Race" filters on the non-playable races of the
+    /// carried-over NPCs.
     PlayableRace,
-    /// `GetPlayerInSEWorld`: вычисляется при конвертации по миру ([`Context::in_se_world`]), в
-    /// фильтры не попадает.
+    /// `GetPlayerInSEWorld`: computed during conversion from the world ([`Context::in_se_world`]),
+    /// it does not get into the filters.
     SeWorld,
 }
 
-/// Имена видов в таблице.
+/// Kind names in the table.
 const KIND_NAMES: [(&str, FilterKind); 36] = [
     ("quest", FilterKind::Quest),
     ("id", FilterKind::Id),
@@ -126,7 +130,7 @@ const KIND_NAMES: [(&str, FilterKind); 36] = [
     ("se_world", FilterKind::SeWorld),
 ];
 
-/// На ком вызывается функция условия.
+/// On whom the condition function is called.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RunOn {
     Subject,
@@ -134,7 +138,7 @@ pub enum RunOn {
     Any,
 }
 
-/// Разобранная таблица: (номер функции, на ком) → вид фильтра.
+/// The parsed table: (function number, on whom) → filter kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConditionTable {
     rows: BTreeMap<(u32, RunOn), FilterKind>,
@@ -142,9 +146,9 @@ pub struct ConditionTable {
 }
 
 impl ConditionTable {
-    /// Таблица из сборки. Её корректность проверяет тест, поэтому здесь — `expect`.
+    /// The table from the build. A test checks it is correct, hence `expect` here.
     pub fn builtin() -> Self {
-        Self::parse(TABLE).expect("data/conditions.tsv проверена тестом")
+        Self::parse(TABLE).expect("data/conditions.tsv is checked by a test")
     }
 
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -198,7 +202,7 @@ impl ConditionTable {
                     "line {n}: function {function} is already named {old}, here {name}"
                 ));
             }
-            // `any` вместе с `subject`/`target` у одной функции — двусмысленно.
+            // `any` together with `subject`/`target` for one function is ambiguous.
             let clash = match on {
                 RunOn::Any => [RunOn::Subject, RunOn::Target, RunOn::Any]
                     .iter()
@@ -218,7 +222,7 @@ impl ConditionTable {
         Ok(Self { rows, names })
     }
 
-    /// Вид фильтра для условия; `None` — у Morrowind такого фильтра нет.
+    /// The filter kind for a condition; `None` means Morrowind has no such filter.
     pub fn kind(&self, condition: &Condition) -> Option<FilterKind> {
         let on = if condition.runs_on_target() {
             RunOn::Target
@@ -231,38 +235,41 @@ impl ConditionTable {
             .copied()
     }
 
-    /// Имя функции Oblivion, если она есть в таблице.
+    /// The Oblivion function name, if it is in the table.
     pub fn name(&self, function: u32) -> Option<&str> {
         self.names.get(&function).map(String::as_str)
     }
 }
 
-/// Предел копий одной реплики при разворачивании «или»: больше — реплика не переносится.
+/// The limit on copies of one response when expanding "or": beyond it the response is not carried
+/// over.
 pub const MAX_VARIANTS: usize = 8;
 
-/// Почему реплика не переносится. Порядок вариантов — порядок проверок.
+/// Why a response is not carried over. The order of the variants is the order of the checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Rejection {
-    /// Разговор NPC между собой (`DIAL` тип 1).
+    /// An NPC-to-NPC conversation (`DIAL` type 1).
     Conversation,
-    /// Квест реплики не стартует с игрой (или его нет в данных).
+    /// The response's quest does not start with the game (or is missing from the data).
     QuestNotStarted,
-    /// Условие на квест: стадия, переменная, «квест идёт».
+    /// A condition on the quest: a stage, a variable, "the quest is running".
     QuestCondition,
-    /// Условие, вычисленное при конвертации, ложно: реплика другого мира (`GetPlayerInSEWorld`).
+    /// A condition computed during conversion is false: a response from another world
+    /// (`GetPlayerInSEWorld`).
     OtherWorld,
-    /// Сравнение с глобальной переменной, а не с числом: фильтр Morrowind сравнивает с числом.
+    /// A comparison with a global variable, not a number: a Morrowind filter compares with a
+    /// number.
     GlobalComparison,
-    /// Функция без фильтра в Morrowind (номер — первой такой в порядке условий).
+    /// A function without a filter in Morrowind (the number of the first such in condition order).
     Unmapped(u32),
-    /// `GetIsID` на NPC, который не переносится (с `--worldspace`).
+    /// `GetIsID` on an NPC that is not carried over (with `--worldspace`).
     SpeakerNotTransferred,
-    /// «Или» разворачивается больше чем в [`MAX_VARIANTS`] копий.
+    /// "Or" expands into more than [`MAX_VARIANTS`] copies.
     TooManyVariants,
 }
 
-/// Отобранная реплика: где она и её варианты — по копии `INFO` Morrowind на каждый. Вариант —
-/// условия, связанные «и», и во что они переходят (сначала условия квеста).
+/// A selected response: where it is and its variants — one Morrowind `INFO` copy each. A variant is
+/// conditions joined by "and" and what they turn into (the quest conditions first).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Selected {
     pub topic: usize,
@@ -270,40 +277,40 @@ pub struct Selected {
     pub variants: Vec<Vec<(Condition, FilterKind)>>,
 }
 
-/// Итог отбора по одному типу темы.
+/// Selection result for one topic type.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KindReport {
     pub total: usize,
     pub kept: usize,
-    /// Копий `INFO` у отобранных — больше `kept` на развёрнутые «или».
+    /// `INFO` copies of the selected ones — more than `kept` because of expanded "or"s.
     pub variants: usize,
     pub rejected: BTreeMap<Rejection, usize>,
 }
 
-/// Итог отбора: по типам тем (`DIAL` `DATA`) и частота функций без фильтра среди отвергнутых
-/// только из-за них (каждая функция — раз на реплику).
+/// Selection result: by topic type (`DIAL` `DATA`) and the frequency of filterless functions among
+/// those rejected only because of them (each function once per response).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SelectionReport {
     pub by_kind: BTreeMap<u8, KindReport>,
     pub unmapped: BTreeMap<u32, usize>,
 }
 
-/// Что известно при конвертации, кроме самих реплик.
+/// What is known during conversion besides the responses themselves.
 #[derive(Debug, Clone, Copy)]
 pub struct Context<'a> {
-    /// Квесты по `FormID`.
+    /// Quests by `FormID`.
     pub quests: &'a HashMap<u32, Quest>,
-    /// `FormID` переносимых NPC (с `--worldspace`); `None` — переносятся все.
+    /// `FormID`s of carried-over NPCs (with `--worldspace`); `None` means all are carried over.
     pub speakers: Option<&'a BTreeSet<u32>>,
-    /// Переносится мир Дрожащих островов (`SEWorld`) — значение `GetPlayerInSEWorld`.
+    /// The Shivering Isles world (`SEWorld`) is carried over — the value of `GetPlayerInSEWorld`.
     pub in_se_world: bool,
     pub table: &'a ConditionTable,
 }
 
-/// Одно условие после разбора.
+/// One condition after parsing.
 enum Verdict {
     Filter(FilterKind),
-    /// Вычислено при конвертации.
+    /// Computed during conversion.
     Known(bool),
     Quest,
     Unexpressible(Rejection),
@@ -337,9 +344,10 @@ fn holds(op: Comparison, actual: f32, value: f32) -> bool {
     }
 }
 
-/// Группы «или» списка условий, связанные между собой «и». У Oblivion «или» связывает условие со
-/// следующим и сильнее «и»: `A или B, C` — это `(A или B) и C`. Список квеста и список реплики
-/// группируются отдельно: «или» на последнем условии квеста к реплике не переходит.
+/// The "or" groups of a condition list, joined to each other by "and". In Oblivion "or" joins a
+/// condition with the next one and binds tighter than "and": `A or B, C` is `(A or B) and C`. The
+/// quest list and the response list are grouped separately: an "or" on the last quest condition
+/// does not carry over to the response.
 fn or_groups(list: &[Condition]) -> Vec<&[Condition]> {
     let mut out = Vec::new();
     let mut from = 0;
@@ -352,10 +360,10 @@ fn or_groups(list: &[Condition]) -> Vec<&[Condition]> {
     out
 }
 
-/// Проверяет одну реплику и разворачивает её «или» в варианты — копия `INFO` на вариант.
-/// Альтернатива без фильтра выпадает из группы (копия с ней не пишется); группа без
-/// альтернатив отвергает реплику. Альтернатива, вычисленная как истина, делает истинной всю
-/// группу.
+/// Checks one response and expands its "or" into variants — an `INFO` copy per variant. An
+/// alternative without a filter drops out of the group (a copy with it is not written); a group
+/// without alternatives rejects the response. An alternative computed as true makes the whole group
+/// true.
 pub fn check(
     info: &Info,
     topic_kind: u8,
@@ -438,12 +446,13 @@ pub fn check(
     Ok(variants)
 }
 
-/// `GetIsID` «говорит именно он» про NPC, который не переносится.
+/// `GetIsID` "it is exactly this one speaking" about an NPC that is not carried over.
 fn is_foreign_speaker(c: &Condition, speakers: &BTreeSet<u32>) -> bool {
     c.function == GET_IS_ID && !c.runs_on_target() && is_true(c) && !speakers.contains(&c.param1)
 }
 
-/// Условие утверждает «да» (`== 1` или `!= 0`) — для `GetIsID` это «говорит именно он».
+/// The condition asserts "yes" (`== 1` or `!= 0`) — for `GetIsID` that is "it is exactly this one
+/// speaking".
 fn is_true(c: &Condition) -> bool {
     match (c.comparison, c.value) {
         (Comparison::Equal, ConditionValue::Number(v)) => v != 0.0,
@@ -452,9 +461,9 @@ fn is_true(c: &Condition) -> bool {
     }
 }
 
-/// Тип темы, под которым её реплики проходят [`check`]. Conversation с парой в
-/// `data/voice_topics.tsv` (`HELLO`) — оклик игроку, а не разговор NPC между собой: отбирается как
-/// голосовая тема (Misc). В отчёте отбора тема остаётся под своим типом.
+/// The topic type under which its responses go through [`check`]. A Conversation with a pair in
+/// `data/voice_topics.tsv` (`HELLO`) is a call to the player, not an NPC-to-NPC conversation: it is
+/// selected as a voice topic (Misc). In the selection report the topic stays under its own type.
 pub fn selection_kind(topic: &Topic) -> u8 {
     let voiced = topic
         .editor_id
@@ -467,7 +476,7 @@ pub fn selection_kind(topic: &Topic) -> u8 {
     }
 }
 
-/// Отбирает реплики всех тем. Порядок отобранного — порядок файла.
+/// Selects the responses of all topics. The order of the selection is the file order.
 pub fn select(topics: &[TopicTree<'_>], ctx: &Context<'_>) -> (Vec<Selected>, SelectionReport) {
     let mut kept = Vec::new();
     let mut report = SelectionReport::default();

@@ -1,5 +1,5 @@
-//! T11.5e на реальных данных: существо без донора проходит конвейер целиком — запись `CREA` со
-//! своей моделью, три файла модели в `Meshes\ob\`, `esmtool` и `niftest` чисты.
+//! T11.5e on real data: a creature without a donor goes through the whole pipeline — a `CREA`
+//! record with its own model, three model files in `Meshes\ob\`, `esmtool` and `niftest` are clean.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -7,7 +7,7 @@
 //! BACK2MW_NIFTEST='C:\path\to\OpenMW\niftest.exe' \
 //!   cargo test -p back2mw --test real_creature_models -- --ignored --nocapture
 //! ```
-//! `BACK2MW_KEEP_OUTPUT=1` оставляет `work/` и `output/` во временном каталоге для NifSkope.
+//! `BACK2MW_KEEP_OUTPUT=1` keeps `work/` and `output/` in the temporary directory for NifSkope.
 
 mod common;
 
@@ -17,15 +17,15 @@ use std::path::{Path, PathBuf};
 use back2mw::config::Config;
 use back2mw::pipeline::{self, Request};
 
-/// Гнарл и балливог Дрожащих островов: донора у их папок нет. Крыса — на доноре: контроль, что
-/// существа на донорах остались как были и своей модели не получают.
+/// The Shivering Isles gnarl and baliwog: their folders have no donor. The rat is on a donor: a
+/// control that donor creatures stay as they were and do not get their own model.
 const CREATURES: [&str; 3] = ["SE03MiniGnarl", "SE09Baliwog02", "CreatureRat"];
 
 fn tool(var: &str) -> PathBuf {
     let path = PathBuf::from(
-        std::env::var_os(var).unwrap_or_else(|| panic!("{var} не задана (см. заголовок файла)")),
+        std::env::var_os(var).unwrap_or_else(|| panic!("{var} is not set (see the file header)")),
     );
-    assert!(path.is_file(), "{var} не файл: {}", path.display());
+    assert!(path.is_file(), "{var} is not a file: {}", path.display());
     path
 }
 
@@ -65,7 +65,7 @@ fn config(root: &Path) -> Config {
 }
 
 #[test]
-#[ignore = "реальные данные и инструменты"]
+#[ignore = "real data and tools"]
 fn creatures_without_a_donor_get_three_model_files() {
     let t = Temp::new("t115e");
     let only: Vec<String> = CREATURES.iter().map(|s| (*s).to_owned()).collect();
@@ -77,12 +77,12 @@ fn creatures_without_a_donor_get_three_model_files() {
     let outcome = pipeline::run(&config(&t.0), &request, &mut |line| {
         lines.push(line.to_owned());
     })
-    .unwrap_or_else(|e| panic!("прогон: {e}\n{}", lines.join("\n")));
+    .unwrap_or_else(|e| panic!("run: {e}\n{}", lines.join("\n")));
     for line in &lines {
         println!("{line}");
     }
     for problem in &outcome.problems {
-        println!("замечание: {problem}");
+        println!("note: {problem}");
     }
 
     assert_eq!(
@@ -96,7 +96,7 @@ fn creatures_without_a_donor_get_three_model_files() {
         outcome.statics_skipped
     );
 
-    // Две своих модели — по три файла; крыса на доноре своих файлов не даёт.
+    // Two custom models — three files each; the rat on a donor gives no files of its own.
     let meshes = t.0.join("output").join("Meshes").join("ob");
     let mut files: Vec<String> = fs::read_dir(&meshes)
         .expect("Meshes\\ob")
@@ -104,27 +104,27 @@ fn creatures_without_a_donor_get_three_model_files() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     files.sort();
-    println!("файлы: {files:?}");
+    println!("files: {files:?}");
     assert_eq!(files.len(), 6);
     for folder in ["gnarl", "baliwog"] {
         let full = files
             .iter()
             .find(|f| f.starts_with(&format!("{folder}_")) && f.ends_with(".nif"))
-            .unwrap_or_else(|| panic!("полный меш {folder}"));
+            .unwrap_or_else(|| panic!("full mesh {folder}"));
         let stem = full.strip_suffix(".nif").unwrap();
         assert!(files.contains(&format!("x{stem}.nif")), "x-nif {folder}");
         assert!(files.contains(&format!("x{stem}.kf")), "kf {folder}");
         assert!(
             full.len() + "ob\\".len() < 31,
-            "путь с `x` влезает в 31 знак"
+            "the path with `x` fits into 31 characters"
         );
     }
-    // `validate` был включён: плагин прочитал `esmtool`, все шесть мешей — `niftest`.
+    // `validate` was on: `esmtool` read the plugin, `niftest` read all six meshes.
     assert_eq!(outcome.meshes_validated, 6);
     assert_eq!(outcome.meshes_written, 6);
-    // Текстуры тела попали в список копирования (если архив текстур дополнения рядом).
+    // Body textures made it into the copy list (if the expansion's texture archive is nearby).
     println!(
-        "текстур скопировано {}, нет в архивах {}",
+        "textures copied {}, missing from archives {}",
         outcome.textures_copied,
         outcome.textures_missing.len()
     );

@@ -18,7 +18,7 @@ impl Drop for Temp {
     }
 }
 
-/// Готовый `output/`: два плагина, общий меш, у каждого своя текстура, плюс посторонний мусор.
+/// A finished `output/`: two plugins, a shared mesh, a texture each, plus unrelated junk.
 fn sample_output(root: &Path) {
     fs::create_dir_all(root.join("Meshes/ob")).unwrap();
     fs::create_dir_all(root.join("Textures")).unwrap();
@@ -91,7 +91,7 @@ fn only_the_mod_files_are_collected_in_order() {
             "Textures/ob_moss.dds",
             "Textures/ob_rock.dds",
         ],
-        "файл ассетов и мусор в мод не входят, звуки входят"
+        "the assets file and junk are not part of the mod, sounds are"
     );
 }
 
@@ -129,7 +129,7 @@ fn packaging_twice_gives_identical_bytes_and_ignores_its_own_output() {
     let t = Temp::new("pkg_repeat");
     sample_output(&t.0);
     let first = fs::read(package(&t.0, true).unwrap().loose_zip).unwrap();
-    // второй прогон: в output/ уже лежит package/ — он не должен попасть в архив
+    // second run: output/ already holds package/ — it must not get into the archive
     let second_report = package(&t.0, true).unwrap();
     assert_eq!(second_report.files, 6);
     assert_eq!(fs::read(&second_report.loose_zip).unwrap(), first);
@@ -152,12 +152,12 @@ fn every_plugin_gets_its_own_bsa_with_only_its_assets() {
     assert_eq!(
         archive.len(),
         2,
-        "плагин в архив не входит, чужая текстура тоже"
+        "the plugin is not in the archive, nor is the other plugin's texture"
     );
     assert_eq!(
         archive.get("meshes\\ob\\rock.nif").unwrap().as_bytes(),
         b"NIF",
-        "общий меш — в архиве каждого плагина, которому он нужен"
+        "a shared mesh is in the archive of every plugin that needs it"
     );
     assert!(archive.get("textures\\ob_rock.dds").is_none());
     assert_eq!(
@@ -178,8 +178,9 @@ fn every_plugin_gets_its_own_bsa_with_only_its_assets() {
     );
 }
 
-/// Карта мира для MWSE (`--lua-map`): мод и описание входят в мод, но в BSA не кладутся — их
-/// читает MWSE с диска; лист карты — обычная текстура и в архив идёт.
+/// World map for MWSE (`--lua-map`): the mod and the description are part of the mod but are not
+/// put into BSA — MWSE reads them from disk; the map sheet is an ordinary texture and goes into the
+/// archive.
 #[test]
 fn mwse_files_are_part_of_the_mod_and_stay_out_of_the_bsa() {
     let t = Temp::new("pkg_mwse");
@@ -222,7 +223,7 @@ fn mwse_files_are_part_of_the_mod_and_stay_out_of_the_bsa() {
             .unwrap()
             .as_bytes(),
         b"MAP",
-        "контрольный опыт: лист карты из того же списка ассетов в архиве есть"
+        "control: the map sheet from the same asset list is in the archive"
     );
     let zipped: Vec<String> = zip_entries(&zip_path).into_iter().map(|e| e.0).collect();
     assert!(zipped.contains(&script.to_owned()), "{zipped:?}");
@@ -230,7 +231,7 @@ fn mwse_files_are_part_of_the_mod_and_stay_out_of_the_bsa() {
     assert!(!zipped.contains(&sheet.to_owned()), "{zipped:?}");
 }
 
-/// Ванильный движок не читает звуки из BSA: звук плагина остаётся отдельным файлом.
+/// The vanilla engine does not read sounds from BSA: a plugin's sound stays a separate file.
 #[test]
 fn sounds_stay_out_of_the_bsa() {
     let t = Temp::new("pkg_bsa_sound");
@@ -241,13 +242,14 @@ fn sounds_stay_out_of_the_bsa() {
     assert!(archive.get("sound\\ob\\wind.wav").is_none());
     assert!(
         archive.get("meshes\\ob\\rock.nif").is_some(),
-        "контрольный опыт: меш рядом со звуком в архиве есть"
+        "control: the mesh next to the sound is in the archive"
     );
     assert!(is_loose_only("Sound/ob/wind.wav"));
     assert!(is_loose_only("sound/Vo/ob/x.mp3"));
     assert!(!is_loose_only("Meshes/ob/rock.nif"));
     assert!(!is_loose_only("Textures/Sound/x.dds"));
-    // Мод MWSE и его описания читает MWSE, а не движок: в архив им нельзя.
+    // The MWSE mod and its descriptions are read by MWSE, not the engine: they must not go into the
+    // archive.
     assert!(is_loose_only("MWSE/mods/back2mw/map/main.lua"));
     assert!(!is_loose_only("Textures/ob_menus_map_world_tes4semap.dds"));
 }

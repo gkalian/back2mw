@@ -1,13 +1,13 @@
-//! T2.7b: перепись систем частиц в мешах записей с моделью `Oblivion.esm` — эмиттеры,
-//! воздействия, сколько систем эмиттер Morrowind выражает целиком. Требует `BACK2MW_GAME_DATA`
-//! с `Oblivion.esm` и архивами мешей.
+//! T2.7b: a census of particle systems in the meshes of `Oblivion.esm` records with a model —
+//! emitters, modifiers, how many systems the Morrowind emitter expresses in full. Needs
+//! `BACK2MW_GAME_DATA` with `Oblivion.esm` and the mesh archives.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
 //!   cargo test -p mesh_convert --test real_particles -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/nif-oblivion.md`, «Частицы: перенос».
+//! The numbers from here are in `docs/en/formats/nif-oblivion.md`, "Particles: conversion".
 
 mod common;
 
@@ -22,7 +22,7 @@ use mesh_convert::read::{SUPPORTED_TYPES, parse_header, parse_with_offsets};
 use mesh_convert::textures::TextureRegistry;
 use tes4_read::{BsaIndex, Fields, Plugin};
 
-/// Типы записей с мировой моделью, которые переносит конвертер (`transform::MODEL_RECORDS`).
+/// Record types with a world model that the converter carries over (`transform::MODEL_RECORDS`).
 const MODEL_TAGS: [&str; 20] = [
     "STAT", "ACTI", "ALCH", "AMMO", "APPA", "ARMO", "BOOK", "CLOT", "CONT", "DOOR", "FLOR", "FURN",
     "INGR", "KEYM", "LIGH", "MISC", "SGST", "SLGM", "WEAP", "GRAS",
@@ -63,7 +63,7 @@ fn print_map(title: &str, map: &BTreeMap<String, usize>) {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn census_of_oblivion_particle_systems() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
@@ -135,21 +135,21 @@ fn census_of_oblivion_particle_systems() {
             continue;
         };
         let found: Vec<ParticleSystem> = systems(&data, &source, &offsets)
-            .unwrap_or_else(|e| panic!("{path}: частицы не читаются: {e}"));
+            .unwrap_or_else(|e| panic!("{path}: particles cannot be read: {e}"));
         if found.is_empty() {
             continue;
         }
         meshes += 1;
         total += found.len();
         for tag in tags {
-            bump(&mut by_record, format!("мешей у {tag}"));
+            bump(&mut by_record, format!("meshes of {tag}"));
         }
         for s in &found {
             let plan = particles::plan(&source, s);
             match &plan {
                 Err(reason) => {
                     not_converted += 1;
-                    bump(&mut losses, format!("не переносится: {reason:?}"));
+                    bump(&mut losses, format!("not carried over: {reason:?}"));
                     if refused.len() < 400 {
                         refused.push(format!("{reason:?} {path}"));
                     }
@@ -161,8 +161,8 @@ fn census_of_oblivion_particle_systems() {
                         bump(
                             &mut losses,
                             match l {
-                                Loss::Modifier(name) => format!("потеряно воздействие {name}"),
-                                other => format!("потеря: {other:?}"),
+                                Loss::Modifier(name) => format!("modifier lost {name}"),
+                                other => format!("loss: {other:?}"),
                             },
                         );
                     }
@@ -170,9 +170,9 @@ fn census_of_oblivion_particle_systems() {
             }
             bump(&mut facts, format!("world_space {}", s.world_space));
             if s.mesh_particles {
-                bump(&mut facts, "частицы-меши");
+                bump(&mut facts, "mesh particles");
             }
-            ranges.entry("пул").or_default().feed(f32::from(s.pool));
+            ranges.entry("pool").or_default().feed(f32::from(s.pool));
             for p in &s.av.properties {
                 if let Some(i) = p.index() {
                     bump(
@@ -182,72 +182,68 @@ fn census_of_oblivion_particle_systems() {
                 }
             }
             match &s.emitter {
-                None => bump(&mut shapes, "нет эмиттера"),
+                None => bump(&mut shapes, "no emitter"),
                 Some(e) => {
                     bump(
                         &mut shapes,
                         match e.shape {
-                            EmitterShape::Box { .. } => "коробка",
-                            EmitterShape::Cylinder { .. } => "цилиндр",
-                            EmitterShape::Sphere { .. } => "сфера",
-                            EmitterShape::Mesh => "меш",
+                            EmitterShape::Box { .. } => "box",
+                            EmitterShape::Cylinder { .. } => "cylinder",
+                            EmitterShape::Sphere { .. } => "sphere",
+                            EmitterShape::Mesh => "mesh",
                         },
                     );
                     bump(
                         &mut emitter_objects,
                         match e.object.index() {
-                            None => "нет".to_owned(),
-                            Some(i) if i == s.index => "сама система".to_owned(),
+                            None => "none".to_owned(),
+                            Some(i) if i == s.index => "the system itself".to_owned(),
                             Some(i) => source.header.block_type_name(i).unwrap_or("—").to_owned(),
                         },
                     );
                     if !e.active {
-                        bump(&mut facts, "эмиттер выключен");
+                        bump(&mut facts, "emitter disabled");
                     }
                     if e.shape == EmitterShape::Mesh {
                         bump(
                             &mut facts,
                             format!(
-                                "эмиттер-меш: тип скорости {}, мешей {}",
+                                "mesh emitter: velocity type {}, meshes {}",
                                 e.velocity_type,
                                 e.meshes.len()
                             ),
                         );
                     }
                     for (what, v) in [
-                        ("скорость", e.speed),
-                        ("разброс скорости", e.speed_variation),
-                        ("склонение", e.declination),
-                        ("разброс склонения", e.declination_variation),
-                        ("плоский угол", e.planar_angle),
-                        ("разброс плоского угла", e.planar_angle_variation),
-                        ("радиус частицы", e.radius),
-                        ("жизнь", e.life_span),
-                        ("разброс жизни", e.life_span_variation),
+                        ("speed", e.speed),
+                        ("speed variation", e.speed_variation),
+                        ("declination", e.declination),
+                        ("declination variation", e.declination_variation),
+                        ("planar angle", e.planar_angle),
+                        ("planar angle variation", e.planar_angle_variation),
+                        ("particle radius", e.radius),
+                        ("lifetime", e.life_span),
+                        ("lifetime variation", e.life_span_variation),
                     ] {
                         ranges.entry(what).or_default().feed(v);
                     }
                 }
             }
             match &s.emission {
-                None => bump(&mut facts, "нет NiPSysEmitterCtlr"),
+                None => bump(&mut facts, "no NiPSysEmitterCtlr"),
                 Some(e) => {
-                    bump(&mut facts, format!("флаги контроллера {:#06x}", e.flags));
+                    bump(&mut facts, format!("controller flags {:#06x}", e.flags));
                     bump(
                         &mut facts,
-                        format!("темп из последовательности: {:?}", e.sequence),
+                        format!("rate from a sequence: {:?}", e.sequence),
                     );
                     if e.once {
-                        bump(&mut facts, "проигрывается один раз");
+                        bump(&mut facts, "plays once");
                     }
                     let key = format!(
                         "{:?} {} [{}]",
                         e.sequence,
-                        if e.once {
-                            "один раз"
-                        } else {
-                            "петля"
-                        },
+                        if e.once { "once" } else { "loop" },
                         tags.iter().copied().collect::<Vec<_>>().join(",")
                     );
                     let entry = by_sequence.entry(key).or_default();
@@ -258,9 +254,9 @@ fn census_of_oblivion_particle_systems() {
                     bump(
                         &mut facts,
                         match (e.rate.is_some(), e.rate_keys.len()) {
-                            (_, 0) => "темп: только значение".to_owned(),
-                            (_, 1) => "темп: один ключ".to_owned(),
-                            _ => "темп: несколько ключей".to_owned(),
+                            (_, 0) => "rate: value only".to_owned(),
+                            (_, 1) => "rate: one key".to_owned(),
+                            _ => "rate: several keys".to_owned(),
                         },
                     );
                     if e.rate_keys.len() > 1 {
@@ -269,20 +265,20 @@ fn census_of_oblivion_particle_systems() {
                             .iter()
                             .fold((f32::MAX, f32::MIN), |a, k| (a.0.min(k.1), a.1.max(k.1)));
                         if (hi - lo).abs() > 1e-3 {
-                            bump(&mut facts, "темп меняется во времени");
+                            bump(&mut facts, "rate changes over time");
                         }
                     }
                     if let Some(rate) = e.mean_rate() {
-                        ranges.entry("темп рождения").or_default().feed(rate);
+                        ranges.entry("birth rate").or_default().feed(rate);
                     } else {
-                        bump(&mut facts, "темп не задан");
+                        bump(&mut facts, "rate not set");
                     }
                     ranges
-                        .entry("окно эмиссии")
+                        .entry("emission window")
                         .or_default()
                         .feed(e.stop - e.start);
                     ranges
-                        .entry("частота контроллера")
+                        .entry("controller frequency")
                         .or_default()
                         .feed(e.frequency);
                 }
@@ -296,24 +292,24 @@ fn census_of_oblivion_particle_systems() {
                         ..
                     } => {
                         if *turbulence != 0.0 {
-                            bump(&mut facts, "тяготение с турбулентностью");
+                            bump(&mut facts, "gravity with turbulence");
                         }
                         if *force_type == 1 {
-                            "Gravity (точечное)"
+                            "Gravity (point)"
                         } else {
-                            "Gravity (плоское)"
+                            "Gravity (planar)"
                         }
                     }
                     ModifierKind::Rotation { .. } => "Rotation",
                     ModifierKind::Color { .. } => "Color",
                     ModifierKind::AgeDeath { spawn_on_death } => {
                         if *spawn_on_death {
-                            bump(&mut facts, "порождение при смерти");
+                            bump(&mut facts, "spawn on death");
                         }
                         "AgeDeath"
                     }
                     ModifierKind::Spawn { .. } => "Spawn",
-                    ModifierKind::Housekeeping => "служебное",
+                    ModifierKind::Housekeeping => "housekeeping",
                     ModifierKind::Other(name) => name,
                 };
                 bump(
@@ -321,53 +317,53 @@ fn census_of_oblivion_particle_systems() {
                     if m.active {
                         name.to_owned()
                     } else {
-                        format!("{name} (выключено)")
+                        format!("{name} (disabled)")
                     },
                 );
             }
             if examples.len() < 4 && (path.contains("torch") || path.contains("campfire")) {
-                examples.push(format!("{path}: {s:#?}\nплан: {plan:#?}"));
+                examples.push(format!("{path}: {s:#?}\nplan: {plan:#?}"));
             }
         }
-        // Конвертация целиком: системы стали эмиттерами Morrowind, меш сериализуется.
+        // The whole conversion: the systems became Morrowind emitters, the mesh serializes.
         let particles = particles::Systems::read(&data, &source, &offsets);
         match convert_with_particles(&source, &mut registry, &particles) {
             Ok(mut c) => {
                 converted_systems += c.stats.converted_particles;
                 dropped_systems += c.stats.dropped_particles;
                 c.save_bytes()
-                    .unwrap_or_else(|e| panic!("{path}: запись NIF: {e}"));
+                    .unwrap_or_else(|e| panic!("{path}: writing the NIF: {e}"));
             }
             Err(e) => {
                 convert_errors += 1;
-                println!("  не конвертируется {path}: {e}");
+                println!("  does not convert {path}: {e}");
             }
         }
     }
 
-    println!("мешей с частицами {meshes}, систем {total}");
+    println!("meshes with particles {meshes}, systems {total}");
     println!(
-        "выражаются целиком {whole}, с потерями {partial}, не переносятся {not_converted}; \
-         после конвертации: эмиттеров {converted_systems}, выброшено {dropped_systems}, ошибок {convert_errors}"
+        "expressed in full {whole}, with losses {partial}, not carried over {not_converted}; \
+         after conversion: emitters {converted_systems}, dropped {dropped_systems}, errors {convert_errors}"
     );
-    print_map("по типу записи", &by_record);
-    print_map("эмиттер", &shapes);
-    print_map("узел эмиттера", &emitter_objects);
-    print_map("воздействия", &modifiers);
-    print_map("свойства на системе", &properties);
-    print_map("потери", &losses);
-    print_map("факты", &facts);
-    println!("диапазоны:");
+    print_map("by record type", &by_record);
+    print_map("emitter", &shapes);
+    print_map("emitter node", &emitter_objects);
+    print_map("modifiers", &modifiers);
+    print_map("properties on the system", &properties);
+    print_map("losses", &losses);
+    print_map("facts", &facts);
+    println!("ranges:");
     for (what, range) in &ranges {
         println!("  {what}: {range}");
     }
-    println!("кто задаёт темп (последовательность, цикл, типы записей): систем — примеры");
+    println!("who sets the rate (sequence, cycle, record types): systems — examples");
     for (key, (n, paths)) in &by_sequence {
         println!("  {n:4}  {key} — {}", paths.join(", "));
     }
     refused.sort();
     refused.dedup();
-    println!("не переносятся (меши): {}", refused.len());
+    println!("not carried over (meshes): {}", refused.len());
     for r in refused.iter().take(60) {
         println!("  {r}");
     }

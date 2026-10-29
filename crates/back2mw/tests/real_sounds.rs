@@ -1,5 +1,5 @@
-//! Звуки на настоящей установке Oblivion (T10.1). Требует `BACK2MW_OBLIVION_DATA` — каталог
-//! `Data` с `Oblivion.esm` и звуковыми BSA.
+//! Sounds on a real Oblivion install (T10.1). Needs `BACK2MW_OBLIVION_DATA` — the `Data` directory
+//! with `Oblivion.esm` and the sound BSAs.
 //!
 //! ```text
 //! BACK2MW_OBLIVION_DATA='C:\path\to\Oblivion\Data' \
@@ -16,15 +16,15 @@ use tes4_read::{BsaIndex, FromFields, Plugin, Sound};
 
 fn data_dir() -> PathBuf {
     PathBuf::from(
-        std::env::var_os("BACK2MW_OBLIVION_DATA").expect("BACK2MW_OBLIVION_DATA не задана"),
+        std::env::var_os("BACK2MW_OBLIVION_DATA").expect("BACK2MW_OBLIVION_DATA is not set"),
     )
 }
 
-/// Все `SOUN` читаются, у каждого есть файл (или непустой каталог) в архивах, пути в плагине
-/// не сталкиваются, и каждый `.wav` звуковых архивов — PCM 16 бит моно или стерео, который
-/// сводится в моно.
+/// All `SOUN` records are read, each has a file (or a non-empty directory) in the archives, the
+/// paths in the plugin do not collide, and every `.wav` of the sound archives is 16-bit PCM mono or
+/// stereo that is mixed down to mono.
 #[test]
-#[ignore = "настоящая установка Oblivion: BACK2MW_OBLIVION_DATA"]
+#[ignore = "real Oblivion install: BACK2MW_OBLIVION_DATA"]
 fn every_oblivion_sound_has_a_file_the_converter_can_use() {
     let data = data_dir();
     let bytes = std::fs::read(data.join("Oblivion.esm")).unwrap();
@@ -35,7 +35,7 @@ fn every_oblivion_sound_has_a_file_the_converter_can_use() {
         .collect();
     let directories = sounds.iter().filter(|s| s.is_directory()).count();
     println!(
-        "SOUN {}: файлов {}, каталогов {directories}",
+        "SOUN {}: files {}, directories {directories}",
         sounds.len(),
         sounds.len() - directories
     );
@@ -49,10 +49,10 @@ fn every_oblivion_sound_has_a_file_the_converter_can_use() {
     let mut missing = Vec::new();
     let mut paths: HashMap<String, String> = HashMap::new();
     for s in &sounds {
-        let rel = transform::paths::sound_path(&s.file).expect("путь представим");
+        let rel = transform::paths::sound_path(&s.file).expect("the path is representable");
         let normal = transform::paths::normalize(&s.file).unwrap();
         if let Some(other) = paths.insert(rel.clone(), normal.clone()) {
-            assert_eq!(other, normal, "путь {rel} у двух источников");
+            assert_eq!(other, normal, "path {rel} for two sources");
         }
         let found = if s.is_directory() {
             let dir = format!("sound\\{normal}");
@@ -67,7 +67,7 @@ fn every_oblivion_sound_has_a_file_the_converter_can_use() {
             missing.push(format!("{} → {}", s.editor_id, s.file));
         }
     }
-    println!("без файла: {}", missing.len());
+    println!("without a file: {}", missing.len());
     for m in &missing {
         println!("  {m}");
     }
@@ -86,10 +86,10 @@ fn every_oblivion_sound_has_a_file_the_converter_can_use() {
             mixed += usize::from(mono.is_some());
         }
     }
-    println!("WAV (формат, каналы, частота, бит): {formats:?}; сведено в моно {mixed}");
+    println!("WAV (format, channels, rate, bits): {formats:?}; mixed down to mono {mixed}");
     assert_eq!(sounds.len(), 1140);
-    // 2026-09-28: 33 `SOUN` ссылаются на файлы, которых нет ни в архивах, ни свободными, — это
-    // остатки в самом `Oblivion.esm` (`E3…`, `TES4-Combat-…`, старые пути `FX\…`). Конвертер
-    // пишет такой `SOUN` и сообщает о пропавшем файле.
-    assert_eq!(missing.len(), 33, "у {} SOUN нет файла", missing.len());
+    // 2026-09-28: 33 `SOUN` records reference files that are neither in the archives nor loose —
+    // leftovers in `Oblivion.esm` itself (`E3…`, `TES4-Combat-…`, old `FX\…` paths). The converter
+    // writes such a `SOUN` and reports the missing file.
+    assert_eq!(missing.len(), 33, "{} SOUN have no file", missing.len());
 }

@@ -9,7 +9,9 @@ Do not reread `docs/` in full — only the right section from "Where things are"
 with `docs/` or the code, they win and this file must be fixed. If a `CLAUDE.local.md` exists next to it
 (not in git), it holds the maintainer's machine, task workflow and current state — read it too.
 
-**Language.** Code comments — in Russian; anything the user sees (log, notes, errors, console output, the
+**Language.** Code comments, `expect`/`assert!` messages and other developer-facing strings — in
+English; Cyrillic in code appears only as the Russian half of a `lang` pair (or in tests of Russian
+output). Anything the user sees (log, notes, errors, console output, the
 window) — in Russian **and** English through the `lang` crate (see "How to write code"). This file —
 English. Documentation — Russian and English (below).
 
@@ -252,13 +254,13 @@ confirmed). Take the size of the `Morrowind.esm` master **from disk**, not as a 
 
 Look at the neighbouring code and write the same way. Specifically:
 
-- Comments — in Russian. A doc comment explains **why** (which decision, where a format fact comes
+- Comments — in English. A doc comment explains **why** (which decision, where a format fact comes
   from), not what the code does.
 - Every string the user can see (log line, note, error text, console output) — in both languages,
   side by side, through `lang`: `lang::tr!("русский {x}", "english {x}", args)` instead of `format!`,
   `lang::trw!(f, …)` instead of `write!` in `Display`, `lang::tr("…", "…")` for strings without
   placeholders (also for `&'static str` fields of errors). Both templates take the same arguments in
-  the same order. `expect`/`assert!`/`unreachable!` messages are for the developer and stay Russian.
+  the same order. `expect`/`assert!`/`unreachable!` messages are for the developer and are written in English.
   A test that checks a message compares the English text (the default); the Russian one — inside
   `lang::with(Lang::Ru, || …)`, never `lang::set` (tests share the process).
 - Parse errors — an enum with the file position or field name (`tes4_read::error::Error` is the model). On

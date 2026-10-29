@@ -1,10 +1,10 @@
-//! T1.3a: перепись мешей, на которые ссылаются `STAT` из `Oblivion.esm`.
+//! T1.3a: a census of the meshes referenced by `STAT` records of `Oblivion.esm`.
 //!
-//! Соединяет `MODL` каждого `STAT` с `Oblivion - Meshes.bsa`, разбирает заголовки NIF
-//! кодом проекта и печатает числа для `docs/ru/formats/nif-oblivion.md`, а также кандидатов
-//! для среза M1. Синтетика заголовка — в `read::header::tests`.
+//! Joins the `MODL` of every `STAT` with `Oblivion - Meshes.bsa`, parses the NIF headers with the
+//! project's code and prints the numbers for `docs/en/formats/nif-oblivion.md`, as well as
+//! candidates for the M1 slice. The synthetic header test is in `read::header::tests`.
 //!
-//! Запуск (PowerShell):
+//! Running (PowerShell):
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
 //! cargo test -p mesh_convert --test real_census -- --ignored --nocapture
@@ -19,7 +19,7 @@ use std::io::BufReader;
 use mesh_convert::read::{Error, NifHeader, parse_header};
 use tes4_read::{BsaIndex, FromFields, Plugin, Stat};
 
-/// Типы, с которыми ридер обязан справиться для среза M1 (карточка T1.3a).
+/// Types the reader must handle for the M1 slice (task card T1.3a).
 const M1_TYPES: [&str; 15] = [
     "NiNode",
     "NiTriStrips",
@@ -38,14 +38,14 @@ const M1_TYPES: [&str; 15] = [
     "bhkNiTriStripsShape",
 ];
 
-/// Сколько мешей выбираем для среза.
+/// How many meshes we pick for the slice.
 const M1_COUNT: usize = 10;
 
 struct MeshInfo {
-    /// Путь в архиве, нижний регистр.
+    /// Path in the archive, lower case.
     path: String,
     header: NifHeader,
-    /// EDID первого `STAT`, который на него ссылается.
+    /// EDID of the first `STAT` that references it.
     edid: String,
 }
 
@@ -65,21 +65,21 @@ impl MeshInfo {
             .all(|&i| M1_TYPES.contains(&self.header.block_types[usize::from(i)].as_str()))
     }
 
-    /// Второй компонент пути: `meshes\<каталог>\…`.
+    /// The second path component: `meshes\<directory>\…`.
     fn directory(&self) -> &str {
         self.path.split('\\').nth(1).unwrap_or("")
     }
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn census_of_stat_meshes() {
     let esm = common::game_file("Oblivion.esm");
-    let bytes = std::fs::read(&esm).unwrap_or_else(|e| panic!("не прочитать {esm:?}: {e}"));
+    let bytes = std::fs::read(&esm).unwrap_or_else(|e| panic!("cannot read {esm:?}: {e}"));
     let plugin = Plugin::parse(&bytes).unwrap_or_else(|e| panic!("Plugin::parse: {e}"));
 
     let bsa_path = common::game_file("Oblivion - Meshes.bsa");
-    let mut reader = BufReader::new(File::open(&bsa_path).expect("открыть BSA"));
+    let mut reader = BufReader::new(File::open(&bsa_path).expect("open BSA"));
     let index = BsaIndex::read_from(&mut reader).unwrap_or_else(|e| panic!("BsaIndex: {e}"));
 
     let mut stat_total = 0usize;
@@ -87,7 +87,7 @@ fn census_of_stat_meshes() {
     let mut stat_no_model = 0usize;
     let mut stat_found = 0usize;
     let mut not_found: Vec<(String, String)> = Vec::new();
-    let mut unique: BTreeMap<String, String> = BTreeMap::new(); // путь → EDID
+    let mut unique: BTreeMap<String, String> = BTreeMap::new(); // path → EDID
 
     for record in plugin.records_of(*b"STAT") {
         stat_total += 1;
@@ -111,10 +111,10 @@ fn census_of_stat_meshes() {
         }
     }
 
-    // Не найденные в основном архиве — ищем в BSA дополнений: в этой сборке
-    // Shivering Isles влит в `Oblivion.esm`, а его меши лежат в своём архиве.
+    // Those not found in the main archive are looked up in the expansion BSAs: in this build
+    // Shivering Isles is merged into `Oblivion.esm`, while its meshes live in their own archive.
     let dlc_indexes: Vec<(String, BsaIndex)> = std::fs::read_dir(common::game_data_dir())
-        .expect("читать каталог данных")
+        .expect("read the data directory")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| {
@@ -127,7 +127,7 @@ fn census_of_stat_meshes() {
         })
         .map(|p| {
             let name = p.file_name().unwrap().to_string_lossy().into_owned();
-            let mut r = BufReader::new(File::open(&p).expect("открыть BSA дополнения"));
+            let mut r = BufReader::new(File::open(&p).expect("open the expansion BSA"));
             let idx = BsaIndex::read_from(&mut r).unwrap_or_else(|e| panic!("{name}: {e}"));
             (name, idx)
         })
@@ -149,10 +149,12 @@ fn census_of_stat_meshes() {
     let mut other_errors: Vec<String> = Vec::new();
 
     for (path, edid) in &unique {
-        let entry = index.find(path).expect("путь взят из этого же индекса");
+        let entry = index
+            .find(path)
+            .expect("the path is taken from this very index");
         let nif = index
             .extract(&mut reader, entry)
-            .unwrap_or_else(|e| panic!("извлечь {path}: {e}"));
+            .unwrap_or_else(|e| panic!("extract {path}: {e}"));
         match parse_header(&nif) {
             Ok(header) => {
                 *versions.entry(header.line.clone()).or_default() += 1;
@@ -164,37 +166,37 @@ fn census_of_stat_meshes() {
             }
             Err(Error::UnsupportedVersion { version }) => {
                 *versions
-                    .entry(format!("{version:#010x} (не читаем)"))
+                    .entry(format!("{version:#010x} (not read)"))
                     .or_default() += 1;
             }
             Err(e) => other_errors.push(format!("{path}: {e}")),
         }
     }
 
-    println!("=== STAT из Oblivion.esm → меши в Oblivion - Meshes.bsa ===");
-    println!("  STAT всего:                 {stat_total}");
-    println!("  с пустыми данными:          {stat_empty}");
-    println!("  без MODL:                   {stat_no_model}");
-    println!("  с мешем, найденным в BSA:   {stat_found}");
-    println!("  с мешем, НЕ найденным:      {}", not_found.len());
+    println!("=== STAT from Oblivion.esm → meshes in Oblivion - Meshes.bsa ===");
+    println!("  STAT total:                 {stat_total}");
+    println!("  with empty data:            {stat_empty}");
+    println!("  without MODL:               {stat_no_model}");
+    println!("  with a mesh found in BSA:   {stat_found}");
+    println!("  with a mesh NOT found:      {}", not_found.len());
     for (name, count) in &resolved_in_dlc {
-        println!("    из них найдено в {name}: {count}");
+        println!("    of them found in {name}: {count}");
     }
-    println!("    нигде не найдено: {}", still_missing.len());
+    println!("    found nowhere: {}", still_missing.len());
     for (edid, path) in still_missing.iter().take(20) {
         println!("      {edid} → {path}");
     }
-    println!("  уникальных мешей:           {}", unique.len());
-    println!("  версии (по уникальным мешам):");
+    println!("  unique meshes:              {}", unique.len());
+    println!("  versions (over unique meshes):");
     for (line, count) in &versions {
         println!("    {count:>6}  {line}");
     }
-    println!("  ошибок заголовка, кроме версии: {}", other_errors.len());
+    println!("  header errors other than version: {}", other_errors.len());
     for line in other_errors.iter().take(20) {
         println!("    {line}");
     }
 
-    // Типы блоков: в скольких мешах и сколько блоков всего.
+    // Block types: in how many meshes and how many blocks in total.
     let mut per_type: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
     for mesh in &meshes {
         let mut seen = BTreeSet::new();
@@ -210,7 +212,7 @@ fn census_of_stat_meshes() {
     let mut rows: Vec<_> = per_type.iter().collect();
     rows.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(b.0)));
     println!(
-        "  типы блоков в мешах STAT (мешей / блоков), читаемых 20.0.0.x: {}",
+        "  block types in STAT meshes (meshes / blocks), readable 20.0.0.x: {}",
         meshes.len()
     );
     for (name, (files, blocks)) in rows {
@@ -220,11 +222,11 @@ fn census_of_stat_meshes() {
 
     let only_m1 = meshes.iter().filter(|m| m.only_m1_types()).count();
     println!(
-        "  мешей только из набора M1:  {only_m1} из {}",
+        "  meshes only from the M1 set: {only_m1} of {}",
         meshes.len()
     );
 
-    // Кандидаты для среза: только набор M1, одна полоса, есть текстура и коллизия.
+    // Candidates for the slice: only the M1 set, one strip, a texture and collision present.
     let mut candidates: Vec<&MeshInfo> = meshes
         .iter()
         .filter(|m| {
@@ -237,13 +239,12 @@ fn census_of_stat_meshes() {
     candidates
         .sort_by(|a, b| (a.header.num_blocks(), &a.path).cmp(&(b.header.num_blocks(), &b.path)));
     println!(
-        "  кандидатов на M1 (набор M1, 1 полоса, текстура, коллизия): {}",
+        "  M1 candidates (M1 set, 1 strip, texture, collision): {}",
         candidates.len()
     );
 
-    // По одному на каталог, самые маленькие вперёд; если каталогов мало — добираем.
-    // Ключ разнообразия сужается: сначала каталог верхнего уровня, потом полный каталог
-    // файла, потом любой.
+    // One per directory, smallest first; if there are few directories, fill up. The diversity key
+    // narrows: first the top-level directory, then the file's full directory, then anything.
     let mut picked: Vec<&MeshInfo> = Vec::new();
     let keys: [fn(&MeshInfo) -> String; 3] = [
         |m| m.directory().to_owned(),
@@ -261,8 +262,8 @@ fn census_of_stat_meshes() {
             }
         }
     }
-    println!("  срез M1 ({} мешей):", picked.len());
-    println!("    EDID | путь в архиве | блоков | версия | user_version");
+    println!("  M1 slice ({} meshes):", picked.len());
+    println!("    EDID | path in archive | blocks | version | user_version");
     for mesh in &picked {
         println!(
             "    {} | {} | {} | {} | {}/{}",
@@ -275,7 +276,11 @@ fn census_of_stat_meshes() {
         );
     }
 
-    assert!(other_errors.is_empty(), "заголовки не разобрались");
-    assert!(!meshes.is_empty(), "ни одного меша не найдено");
-    assert_eq!(picked.len(), M1_COUNT, "для среза M1 не хватило кандидатов");
+    assert!(other_errors.is_empty(), "the headers did not parse");
+    assert!(!meshes.is_empty(), "not a single mesh was found");
+    assert_eq!(
+        picked.len(),
+        M1_COUNT,
+        "not enough candidates for the M1 slice"
+    );
 }

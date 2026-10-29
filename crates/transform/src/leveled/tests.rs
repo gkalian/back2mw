@@ -18,7 +18,7 @@ fn source(flags: u8, chance_none: u8, entries: &[(i16, u32, i16)]) -> LeveledLis
     }
 }
 
-/// `FormID` → ID: 0x0F — золото, 0x10…0x1F — наши предметы, прочее не найдено.
+/// `FormID` → ID: 0x0F is gold, 0x10…0x1F are our items, anything else is not found.
 fn resolve(form_id: u32) -> Option<String> {
     match form_id {
         GOLD_FORM_ID => Some(GOLD.to_owned()),
@@ -29,7 +29,8 @@ fn resolve(form_id: u32) -> Option<String> {
 
 #[test]
 fn flags_are_swapped_between_games() {
-    // Oblivion: 0x01 все уровни, 0x02 на каждый; Morrowind наоборот — перевод по смыслу.
+    // Oblivion: 0x01 all levels, 0x02 each item; Morrowind the other way round — converted by
+    // meaning.
     let all = convert_list(&source(LEVELED_ALL_LEVELS, 0, &[]), "a".into(), resolve);
     assert!(all.list.all_levels && !all.list.each_item);
     let each = convert_list(&source(LEVELED_EACH_ITEM, 0, &[]), "a".into(), resolve);
@@ -86,7 +87,7 @@ fn gold_takes_the_largest_vanilla_pile_not_above_count() {
         c.list.items,
         [("Gold_025".to_owned(), 1), ("Gold_100".to_owned(), 5)]
     );
-    // Золото — не «число заменено на 1», а своё замечание про округление.
+    // Gold gets not "count replaced by 1" but a note of its own about rounding.
     assert_eq!(c.notes.len(), 1, "{:?}", c.notes);
     assert!(c.notes[0].contains("gold in 1 rows"), "{}", c.notes[0]);
 }
@@ -119,7 +120,7 @@ fn use_all_keeps_source_counts_for_containers() {
         "a".into(),
         resolve,
     );
-    // В контейнере число есть — золото остаётся точным, без округления до монеты.
+    // A container has a count — gold stays exact, without rounding to a coin.
     assert_eq!(
         c.use_all,
         Some(vec![(3, "ob_item_10".to_owned()), (250, GOLD.to_owned())])
@@ -178,7 +179,8 @@ fn chest(items: &[&str]) -> Object {
 
 #[test]
 fn pruning_cascades_through_emptied_lists_to_containers() {
-    // outer → inner → gone: inner пустеет, из-за него пустеет outer, из сундука уходят оба.
+    // outer → inner → gone: inner becomes empty, because of it outer becomes empty, and both leave
+    // the chest.
     let mut lists = vec![
         list("ob_outer", &["ob_inner"]),
         list("ob_inner", &["ob_gone"]),
@@ -208,7 +210,8 @@ fn pruning_cascades_through_emptied_lists_to_containers() {
 
 #[test]
 fn list_order_does_not_matter_for_pruning() {
-    // Тот же случай, но пустеющий список стоит после того, кто на него ссылается и наоборот.
+    // The same case, but the list that becomes empty comes after the one referencing it, and vice
+    // versa.
     for order in [["ob_a", "ob_b"], ["ob_b", "ob_a"]] {
         let mut lists: Vec<LeveledItem> = order
             .iter()

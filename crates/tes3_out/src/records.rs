@@ -1,5 +1,5 @@
-//! Модель `crate::model` → записи `tes3::esp`. Только перевод полей; решения о значениях
-//! принимает `transform`.
+//! The `crate::model` model → `tes3::esp` records. Only field translation; decisions about the
+//! values are made by `transform`.
 
 use tes3::esp::{
     Activator, Alchemy, AlchemyData, AlchemyFlags, Apparatus, ApparatusData, ApparatusType, Armor,
@@ -18,7 +18,7 @@ use tes3::esp::{
 
 use crate::model::{self, ArmorKind, ClothingKind, ItemKind, Object, WeaponKind};
 
-/// Навыки Morrowind в порядке номеров (0…26).
+/// Morrowind skills in number order (0…26).
 pub(crate) const SKILLS: [SkillId; 27] = [
     SkillId::Block,
     SkillId::Armorer,
@@ -49,8 +49,9 @@ pub(crate) const SKILLS: [SkillId; 27] = [
     SkillId::HandToHand,
 ];
 
-/// Эффекты `Morrowind.esm` в порядке номеров (0…136). 137+ — эффекты Tribunal и Bloodmoon: их
-/// нет у плагина, чей единственный мастер `Morrowind.esm`, поэтому `transform` их не выдаёт.
+/// The effects of `Morrowind.esm` in number order (0…136). 137+ are Tribunal and Bloodmoon effects:
+/// a plugin whose only master is `Morrowind.esm` does not have them, so `transform` does not
+/// produce them.
 const EFFECTS: [EffectId2; 137] = [
     EffectId2::WaterBreathing,
     EffectId2::SwiftSwim,
@@ -191,7 +192,7 @@ const EFFECTS: [EffectId2; 137] = [
     EffectId2::StuntedMagicka,
 ];
 
-/// То же для `IRDT` ингредиента (`EffectId` — другой тип той же нумерации).
+/// The same for an ingredient's `IRDT` (`EffectId` is another type with the same numbering).
 const INGREDIENT_EFFECTS: [EffectId; 137] = [
     EffectId::WaterBreathing,
     EffectId::SwiftSwim,
@@ -332,7 +333,7 @@ const INGREDIENT_EFFECTS: [EffectId; 137] = [
     EffectId::StuntedMagicka,
 ];
 
-/// Атрибуты Morrowind в порядке номеров (0…7).
+/// Morrowind attributes in number order (0…7).
 const ATTRIBUTES: [AttributeId; 8] = [
     AttributeId::Strength,
     AttributeId::Intelligence,
@@ -354,7 +355,7 @@ const ATTRIBUTES2: [AttributeId2; 8] = [
     AttributeId2::Luck,
 ];
 
-/// Навыки для эффектов (`SkillId2`), порядок тот же, что у [`SKILLS`].
+/// Skills for effects (`SkillId2`), in the same order as [`SKILLS`].
 const SKILLS2: [SkillId2; 27] = [
     SkillId2::Block,
     SkillId2::Armorer,
@@ -385,7 +386,7 @@ const SKILLS2: [SkillId2; 27] = [
     SkillId2::HandToHand,
 ];
 
-/// Слоты `INDX` в порядке номеров Morrowind (0…26).
+/// `INDX` slots in Morrowind number order (0…26).
 const SLOTS: [BipedObjectType; 27] = [
     BipedObjectType::Head,
     BipedObjectType::Hair,
@@ -416,7 +417,7 @@ const SLOTS: [BipedObjectType; 27] = [
     BipedObjectType::Tail,
 ];
 
-/// Части `MP_*` в порядке номеров Morrowind (0…14).
+/// `MP_*` parts in Morrowind number order (0…14).
 const PARTS: [BodypartId; 15] = [
     BodypartId::Head,
     BodypartId::Hair,
@@ -435,42 +436,42 @@ const PARTS: [BodypartId; 15] = [
     BodypartId::Tail,
 ];
 
-/// Номер слота или части вне таблицы — ошибка вызывающего, а не данных: `transform` берёт их
-/// из собственных констант.
+/// A slot or part number outside the table is the caller's error, not the data's: `transform` takes
+/// them from its own constants.
 fn slot(n: u8) -> BipedObjectType {
     *SLOTS
         .get(usize::from(n))
-        .expect("номер слота из transform — 0…26")
+        .expect("a slot number from transform is 0…26")
 }
 
 pub(crate) fn part(n: u8) -> BodypartId {
     *PARTS
         .get(usize::from(n))
-        .expect("номер части из transform — 0…14")
+        .expect("a part number from transform is 0…14")
 }
 
-/// Эффект `ENAM`. Номера эффекта, навыка, атрибута и дальности — из таблиц `transform`, вне
-/// диапазона — ошибка вызывающего.
+/// An `ENAM` effect. The effect, skill, attribute and range numbers come from `transform`'s tables;
+/// out of range is the caller's error.
 fn effect(e: model::Effect) -> Effect {
     Effect {
         magic_effect: *EFFECTS
             .get(usize::from(e.id))
-            .expect("номер эффекта из transform — 0…136"),
+            .expect("an effect number from transform is 0…136"),
         skill: e.skill.map_or(SkillId2::None, |s| {
             *SKILLS2
                 .get(usize::from(s))
-                .expect("номер навыка из transform — 0…26")
+                .expect("a skill number from transform is 0…26")
         }),
         attribute: e.attribute.map_or(AttributeId2::None, |a| {
             *ATTRIBUTES2
                 .get(usize::from(a))
-                .expect("номер атрибута из transform — 0…7")
+                .expect("an attribute number from transform is 0…7")
         }),
         range: match e.range {
             0 => EffectRange::OnSelf,
             1 => EffectRange::OnTouch,
             2 => EffectRange::OnTarget,
-            other => panic!("дальность из transform — 0…2, а не {other}"),
+            other => panic!("a range from transform is 0…2, not {other}"),
         },
         area: e.area,
         duration: e.duration,
@@ -479,7 +480,7 @@ fn effect(e: model::Effect) -> Effect {
     }
 }
 
-/// `IRDT` ингредиента: четыре слота эффекта, навыка и атрибута; пустые — `None`.
+/// An ingredient's `IRDT`: four effect, skill and attribute slots; empty ones are `None`.
 fn ingredient_effects(list: &[model::Effect]) -> ([EffectId; 4], [SkillId; 4], [AttributeId; 4]) {
     let mut effects = [EffectId::None; 4];
     let mut skills = [SkillId::None; 4];
@@ -487,16 +488,16 @@ fn ingredient_effects(list: &[model::Effect]) -> ([EffectId; 4], [SkillId; 4], [
     for (slot, e) in list.iter().take(4).enumerate() {
         effects[slot] = *INGREDIENT_EFFECTS
             .get(usize::from(e.id))
-            .expect("номер эффекта из transform — 0…136");
+            .expect("an effect number from transform is 0…136");
         if let Some(s) = e.skill {
             skills[slot] = *SKILLS
                 .get(usize::from(s))
-                .expect("номер навыка из transform — 0…26");
+                .expect("a skill number from transform is 0…26");
         }
         if let Some(a) = e.attribute {
             attributes[slot] = *ATTRIBUTES
                 .get(usize::from(a))
-                .expect("номер атрибута из transform — 0…7");
+                .expect("an attribute number from transform is 0…7");
         }
     }
     (effects, skills, attributes)
@@ -564,7 +565,7 @@ pub(crate) fn sound(s: model::Sound) -> TES3Object {
     })
 }
 
-/// `SNDG` (T11.6). Вид вне 0…7 — `None`: такого у Morrowind нет.
+/// `SNDG` (T11.6). A kind outside 0…7 gives `None`: Morrowind has no such kind.
 pub(crate) fn sound_gen(g: model::SoundGen) -> Option<TES3Object> {
     let sound_gen_type = match g.kind {
         0 => SoundGenType::LeftFoot,
@@ -586,8 +587,8 @@ pub(crate) fn sound_gen(g: model::SoundGen) -> Option<TES3Object> {
     }))
 }
 
-/// Флаг автоподсчёта не ставится: стоимость и заряд уже решены в `transform` (T9.4), и CS не
-/// должен их пересчитывать.
+/// The auto-calculation flag is not set: the cost and charge are already decided in `transform`
+/// (T9.4), and the CS must not recompute them.
 pub(crate) fn enchantment(e: model::Enchantment) -> TES3Object {
     TES3Object::Enchanting(Enchanting {
         flags: ObjectFlags::default(),
@@ -607,8 +608,8 @@ pub(crate) fn enchantment(e: model::Enchantment) -> TES3Object {
     })
 }
 
-/// Флаг автоподсчёта у `SPEL` не ставится никогда: с ним движок раздаёт заклинание подходящим
-/// ванильным NPC (решение владельца 2026-09-27, T9.4).
+/// The auto-calculation flag is never set on `SPEL`: with it the engine hands the spell out to
+/// suitable vanilla NPCs (owner's decision 2026-09-27, T9.4).
 pub(crate) fn spell(s: model::Spell) -> TES3Object {
     let mut flags = SpellFlags::empty();
     flags.set(SpellFlags::ALWAYS_SUCCEEDS, s.always_succeeds);
@@ -671,7 +672,7 @@ pub(crate) fn global(global: model::Global) -> TES3Object {
     })
 }
 
-/// У всех 890 контейнеров `Morrowind.esm` стоит 0x8 (2026-09-25): ставим и мы.
+/// All 890 containers of `Morrowind.esm` have 0x8 (2026-09-25): we set it too.
 fn container(c: model::Container) -> Container {
     let mut flags = ContainerFlags::IS_BASE;
     flags.set(ContainerFlags::ORGANIC, c.organic);
@@ -692,7 +693,7 @@ fn container(c: model::Container) -> Container {
     }
 }
 
-/// Строковые поля с пределом длины: (тег, ID записи, значение).
+/// String fields with a length limit: (tag, record ID, value).
 pub(crate) fn limited_fields(object: &TES3Object) -> Vec<(&'static str, &str, &str)> {
     match object {
         TES3Object::Static(s) => vec![("MODL", &s.id, &s.mesh)],
@@ -755,12 +756,12 @@ pub(crate) fn limited_fields(object: &TES3Object) -> Vec<(&'static str, &str, &s
             ("ITEX", &o.id, &o.icon),
             ("FNAM", &o.id, &o.name),
         ],
-        // Путь звука — как `MODL`: у ванили самый длинный 27 знаков (2026-09-28).
+        // A sound path is like `MODL`: the longest in vanilla is 27 characters (2026-09-28).
         TES3Object::Sound(s) => vec![("FNAM", &s.id, &s.sound_path)],
-        // Имя региона показывается на карте; путь текстуры земли — как `MODL`.
+        // A region name is shown on the map; a land texture path is like `MODL`.
         TES3Object::Region(r) => vec![("FNAM", &r.id, &r.name)],
         TES3Object::LandscapeTexture(t) => vec![("DATA", &t.id, &t.file_name)],
-        // Имя заклинания — как `FNAM` предмета: предел 31 у ванили заведомо держится.
+        // A spell name is like an item's `FNAM`: vanilla certainly respects the 31 limit.
         TES3Object::Spell(s) => vec![("FNAM", &s.id, &s.name)],
         _ => Vec::new(),
     }

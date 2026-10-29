@@ -1,2 +1,2 @@
-# Скрипты bash запускаются и на Windows-раннере: CRLF ломает их, поэтому всегда LF.
+# Bash scripts also run on the Windows runner: CRLF breaks them, so always LF.
 *.sh text eol=lf

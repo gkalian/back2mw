@@ -1,21 +1,20 @@
-//! Сборка синтетических плагинов для тестов.
+//! Building synthetic plugins for tests.
 //!
-//! Нужна потому, что фаза 0 идёт без установленных игр: проверять разбор
-//! контейнера не на чем, кроме данных, которые мы построили сами. Заодно это
-//! позволяет строить входы, которых в реальных файлах почти не встретить —
-//! поле длиннее `u16`, сжатую запись, пустую группу.
+//! Needed because phase 0 runs without the games installed: there is nothing to check the container
+//! parsing on except data we built ourselves. It also lets us build inputs that are almost never
+//! seen in real files — a field longer than `u16`, a compressed record, an empty group.
 //!
-//! Ассетов Bethesda здесь нет и быть не может.
+//! There are no Bethesda assets here and there cannot be.
 
 use std::io::Write;
 
 use crate::container::{FLAG_COMPRESSED, GameFormat, Tag};
 
 fn as_u32(len: usize) -> u32 {
-    u32::try_from(len).expect("синтетические данные не бывают больше 4 ГиБ")
+    u32::try_from(len).expect("synthetic data is never larger than 4 GiB")
 }
 
-/// Поле записи. Если данные не влезают в `u16`, размер уезжает в `XXXX`.
+/// A record field. If the data does not fit into `u16`, the size moves into `XXXX`.
 pub fn field(tag: &Tag, data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(6 + data.len());
     match u16::try_from(data.len()) {
@@ -35,7 +34,7 @@ pub fn field(tag: &Tag, data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Запись. Сжимается, если во флагах стоит [`FLAG_COMPRESSED`].
+/// A record. It is compressed if the flags have [`FLAG_COMPRESSED`].
 pub fn record(format: GameFormat, tag: &Tag, form_id: u32, flags: u32, fields: &[u8]) -> Vec<u8> {
     let body = if flags & FLAG_COMPRESSED == 0 {
         fields.to_vec()
@@ -60,13 +59,14 @@ pub fn record(format: GameFormat, tag: &Tag, form_id: u32, flags: u32, fields: &
 fn compress(data: &[u8]) -> Vec<u8> {
     let mut out = as_u32(data.len()).to_le_bytes().to_vec();
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-    encoder.write_all(data).expect("запись в Vec не отказывает");
-    out.extend_from_slice(&encoder.finish().expect("запись в Vec не отказывает"));
+    encoder
+        .write_all(data)
+        .expect("writing to a Vec does not fail");
+    out.extend_from_slice(&encoder.finish().expect("writing to a Vec does not fail"));
     out
 }
 
-/// Группа. `groupSize` включает собственный заголовок — в отличие от `dataSize`
-/// записи, которая его не включает.
+/// A group. `groupSize` includes its own header — unlike a record's `dataSize`, which does not.
 pub fn group(format: GameFormat, label: &Tag, group_type: i32, content: &[u8]) -> Vec<u8> {
     let header_len = format.header_len();
     let mut out = Vec::with_capacity(header_len + content.len());
@@ -74,13 +74,13 @@ pub fn group(format: GameFormat, label: &Tag, group_type: i32, content: &[u8]) -
     out.extend_from_slice(&as_u32(header_len + content.len()).to_le_bytes());
     out.extend_from_slice(label);
     out.extend_from_slice(&group_type.to_le_bytes());
-    out.resize(header_len, 0); // stamp и прочее, нам безразличны
+    out.resize(header_len, 0); // stamp and the rest, we do not care
     out.extend_from_slice(content);
     out
 }
 
-/// Поля заголовка файла. `HEDR` обязан идти первым: по тому, лежит ли он сразу
-/// за 20-байтным заголовком, определяется формат — TES4 или TES5.
+/// File header fields. `HEDR` must come first: whether it lies right after the 20-byte header
+/// determines the format — TES4 or TES5.
 pub fn header_fields(num_records: u32) -> Vec<u8> {
     let mut hedr = Vec::with_capacity(12);
     hedr.extend_from_slice(&1.0f32.to_le_bytes());
@@ -89,7 +89,7 @@ pub fn header_fields(num_records: u32) -> Vec<u8> {
     field(b"HEDR", &hedr)
 }
 
-/// Целый плагин: заголовок `TES4` плюс готовые группы.
+/// A whole plugin: a `TES4` header plus ready groups.
 pub fn plugin(format: GameFormat, header_fields: &[u8], groups: &[Vec<u8>]) -> Vec<u8> {
     let mut out = record(format, b"TES4", 0, 0, header_fields);
     for group in groups {
@@ -98,18 +98,18 @@ pub fn plugin(format: GameFormat, header_fields: &[u8], groups: &[Vec<u8>]) -> V
     out
 }
 
-/// Синтетический BSA v103.
+/// A synthetic BSA v103.
 ///
-/// `files` — список `(путь, данные)`, пути вида `"folder\\file"` или `"folder/file"`.
-/// `compress` — флаг сжатия по умолчанию в архиве (`0x4` в заголовке).
+/// `files` is a list of `(path, data)`, paths like `"folder\\file"` or `"folder/file"`. `compress`
+/// is the archive's default compression flag (`0x4` in the header).
 ///
-/// **Последний файл** всегда несёт бит `0x4000_0000`, инвертирующий сжатие: его
-/// фактическое хранение противоположно умолчанию архива. Это позволяет проверить
-/// оба пути (сжатый и несжатый) из одного архива.
+/// **The last file** always carries the `0x4000_0000` bit that inverts compression: its actual
+/// storage is the opposite of the archive's default. This lets both paths (compressed and
+/// uncompressed) be checked from one archive.
 ///
-/// Хеши в записях папок и файлов выставлены в 0: ридер их не использует.
+/// Hashes in folder and file records are set to 0: the reader does not use them.
 pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
-    // --- разбор путей: (нижний_регистр_папки, нижний_регистр_имени_файла) ---
+    // --- path parsing: (lower_case_folder, lower_case_file_name) ---
     let parsed: Vec<(String, String)> = files
         .iter()
         .map(|(path, _)| {
@@ -120,9 +120,9 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
         })
         .collect();
 
-    // --- группировка по папкам (сохраняем порядок вставки) ---
+    // --- grouping by folder (keeping insertion order) ---
     let mut folder_order: Vec<String> = Vec::new();
-    // folder_files[folder] = индексы файлов в порядке вставки
+    // folder_files[folder] = file indices in insertion order
     let mut folder_files: std::collections::HashMap<String, Vec<usize>> =
         std::collections::HashMap::new();
     for (i, (folder, _)) in parsed.iter().enumerate() {
@@ -130,34 +130,31 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
             folder_order.push(folder.clone());
             folder_files.insert(folder.clone(), Vec::new());
         }
-        folder_files
-            .get_mut(folder)
-            .expect("только что создан")
-            .push(i);
+        folder_files.get_mut(folder).expect("just created").push(i);
     }
 
     let folder_count = folder_order.len();
     let file_count = files.len();
 
-    // totalFolderNameLength = Σ(len(имя папки) + 1 байт NUL), без байтов длины.
+    // totalFolderNameLength = Σ(len(folder name) + 1 NUL byte), without the length bytes.
     let total_folder_name_length: usize = folder_order.iter().map(|f| f.len() + 1).sum();
 
-    // totalFileNameLength = Σ(len(имя файла) + 1 байт NUL).
+    // totalFileNameLength = Σ(len(file name) + 1 NUL byte).
     let total_file_name_length: usize = parsed.iter().map(|(_, n)| n.len() + 1).sum();
 
     // archive_flags: 0x1 HAS_FOLDER_NAMES | 0x2 HAS_FILE_NAMES | 0x4 COMPRESSED
     let archive_flags: u32 = 0x003 | if default_compressed { 0x004 } else { 0x000 };
 
-    // Последний файл — с инвертирующим битом
+    // The last file has the inverting bit
     let inverted_idx = if file_count > 0 {
         file_count - 1
     } else {
         usize::MAX
     };
 
-    // --- хранимые данные каждого файла ---
-    // Если файл эффективно сжат: u32(original_size) + zlib(data).
-    // Если нет: сырые байты.
+    // --- stored data of each file ---
+    // If the file is effectively compressed: u32(original_size) + zlib(data).
+    // Otherwise: the raw bytes.
     let stored: Vec<Vec<u8>> = files
         .iter()
         .enumerate()
@@ -171,8 +168,8 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
         })
         .collect();
 
-    // --- размеры секций ---
-    // Блок папки: 1 (байт длины) + len(имя) + 1 (NUL) + 16 * file_count_in_folder
+    // --- section sizes ---
+    // Folder block: 1 (length byte) + len(name) + 1 (NUL) + 16 * file_count_in_folder
     let folder_blocks_size: usize = folder_order
         .iter()
         .map(|f| {
@@ -188,7 +185,7 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
     let data_start: usize =
         header_size + folder_records_size + folder_blocks_size + file_names_size;
 
-    // --- абсолютные смещения файловых данных ---
+    // --- absolute offsets of file data ---
     let mut file_offsets: Vec<u64> = Vec::with_capacity(file_count);
     {
         let mut cur = data_start;
@@ -198,10 +195,10 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
         }
     }
 
-    // --- сборка бинарника ---
+    // --- assembling the binary ---
     let mut out = Vec::<u8>::new();
 
-    // Заголовок 36 байт
+    // Header, 36 bytes
     out.extend_from_slice(b"BSA\0");
     out.extend_from_slice(&103u32.to_le_bytes()); // version
     out.extend_from_slice(&as_u32(header_size).to_le_bytes()); // folder_records_offset = 36
@@ -214,8 +211,8 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
 
     debug_assert_eq!(out.len(), 36);
 
-    // Записи папок: folder_count × 16 байт
-    // offset_raw = реальная_позиция_блока + total_file_name_length
+    // Folder records: folder_count × 16 bytes
+    // offset_raw = real_block_position + total_file_name_length
     let mut block_pos = header_size + folder_records_size;
     for folder in &folder_order {
         let fc = folder_files[folder].len();
@@ -225,18 +222,20 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
         out.extend_from_slice(&as_u32(fc).to_le_bytes());
         out.extend_from_slice(&offset_raw.to_le_bytes());
 
-        // Сдвигаем для следующей папки: 1(длина) + len(имя) + 1(NUL) + 16*fc
+        // Shift for the next folder: 1(length) + len(name) + 1(NUL) + 16*fc
         block_pos += folder.len() + 2 + 16 * fc;
     }
 
-    // Блоки файлов + сбор глобального порядка (совпадает с порядком имён)
+    // File blocks + collecting the global order (matches the name order)
     let mut global_order: Vec<usize> = Vec::with_capacity(file_count);
     for folder in &folder_order {
-        // Имя папки: u8 длины (включает NUL) + байты имени + NUL
+        // Folder name: a u8 length (includes the NUL) + the name bytes + NUL
         let fname_bytes = folder.as_bytes();
-        // Длина включает NUL: имена папок не длиннее 254 байт (один байт на длину).
+        // The length includes the NUL: folder names are no longer than 254 bytes (one byte for the
+        // length).
         out.push(
-            u8::try_from(fname_bytes.len() + 1).expect("имя папки не может быть длиннее 254 байт"),
+            u8::try_from(fname_bytes.len() + 1)
+                .expect("a folder name cannot be longer than 254 bytes"),
         );
         out.extend_from_slice(fname_bytes);
         out.push(0); // NUL
@@ -245,9 +244,9 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
             global_order.push(idx);
             let invert = idx == inverted_idx;
             let sz_raw = as_u32(stored[idx].len()) | if invert { 0x4000_0000 } else { 0 };
-            // BSA-смещения хранятся в u32; синтетические архивы никогда не превышают 4 ГиБ.
+            // BSA offsets are stored as u32; synthetic archives never exceed 4 GiB.
             let off = u32::try_from(file_offsets[idx])
-                .expect("смещение файла в синтетическом BSA помещается в u32");
+                .expect("a file offset in a synthetic BSA fits into u32");
 
             out.extend_from_slice(&0u64.to_le_bytes()); // hash = 0
             out.extend_from_slice(&sz_raw.to_le_bytes());
@@ -255,14 +254,14 @@ pub fn bsa(files: &[(&str, &[u8])], default_compressed: bool) -> Vec<u8> {
         }
     }
 
-    // Блок имён файлов (в порядке глобального обхода)
+    // File name block (in global traversal order)
     for &idx in &global_order {
         let (_, fname) = &parsed[idx];
         out.extend_from_slice(fname.as_bytes());
         out.push(0); // NUL
     }
 
-    // Данные файлов (в порядке оригинального индекса 0..N)
+    // File data (in original index order 0..N)
     for s in &stored {
         out.extend_from_slice(s);
     }

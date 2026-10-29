@@ -1,25 +1,25 @@
-//! Скиннинг Oblivion: `NiSkinInstance`, `NiSkinData`, `NiSkinPartition` (T9.2b).
+//! Oblivion skinning: `NiSkinInstance`, `NiSkinData`, `NiSkinPartition` (T9.2b).
 //!
-//! Раскладка — по `nif.xml` для 20.0.0.4: у `NiSkinInstance` есть ссылка на разбиение
-//! (с 10.1.0.101), у `NiSkinData` её уже нет (до 10.1.0.0), зато есть флаг «веса есть». Проверено
-//! на реальных мешах брони: курсор после последнего блока обязан стоять в конце файла.
+//! The layout follows `nif.xml` for 20.0.0.4: `NiSkinInstance` has a partition reference (since
+//! 10.1.0.101), `NiSkinData` no longer has it (up to 10.1.0.0) but has a "has weights" flag.
+//! Checked on real armor meshes: after the last block the cursor must stand at the end of the file.
 //!
-//! `NiSkinPartition` — разбиение формы на куски под аппаратный скиннинг. Morrowind его не
-//! знает (у 4.0.0.2 нет такого блока), и веса в нём дублируют `NiSkinData`, поэтому блок
-//! читается целиком, чтобы не съехать, но из него сохраняется только число кусков.
+//! `NiSkinPartition` is a split of a shape into pieces for hardware skinning. Morrowind does not
+//! know it (4.0.0.2 has no such block), and its weights duplicate `NiSkinData`, so the block is
+//! read in full so as not to drift, but only the number of pieces is kept.
 
 use super::common::{BlockRef, read_ref};
 use super::cursor::Cursor;
 use super::error::Result;
 
-/// `NiSkinInstance`: какие узлы — кости формы.
+/// `NiSkinInstance`: which nodes are the shape's bones.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NiSkinInstance {
     pub data: BlockRef,
     pub partition: BlockRef,
-    /// Корень скелета (у брони Oblivion — узел `Bip01` внутри того же файла).
+    /// The skeleton root (in Oblivion armor — the `Bip01` node inside the same file).
     pub root: BlockRef,
-    /// Кости в порядке `NiSkinData::bones`.
+    /// Bones in `NiSkinData::bones` order.
     pub bones: Vec<BlockRef>,
 }
 
@@ -38,7 +38,7 @@ pub fn read_skin_instance(cur: &mut Cursor<'_>) -> Result<NiSkinInstance> {
     })
 }
 
-/// Трансформ `NiTransform`: поворот (девять `f32` в порядке файла), сдвиг, масштаб.
+/// A `NiTransform`: rotation (nine `f32` in file order), translation, scale.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SkinTransform {
     pub rotation: [f32; 9],
@@ -54,21 +54,21 @@ fn read_transform(cur: &mut Cursor<'_>) -> Result<SkinTransform> {
     })
 }
 
-/// Данные одной кости.
+/// Data of one bone.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoneSkin {
-    /// Из пространства корня скелета в пространство кости в позе привязки.
+    /// From skeleton root space into bone space in the bind pose.
     pub transform: SkinTransform,
     pub bound_center: [f32; 3],
     pub bound_radius: f32,
-    /// (индекс вершины, вес).
+    /// (vertex index, weight).
     pub weights: Vec<(u16, f32)>,
 }
 
 /// `NiSkinData`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NiSkinData {
-    /// Из пространства корня скелета в пространство формы.
+    /// From skeleton root space into shape space.
     pub transform: SkinTransform,
     pub bones: Vec<BoneSkin>,
 }
@@ -101,7 +101,7 @@ pub fn read_skin_data(cur: &mut Cursor<'_>) -> Result<NiSkinData> {
     Ok(NiSkinData { transform, bones })
 }
 
-/// `NiSkinPartition`: сохраняется только число кусков, см. заголовок модуля.
+/// `NiSkinPartition`: only the number of pieces is kept, see the module header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NiSkinPartition {
     pub partitions: usize,
@@ -184,7 +184,7 @@ mod tests {
         let mut b = Vec::new();
         transform_bytes(&mut b, [0.0, 0.0, 0.0]);
         b.extend_from_slice(&1u32.to_le_bytes());
-        b.push(1); // есть веса
+        b.push(1); // has weights
         transform_bytes(&mut b, [1.0, 2.0, 3.0]);
         for v in [0.5f32, 0.5, 0.5, 9.0] {
             b.extend_from_slice(&v.to_le_bytes());
@@ -203,24 +203,24 @@ mod tests {
         assert_eq!(d.bones[0].weights, [(0, 1.0), (7, 0.25)]);
     }
 
-    /// Все флаги «есть» и треугольники вместо полос: каждая ветка раскладки съедает свои байты.
+    /// All "has" flags and triangles instead of strips: each layout branch eats its own bytes.
     #[test]
     fn skin_partition_consumes_every_optional_array() {
         let mut b = Vec::new();
         b.extend_from_slice(&1u32.to_le_bytes());
         for v in [3u16, 1, 2, 0, 2] {
-            // вершин, треугольников, костей, полос, весов на вершину
+            // vertices, triangles, bones, strips, weights per vertex
             b.extend_from_slice(&v.to_le_bytes());
         }
-        b.extend_from_slice(&[0, 0, 1, 0]); // кости
+        b.extend_from_slice(&[0, 0, 1, 0]); // bones
         b.push(1);
-        b.extend_from_slice(&[0; 6]); // карта вершин
+        b.extend_from_slice(&[0; 6]); // vertex map
         b.push(1);
-        b.extend_from_slice(&[0; 24]); // веса 3×2 f32
+        b.extend_from_slice(&[0; 24]); // weights 3×2 f32
         b.push(1);
-        b.extend_from_slice(&[0; 6]); // один треугольник
+        b.extend_from_slice(&[0; 6]); // one triangle
         b.push(1);
-        b.extend_from_slice(&[0; 6]); // индексы костей 3×2
+        b.extend_from_slice(&[0; 6]); // bone indices 3×2
         let mut cur = Cursor::new(&b);
         assert_eq!(
             read_skin_partition(&mut cur).unwrap(),

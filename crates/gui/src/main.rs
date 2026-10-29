@@ -1,17 +1,19 @@
-//! Графический интерфейс: пути к играм, список плагинов Oblivion, конвертация.
+//! Graphical interface: game paths, the list of Oblivion plugins, conversion.
 //!
-//! Вся логика — в библиотеке `back2mw` (поиск игр, список плагинов, настройки, задание
-//! конвертации, проверка, упаковка, установка и откат); здесь только окно. Долгая работа идёт в
-//! отдельном потоке, окно получает от него строки журнала и итог по каналу.
+//! All the logic is in the `back2mw` library (finding games, the plugin list, settings, the
+//! conversion job, checking, packaging, installing and rolling back); here there is only the
+//! window. Long work runs in a separate thread, and the window receives log lines and the result
+//! from it over a channel.
 //!
-//! Окно умеет всё, что консольная версия: кроме «Конвертировать» (сборка, BSA, установка одной
-//! кнопкой) — смещение мира, сборку без установки, раздаточный zip, отдельные проверку, упаковку
-//! и установку готового мода из папки результата, откат установки, выборку `EDID`, пути к
-//! `esmtool`/`niftest`, рабочему каталогу и папке результата, другой `config.toml` (кнопкой или
-//! `back2mw-gui.exe --config <файл>`). Язык — русский или английский (крейт `lang`): и окно,
-//! и журнал с ошибками библиотеки.
+//! The window can do everything the console version can: besides "Convert" (build, BSA,
+//! installation with one button) — the world offset, building without installing, the distribution
+//! zip, separate checking, packaging and installing of a finished mod from the result folder,
+//! rolling back an installation, an `EDID` selection, paths to `esmtool`/`niftest`, the work
+//! directory and the result folder, another `config.toml` (by a button or
+//! `back2mw-gui.exe --config <file>`). The language is Russian or English (the `lang` crate): both
+//! the window and the log with library errors.
 
-// В релизе на Windows — оконное приложение без консоли.
+// In a Windows release build — a windowed application without a console.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
@@ -33,7 +35,7 @@ use lang::Lang;
 const GREEN: egui::Color32 = egui::Color32::from_rgb(60, 160, 60);
 const AMBER: egui::Color32 = egui::Color32::from_rgb(200, 140, 0);
 const RED: egui::Color32 = egui::Color32::from_rgb(200, 60, 60);
-/// Поле ввода в «Дополнительно».
+/// An input field under "Advanced".
 const FIELD: [f32; 2] = [460.0, 20.0];
 
 fn main() -> eframe::Result {
@@ -58,7 +60,7 @@ fn main() -> eframe::Result {
     )
 }
 
-/// `--config <файл>` из командной строки, как у консольной версии.
+/// `--config <file>` from the command line, as in the console version.
 fn config_arg(mut args: impl Iterator<Item = String>) -> Option<PathBuf> {
     while let Some(arg) = args.next() {
         if arg == "--config" {
@@ -68,7 +70,7 @@ fn config_arg(mut args: impl Iterator<Item = String>) -> Option<PathBuf> {
     None
 }
 
-/// Размер файла для таблицы: «1.5 МБ» / «1.5 MB».
+/// File size for the table: "1.5 MB" in English, with Russian units in Russian.
 fn format_size(bytes: u64, lang: Lang) -> String {
     let units = lang.tr(["Б", "КБ", "МБ", "ГБ"], ["B", "KB", "MB", "GB"]);
     let mut value = bytes as f64;
@@ -84,7 +86,7 @@ fn format_size(bytes: u64, lang: Lang) -> String {
     }
 }
 
-/// `EDID` из поля «Только записи»: через запятую, точку с запятой или пробел.
+/// `EDID`s from the "Only records" field: separated by commas, semicolons or spaces.
 fn parse_only(text: &str) -> Vec<String> {
     text.split(|c: char| c == ',' || c == ';' || c.is_whitespace())
         .filter(|s| !s.is_empty())
@@ -92,13 +94,13 @@ fn parse_only(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Путь из поля ввода; пусто — не задан.
+/// A path from an input field; empty means not set.
 fn field_path(text: &str) -> Option<PathBuf> {
     let t = text.trim();
     (!t.is_empty()).then(|| PathBuf::from(t))
 }
 
-/// Подпись мира в списке: «SEWorld — Shivering Isles (Oblivion.esm), городов: 5».
+/// World label in the list: "SEWorld — Shivering Isles (Oblivion.esm), cities: 5".
 fn world_label(w: &WorldInfo, lang: Lang) -> String {
     let mut out = w.editor_id.clone();
     if let Some(name) = &w.name {
@@ -113,24 +115,25 @@ fn world_label(w: &WorldInfo, lang: Lang) -> String {
     out
 }
 
-/// Порядок в выпадающем списке миров: по `EDID` без учёта регистра (с него начинается подпись),
-/// при равных — по плагину. Порядок прихода из фоновых потоков для пользователя случаен.
+/// Order in the world drop-down: by `EDID`, case-insensitive (the label starts with it), and by
+/// plugin when equal. The order in which background threads deliver them is random from the user's
+/// point of view.
 fn sort_worlds(worlds: &mut [&WorldInfo]) {
     worlds.sort_by_cached_key(|w| (w.editor_id.to_lowercase(), w.plugin.to_lowercase()));
 }
 
-/// Строка таблицы.
+/// A table row.
 struct Row {
     info: PluginInfo,
     checked: bool,
 }
 
-/// Одна из двух игр в верхних рядах.
+/// One of the two games in the top rows.
 struct GameRow {
     label: &'static str,
-    /// Что показано в поле ввода.
+    /// What is shown in the input field.
     text: String,
-    /// Папка данных, если путь верный.
+    /// The data folder, if the path is valid.
     data: Option<PathBuf>,
 }
 
@@ -149,7 +152,7 @@ impl GameRow {
     }
 }
 
-/// Что делает фоновый поток — для подписи у крутилки.
+/// What the background thread is doing — for the label next to the spinner.
 #[derive(Clone, Copy)]
 enum Task {
     Convert,
@@ -171,39 +174,39 @@ impl Task {
     }
 }
 
-/// Итог последнего действия.
+/// Result of the last action.
 enum Outcome {
     Job(Result<Box<JobReport>, String>),
     Validate(Result<OutputCheck, String>),
     Package(Result<PackageReport, String>),
     Install(Result<InstallReport, String>),
     Uninstall(Result<UninstallReport, String>),
-    /// Действие не началось: не заданы пути, конфиг не читается и т. п.
+    /// The action did not start: paths are not set, the config cannot be read, and so on.
     Error(String),
 }
 
 enum Msg {
     Log(String),
     Done(Outcome),
-    /// Установка готового мода упёрлась в чужие файлы — спросить.
+    /// Installing a finished mod ran into other people's files — ask.
     Conflicts(Vec<String>),
 }
 
-/// Вопрос поверх окна.
+/// A question on top of the window.
 enum Confirm {
-    /// Перед конвертацией: в `Data Files` чужие файлы с именами наших.
+    /// Before conversion: `Data Files` has other people's files with our names.
     Job(Box<Job>, Vec<String>),
-    /// Установка из папки результата: то же.
+    /// Installation from the result folder: the same.
     Install(Vec<String>),
-    /// Откат установки.
+    /// Rolling back the installation.
     Uninstall,
 }
 
-/// Итог поиска worldspace в одном плагине.
+/// Result of the worldspace search in one plugin.
 type WorldScan = (String, Result<Vec<WorldInfo>, String>);
 
 struct App {
-    /// Контекст окна: фоновые потоки будят им перерисовку.
+    /// The window context: background threads use it to wake up a redraw.
     ctx: egui::Context,
     lang: Lang,
     config_path: PathBuf,
@@ -212,44 +215,45 @@ struct App {
     rows: Vec<Row>,
     list_error: Option<String>,
     pack_bsa: bool,
-    /// Подтянуть цены к Morrowind.
+    /// Bring prices in line with Morrowind.
     morrowind_prices: bool,
-    /// Карта мира для MWSE (`--lua-map`).
+    /// World map for MWSE (`--lua-map`).
     lua_map: bool,
-    /// Только собрать в папку результата, не устанавливать.
+    /// Only build into the result folder, do not install.
     build_only: bool,
-    /// Ещё и раздаточный zip.
+    /// Also the distribution zip.
     package_zip: bool,
     log: Vec<String>,
     running: Option<(Receiver<Msg>, Task)>,
     result: Option<Outcome>,
-    /// Ошибка чтения или сохранения настроек, если была.
+    /// Error reading or saving the settings, if there was one.
     save_error: Option<String>,
-    /// Игры найдены автоматически при этом запуске.
+    /// Games found automatically on this launch.
     auto_detected: bool,
-    /// Worldspace всех плагинов списка (без родителя), по мере поиска.
+    /// Worldspaces of all plugins in the list (without a parent), as the search goes.
     worlds: Vec<WorldInfo>,
-    /// Плагины, чьи worldspace не прочитались: имя и причина.
+    /// Plugins whose worldspaces could not be read: name and reason.
     world_errors: Vec<String>,
-    /// Идёт поиск worldspace в фоне.
+    /// A worldspace search is running in the background.
     world_scan: Option<Receiver<WorldScan>>,
-    /// Выбранный worldspace (`EDID`); `None` — только объекты.
+    /// The chosen worldspace (`EDID`); `None` means objects only.
     worldspace: Option<String>,
-    /// Своё смещение вместо умолчания (`--offset`).
+    /// A custom offset instead of the default (`--offset`).
     custom_offset: bool,
     offset: (i32, i32),
-    /// Поля «Дополнительно»: пусто — умолчание.
+    /// The "Advanced" fields: empty means the default.
     work_text: String,
     output_text: String,
     esmtool_text: String,
     niftest_text: String,
-    /// `--only`: не сохраняется — забытая выборка молча урезала бы следующую сборку.
+    /// `--only`: not saved — a forgotten selection would silently cut down the next build.
     only_text: String,
     confirm: Option<Confirm>,
 }
 
 impl App {
-    /// Окно по настройкам из `config_path`. `lang` — язык, если в файле он не записан.
+    /// The window from the settings in `config_path`. `lang` is the language if the file does not
+    /// record one.
     fn new(ctx: egui::Context, config_path: PathBuf, lang: Lang) -> Self {
         let (saved, load_error) = match settings::load(&config_path) {
             Ok(s) => (s, None),
@@ -261,7 +265,7 @@ impl App {
             .as_deref()
             .and_then(Lang::from_code)
             .unwrap_or(lang);
-        // Журнал, замечания и ошибки библиотеки — на языке окна.
+        // The log, notes and library errors are in the window's language.
         lang::set(lang);
         let mut app = Self {
             ctx,
@@ -286,7 +290,8 @@ impl App {
             world_scan: None,
             worldspace: saved.worldspace.clone(),
             custom_offset: saved.offset.is_some(),
-            // Умолчание для мира, чья юго-западная ячейка — (0, 0) (`pipeline::default_offset`).
+            // The default for a world whose south-western cell is (0, 0)
+            // (`pipeline::default_offset`).
             offset: saved
                 .offset
                 .unwrap_or((VANILLA_EXTERIOR.2 + 1 + WORLD_GAP, VANILLA_EXTERIOR.1)),
@@ -298,7 +303,7 @@ impl App {
             confirm: None,
         };
 
-        // Сохранённые пути проверяем заново: игру могли удалить или перенести.
+        // Saved paths are checked again: the game may have been removed or moved.
         if let Some(dir) = &saved.target_data
             && let Some(data) = detect::morrowind_data(dir)
         {
@@ -309,7 +314,7 @@ impl App {
         {
             app.oblivion.set(dir, data);
         }
-        // Чего нет — ищем в стандартных папках Steam и GOG.
+        // Whatever is missing is searched for in the standard Steam and GOG folders.
         if app.morrowind.data.is_none() || app.oblivion.data.is_none() {
             let found = detect::detect();
             if app.morrowind.data.is_none()
@@ -328,14 +333,14 @@ impl App {
             }
         }
         app.reload_plugins(&saved.selected_plugins);
-        // Битый файл не затираем: пусть игрок сначала его поправит.
+        // A broken file is not overwritten: let the player fix it first.
         if app.save_error.is_none() {
             app.save();
         }
         app
     }
 
-    /// Перечитывает список плагинов Oblivion. `selected` — что отметить.
+    /// Rereads the list of Oblivion plugins. `selected` is what to tick.
     fn reload_plugins(&mut self, selected: &[String]) {
         self.rows.clear();
         self.list_error = None;
@@ -358,8 +363,9 @@ impl App {
         self.scan_worlds();
     }
 
-    /// Ищет worldspace во всех читаемых плагинах списка — в фоне: `Oblivion.esm` весит 250 МБ.
-    /// Прежний поиск бросается: его поток увидит закрытый канал и остановится.
+    /// Searches for worldspaces in all readable plugins of the list — in the background:
+    /// `Oblivion.esm` weighs 250 MB. The previous search is abandoned: its thread will see the
+    /// closed channel and stop.
     fn scan_worlds(&mut self) {
         self.worlds.clear();
         self.world_errors.clear();
@@ -390,7 +396,7 @@ impl App {
         self.world_scan = Some(rx);
     }
 
-    /// Забирает найденные worldspace.
+    /// Collects the found worldspaces.
     fn poll_worlds(&mut self) {
         let Some(rx) = &self.world_scan else { return };
         loop {
@@ -406,7 +412,7 @@ impl App {
         }
     }
 
-    /// Worldspace отмеченных плагинов — из них и выбирают, по алфавиту.
+    /// Worldspaces of the ticked plugins — the choice is made among them, alphabetically.
     fn available_worlds(&self) -> Vec<&WorldInfo> {
         let mut out: Vec<&WorldInfo> = self
             .worlds
@@ -450,8 +456,9 @@ impl App {
         self.save_error = settings::save(&self.config_path, &s).err();
     }
 
-    /// Конфигурация, как её увидела бы консоль с флагами из полей «Дополнительно»: умолчания
-    /// `_back2mw-output` в папках игр, инструменты — ещё и из `BACK2MW_ESMTOOL`/`NIFTEST`.
+    /// The configuration as the console would see it with the flags from the "Advanced" fields: the
+    /// `_back2mw-output` defaults in the game folders, the tools — also from
+    /// `BACK2MW_ESMTOOL`/`NIFTEST`.
     fn resolved_config(&self) -> Result<config::Config, String> {
         let flags = Overrides {
             work_dir: field_path(&self.work_text),
@@ -467,7 +474,7 @@ impl App {
         self.running.is_some() || self.confirm.is_some()
     }
 
-    /// Отказ до начала действия: итог сразу, без журнала.
+    /// Refusal before the action starts: the result right away, without a log.
     fn refuse(&mut self, message: String) {
         self.log.clear();
         self.result = Some(Outcome::Error(message));
@@ -501,8 +508,8 @@ impl App {
             zip: self.package_zip,
             replace: Vec::new(),
         };
-        // До долгой сборки: не лежат ли в `Data Files` чужие плагины или архивы с теми же
-        // именами (скопированные руками, от другого инструмента). Есть — спросить.
+        // Before the long build: whether `Data Files` holds other people's plugins or archives with
+        // the same names (copied by hand, from another tool). If so, ask.
         if job.install {
             match install::foreign_files(&job.target_data, &back2mw::job::planned_files(&job)) {
                 Ok(foreign) if !foreign.is_empty() => {
@@ -526,7 +533,7 @@ impl App {
         });
     }
 
-    /// Запускает работу в фоновом потоке. `work` получает журнал и возвращает итог.
+    /// Starts work in a background thread. `work` receives the log and returns the result.
     fn spawn(
         &mut self,
         task: Task,
@@ -549,7 +556,7 @@ impl App {
         self.running = Some((rx, task));
     }
 
-    /// Папка результата и инструменты — для действий над готовым модом.
+    /// The result folder and the tools — for actions on a finished mod.
     fn output_dir(&mut self) -> Option<config::Config> {
         match self.resolved_config() {
             Ok(c) => Some(c),
@@ -560,7 +567,7 @@ impl App {
         }
     }
 
-    /// `validate`: `esmtool` и `niftest` по папке результата.
+    /// `validate`: `esmtool` and `niftest` on the result folder.
     fn run_validate(&mut self) {
         let Some(cfg) = self.output_dir() else { return };
         let lang = self.lang;
@@ -582,7 +589,7 @@ impl App {
         });
     }
 
-    /// `package [--bsa]`: zip из папки результата.
+    /// `package [--bsa]`: a zip from the result folder.
     fn run_package(&mut self) {
         let Some(cfg) = self.output_dir() else { return };
         let dir = cfg.output_dir;
@@ -595,8 +602,9 @@ impl App {
         });
     }
 
-    /// `install`: готовый мод из папки результата в `Data Files`. `replace` — чужие файлы,
-    /// которые разрешено заменить; пока их не спросили, конфликт возвращается вопросом.
+    /// `install`: the finished mod from the result folder into `Data Files`. `replace` holds other
+    /// people's files that may be replaced; until the player has been asked, a conflict comes back
+    /// as a question.
     fn run_install(&mut self, replace: Vec<String>) {
         let Some(target) = self.morrowind.data.clone() else {
             return;
@@ -616,7 +624,7 @@ impl App {
         });
     }
 
-    /// `uninstall`: откат по манифесту.
+    /// `uninstall`: rollback by the manifest.
     fn run_uninstall(&mut self) {
         let Some(target) = self.morrowind.data.clone() else {
             return;
@@ -629,7 +637,7 @@ impl App {
         });
     }
 
-    /// Забирает сообщения фонового потока.
+    /// Collects messages from the background thread.
     fn poll(&mut self) {
         let Some((rx, _)) = &self.running else { return };
         let mut finished = false;
@@ -655,7 +663,7 @@ impl App {
         rfd::FileDialog::new().set_title(title).pick_folder()
     }
 
-    /// Ряд «путь к игре». Возвращает `true`, если путь изменился.
+    /// A "path to the game" row. Returns `true` if the path changed.
     fn game_row(
         ui: &mut egui::Ui,
         lang: Lang,
@@ -711,7 +719,7 @@ impl App {
         changed
     }
 
-    /// Ряд «Дополнительно»: подпись, поле, «Обзор…» (папка или файл). `true` — поле изменилось.
+    /// An "Advanced" row: label, field, "Browse…" (folder or file). `true` means the field changed.
     fn path_row(
         ui: &mut egui::Ui,
         lang: Lang,
@@ -722,7 +730,8 @@ impl App {
         enabled: bool,
     ) -> bool {
         ui.label(label);
-        // В `Grid` поле не знает своей ширины (`desired_width` там не действует) — задаём явно.
+        // In a `Grid` the field does not know its width (`desired_width` has no effect there) — set
+        // it explicitly.
         let mut changed = ui
             .add_enabled_ui(enabled, |ui| {
                 ui.add_sized(FIELD, egui::TextEdit::singleline(text).hint_text(hint))
@@ -748,7 +757,7 @@ impl App {
         changed
     }
 
-    /// Окно-вопрос. `Some(true)` — да, `Some(false)` — отмена, `None` — ещё не ответили.
+    /// A question window. `Some(true)` — yes, `Some(false)` — cancel, `None` — not answered yet.
     fn confirm_window(ctx: &egui::Context, lang: Lang, confirm: &Confirm) -> Option<bool> {
         let mut answer = None;
         let (title, yes) = match confirm {
@@ -804,7 +813,7 @@ impl App {
         answer
     }
 
-    /// Итог последнего действия над журналом.
+    /// Result of the last action, above the log.
     fn show_outcome(ui: &mut egui::Ui, lang: Lang, outcome: &Outcome) {
         let error = |ui: &mut egui::Ui, e: &str| {
             ui.colored_label(RED, lang.tr(format!("Ошибка: {e}"), format!("Error: {e}")));
@@ -1014,14 +1023,14 @@ impl App {
 impl eframe::App for App {
     #[expect(
         clippy::too_many_lines,
-        reason = "раскладка окна сверху вниз; части уже вынесены в методы"
+        reason = "window layout from top to bottom; the parts are already split into methods"
     )]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
         self.poll_worlds();
         let lang = self.lang;
 
-        // Вопрос — поверх окна; пока он открыт, остальное неактивно.
+        // The question is on top of the window; while it is open, the rest is inactive.
         if let Some(confirm) = &self.confirm {
             match (
                 Self::confirm_window(ctx, lang, confirm),
@@ -1042,8 +1051,8 @@ impl eframe::App for App {
         let mut changed = false;
         let mut reload = false;
         let mut switch_config = None;
-        // Выбранный мир пропал из отмеченных файлов (сняли галочку, файла нет) — сбросить.
-        // Пока поиск идёт, не трогаем: список ещё неполный.
+        // The chosen world disappeared from the ticked files (unticked, file missing) — reset it.
+        // While the search is running, leave it alone: the list is still incomplete.
         if self.world_scan.is_none()
             && let Some(w) = &self.worldspace
             && !self
@@ -1055,11 +1064,12 @@ impl eframe::App for App {
             changed = true;
         }
 
-        // Верхняя полоса: переключатель языка в правом углу.
+        // The top bar: the language switch in the right corner.
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.strong("back2mw");
-                // «→» в шрифте egui нет — квадратик; стрелка есть только в заголовке окна.
+                // The egui font has no "→" — it shows a box; the arrow exists only in the window
+                // title.
                 ui.weak("Oblivion - Morrowind");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     for (code, value) in [("EN", Lang::En), ("RU", Lang::Ru)] {
@@ -1071,7 +1081,7 @@ impl eframe::App for App {
                             && self.lang != value
                         {
                             self.lang = value;
-                            // Уже показанные строки журнала остаются на прежнем языке.
+                            // Log lines already shown stay in the previous language.
                             lang::set(value);
                             changed = true;
                         }
@@ -1080,7 +1090,7 @@ impl eframe::App for App {
             });
         });
 
-        // Нижний ряд: как собрать, кнопка «Конвертировать», откат установки.
+        // The bottom row: how to build, the "Convert" button, rolling back the installation.
         egui::TopBottomPanel::bottom("actions").show(ctx, |ui| {
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
@@ -1182,7 +1192,7 @@ impl eframe::App for App {
             ui.add_space(6.0);
         });
 
-        // Журнал и итог.
+        // The log and the result.
         if busy || !self.log.is_empty() || self.result.is_some() {
             egui::TopBottomPanel::bottom("log")
                 .resizable(true)
@@ -1246,7 +1256,7 @@ impl eframe::App for App {
                 "Models (meshes, textures, collision) of statics, items, weapons, armor etc. are taken from the plugins as Morrowind static objects.",
             ));
 
-            // Выбор мира: только из отмеченных файлов.
+            // World choice: only from the ticked files.
             let options: Vec<(String, String)> = self
                 .available_worlds()
                 .iter()
@@ -1263,7 +1273,8 @@ impl eframe::App for App {
                         .map_or_else(|| w.clone(), |(_, label)| label.clone()),
                 };
                 ui.add_enabled_ui(!busy, |ui| {
-                    // Миров в `Oblivion.esm` 54: по умолчанию видно ~9 строк, делаем ~20.
+                    // `Oblivion.esm` has 54 worlds: by default about 9 rows are visible, we make it
+                    // about 20.
                     let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
                     egui::ComboBox::from_id_salt("worldspace")
                         .width(460.0)
@@ -1317,7 +1328,7 @@ impl eframe::App for App {
                         w.editor_id, w.plugin
                     ),
                 ));
-                // Смещение (`--offset`).
+                // Offset (`--offset`).
                 ui.horizontal(|ui| {
                     ui.add_enabled_ui(!busy, |ui| {
                         changed |= ui
@@ -1345,7 +1356,7 @@ impl eframe::App for App {
                         "By default the world's west edge is 8 cells east of Vvardenfell and its south edge is level with Vvardenfell's.",
                     )
                 });
-                // Карта мира для MWSE (`--lua-map`).
+                // World map for MWSE (`--lua-map`).
                 ui.add_enabled_ui(!busy, |ui| {
                     changed |= ui
                         .checkbox(
@@ -1370,7 +1381,7 @@ impl eframe::App for App {
                 );
             }
 
-            // Всё остальное, что умеет консоль.
+            // Everything else the console can do.
             egui::CollapsingHeader::new(lang.tr("Дополнительно", "Advanced"))
                 .id_salt("advanced")
                 .show(ui, |ui| {
@@ -1386,7 +1397,7 @@ impl eframe::App for App {
                         {
                             switch_config = Some(p);
                         }
-                        // Длинный путь обрезается, целиком — в подсказке.
+                        // A long path is truncated; the full one is in the tooltip.
                         let shown = self.config_path.display().to_string();
                         ui.add(egui::Label::new(egui::RichText::new(&shown).monospace()).truncate())
                             .on_hover_text(shown);

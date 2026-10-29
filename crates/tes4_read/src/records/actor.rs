@@ -1,19 +1,19 @@
-//! Актёры Oblivion (фаза 7): `RACE`, `CLAS`, `FACT`, `NPC_`.
+//! Oblivion actors (phase 7): `RACE`, `CLAS`, `FACT`, `NPC_`.
 //!
-//! Раскладки — UESP («Oblivion Mod:Mod File Format/CLAS, FACT, NPC_») и OpenMW
-//! (`components/esm4/loadnpc.cpp`, `actor.hpp`, `loadrace.cpp`), сверены на `Oblivion.esm`
-//! 2026-09-27 (`docs/ru/formats/tes4.md`, «Актёры»).
+//! The layouts come from UESP ("Oblivion Mod:Mod File Format/CLAS, FACT, NPC_") and OpenMW
+//! (`components/esm4/loadnpc.cpp`, `actor.hpp`, `loadrace.cpp`), checked on `Oblivion.esm` on
+//! 2026-09-27 (`docs/en/formats/tes4.md`, "Actors").
 
 use crate::container::Tag;
 use crate::cp1252;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// Код первого навыка в «actor value» Oblivion: навыки идут подряд 12…32 в порядке
-/// [`SKILL_NAMES`]; атрибуты — 0…7.
+/// Code of the first skill among Oblivion "actor values": the skills go in a row 12…32 in
+/// [`SKILL_NAMES`] order; attributes are 0…7.
 pub const SKILL_AV_FIRST: u32 = 12;
 
-/// 21 навык Oblivion в порядке `DATA` `NPC_` и кодов 12…32.
+/// 21 Oblivion skills in the order of the `NPC_` `DATA` and codes 12…32.
 pub const SKILL_NAMES: [&str; 21] = [
     "Armorer",
     "Athletics",
@@ -38,23 +38,31 @@ pub const SKILL_NAMES: [&str; 21] = [
     "Speechcraft",
 ];
 
-/// `RACE` `DATA` флаг: доступна игроку.
+/// `RACE` `DATA` flag: playable.
 pub const RACE_PLAYABLE: u32 = 0x1;
 
-/// `ACBS` флаги `NPC_` (UESP; OpenMW `loadnpc.hpp`, `TES4_*`).
+/// `NPC_` `ACBS` flags (UESP; OpenMW `loadnpc.hpp`, `TES4_*`).
 pub const NPC_FEMALE: u32 = 0x1;
 pub const NPC_ESSENTIAL: u32 = 0x2;
 pub const NPC_RESPAWN: u32 = 0x8;
 pub const NPC_AUTOCALC: u32 = 0x10;
-/// Уровень — смещение от уровня игрока в пределах calcMin…calcMax.
+/// The level is an offset from the player's level within calcMin…calcMax.
 pub const NPC_PC_LEVEL_OFFSET: u32 = 0x80;
 
 pub(super) fn u16_at(raw: &[u8], at: usize) -> u16 {
-    u16::from_le_bytes(raw[at..at + 2].try_into().expect("срез ровно 2 байта"))
+    u16::from_le_bytes(
+        raw[at..at + 2]
+            .try_into()
+            .expect("the slice is exactly 2 bytes"),
+    )
 }
 
 pub(super) fn u32_at(raw: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
 pub(super) fn f32_at(raw: &[u8], at: usize) -> f32 {
@@ -70,7 +78,7 @@ fn size_error(record: &'static str, field: Tag, expected: usize, got: usize) -> 
     }
 }
 
-/// Все повторы поля фиксированного размера.
+/// All repeats of a fixed-size field.
 pub(super) fn repeated<const N: usize>(fields: &Fields<'_>, tag: Tag) -> Result<Vec<[u8; N]>> {
     fields
         .all(tag)
@@ -81,36 +89,37 @@ pub(super) fn repeated<const N: usize>(fields: &Fields<'_>, tag: Tag) -> Result<
         .collect()
 }
 
-/// Раса. `DATA` — 36 байт у всех 15: 7 пар (код навыка u8, бонус i8; код 255 — пусто), 2 байта
-/// заполнения, рост мужчин и женщин, вес мужчин и женщин (f32), флаги (u32). `ATTR` — 16 байт:
-/// 8 атрибутов мужчин, затем 8 женщин, в порядке Strength … Luck.
+/// A race. `DATA` is 36 bytes in all 15: 7 pairs (skill code u8, bonus i8; code 255 means empty), 2
+/// padding bytes, male and female height, male and female weight (f32), flags (u32). `ATTR` is 16
+/// bytes: 8 male attributes, then 8 female, in Strength … Luck order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Race {
     pub editor_id: String,
     pub name: Option<String>,
     pub description: Option<String>,
-    /// Код навыка (12…32) и бонус, без пустых.
+    /// Skill code (12…32) and bonus, without empty ones.
     pub skill_bonuses: Vec<(u8, i8)>,
-    /// Мужчины, женщины.
+    /// Male, female.
     pub height: [f32; 2],
     pub weight: [f32; 2],
     pub flags: u32,
-    /// `[мужчины, женщины]`, в каждом 8 атрибутов.
+    /// `[male, female]`, 8 attributes each.
     pub attributes: [[u8; 8]; 2],
-    /// `SPLO`: врождённые заклинания.
+    /// `SPLO`: innate spells.
     pub spells: Vec<u32>,
-    /// Части головы (`NAM0`: `INDX` + `MODL`/`ICON`): 0 голова, 1–2 уши м/ж, 3 рот, 4–5 зубы
-    /// низ/верх, 6 язык, 7–8 глаза л/п (фаза 8).
+    /// Head parts (`NAM0`: `INDX` + `MODL`/`ICON`): 0 head, 1–2 ears m/f, 3 mouth, 4–5 teeth
+    /// lower/upper, 6 tongue, 7–8 eyes l/r (phase 8).
     pub head_parts: Vec<HeadPart>,
-    /// Лицо расы по умолчанию.
+    /// The race's default face.
     pub face: Face,
-    /// `VNAM`: раса, чьим голосом говорят `[мужчины, женщины]` (T10.8); 0 или нет поля — свой голос.
-    /// У `Oblivion.esm` бретонки — имперским, тёмные и лесные эльфы — высоких, орки — нордов, хаджиты
-    /// — аргониан: папок голоса этих рас в архивах нет.
+    /// `VNAM`: the race whose voice `[male, female]` use (T10.8); 0 or no field means their own
+    /// voice. In `Oblivion.esm` Breton women speak with the Imperial voice, Dark and Wood Elves
+    /// with the High Elf one, Orcs with the Nord one, Khajiit with the Argonian one: the archives
+    /// have no voice folders for these races.
     pub voices: [u32; 2],
 }
 
-/// Часть головы расы. Пути — относительно `Meshes\` и `Textures\`, как в файле.
+/// A race head part. Paths are relative to `Meshes\` and `Textures\`, as in the file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HeadPart {
     pub index: u32,
@@ -118,7 +127,7 @@ pub struct HeadPart {
     pub texture: Option<String>,
 }
 
-/// Части головы: поля между `NAM0` и `NAM1`, `INDX` открывает часть.
+/// Head parts: fields between `NAM0` and `NAM1`, an `INDX` opens a part.
 fn head_parts(fields: &Fields<'_>) -> Result<Vec<HeadPart>> {
     let mut out: Vec<HeadPart> = Vec::new();
     let mut inside = false;
@@ -167,8 +176,7 @@ impl FromFields for Race {
             .map(|i| (data[2 * i], i8::from_le_bytes([data[2 * i + 1]])))
             .filter(|&(skill, _)| skill != u8::MAX)
             .collect();
-        let half =
-            |from: usize| -> [u8; 8] { attr[from..from + 8].try_into().expect("8 байт") };
+        let half = |from: usize| -> [u8; 8] { attr[from..from + 8].try_into().expect("8 bytes") };
         Ok(Self {
             editor_id: fields.zstring(*b"EDID")?,
             name: fields.opt_zstring(*b"FULL"),
@@ -192,7 +200,7 @@ impl FromFields for Race {
     }
 }
 
-/// Причёска `HAIR`: меш и серая текстура (цвет даёт `HCLR` NPC).
+/// `HAIR` hair: a mesh and a gray texture (the color comes from the NPC's `HCLR`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hair {
     pub editor_id: String,
@@ -215,7 +223,7 @@ impl FromFields for Hair {
     }
 }
 
-/// Глаза `EYES`: текстура глазного яблока.
+/// `EYES` eyes: the eyeball texture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Eyes {
     pub editor_id: String,
@@ -234,10 +242,10 @@ impl FromFields for Eyes {
     }
 }
 
-/// Класс. `DATA` — 48 байт (31 класс) или 52 (80): главные атрибуты (2 × u32, коды 0…7),
-/// специализация (u32: 0 бой, 1 магия, 2 скрытность), 7 основных навыков (u32, коды 12…32),
-/// флаги (u32: 0x1 игровой, 0x2 стражник), услуги (u32, как `AIDT` `NPC_`); у 52-байтного ещё
-/// навык и предел обучения (u8, u8) и 2 байта заполнения.
+/// A class. `DATA` is 48 bytes (31 classes) or 52 (80): major attributes (2 × u32, codes 0…7),
+/// specialization (u32: 0 combat, 1 magic, 2 stealth), 7 major skills (u32, codes 12…32), flags
+/// (u32: 0x1 playable, 0x2 guard), services (u32, as in the `NPC_` `AIDT`); the 52-byte one also
+/// has a skill and a training limit (u8, u8) and 2 padding bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
     pub editor_id: String,
@@ -248,7 +256,7 @@ pub struct Class {
     pub major_skills: [u32; 7],
     pub flags: u32,
     pub services: u32,
-    /// Навык (код) и предел обучения; `None` у 48-байтного `DATA`.
+    /// Skill (code) and training limit; `None` for a 48-byte `DATA`.
     pub training: Option<(u8, u8)>,
 }
 
@@ -275,7 +283,7 @@ impl FromFields for Class {
     }
 }
 
-/// Ранг фракции: `RNAM` (номер, i32) и следующие за ним `MNAM`/`FNAM` (титулы) до следующего
+/// A faction rank: `RNAM` (number, i32) and the `MNAM`/`FNAM` (titles) following it up to the next
 /// `RNAM`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FactionRank {
@@ -284,11 +292,11 @@ pub struct FactionRank {
     pub female: Option<String>,
 }
 
-/// `FACT` `DATA` флаг: скрыта от игрока.
+/// `FACT` `DATA` flag: hidden from the player.
 pub const FACTION_HIDDEN: u8 = 0x1;
 
-/// Фракция. `DATA` — 1 байт флагов (0x1 скрыта, 0x2 злая, 0x4 особый бой); `XNAM` — 8 байт
-/// (`FormID` фракции, отношение i32), повторяется; рангов у 392 из 476 нет, больше всего — 10.
+/// A faction. `DATA` is 1 byte of flags (0x1 hidden, 0x2 evil, 0x4 special combat); `XNAM` is 8
+/// bytes (faction `FormID`, reaction i32), repeated; 392 of 476 have no ranks, the most is 10.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Faction {
     pub editor_id: String,
@@ -350,24 +358,23 @@ impl FromFields for Faction {
     }
 }
 
-/// `AIDT` — 12 байт у всех 2 482 `NPC_` и 914 `CREA` `Oblivion.esm`.
+/// `AIDT` is 12 bytes in all 2,482 `NPC_` and 914 `CREA` of `Oblivion.esm`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AiData {
     pub aggression: u8,
     pub confidence: u8,
     pub energy: u8,
     pub responsibility: u8,
-    /// Что покупает и продаёт, какие услуги: 0x1 оружие, 0x2 броня, 0x4 одежда, 0x8 книги,
-    /// 0x10 ингредиенты, 0x80 свет, 0x100 инструменты, 0x400 прочее, 0x800 заклинания,
-    /// 0x1000 магические вещи, 0x2000 зелья, 0x4000 обучение, 0x10000 перезарядка,
-    /// 0x20000 починка (UESP).
+    /// What it buys and sells, which services: 0x1 weapons, 0x2 armor, 0x4 clothing, 0x8 books,
+    /// 0x10 ingredients, 0x80 lights, 0x100 apparatus, 0x400 misc, 0x800 spells, 0x1000 magic
+    /// items, 0x2000 potions, 0x4000 training, 0x10000 recharge, 0x20000 repair (UESP).
     pub services: u32,
     pub train_skill: u8,
     pub train_level: u8,
 }
 
 impl AiData {
-    /// `AIDT` — 12 байт, одинаково у `NPC_` и `CREA`.
+    /// `AIDT` is 12 bytes, the same for `NPC_` and `CREA`.
     pub(super) fn from_aidt(aidt: &[u8; 12]) -> Self {
         Self {
             aggression: aidt[0],
@@ -381,9 +388,9 @@ impl AiData {
     }
 }
 
-/// `DATA` `NPC_` — 33 байта: 21 навык (u8, порядок [`SKILL_NAMES`]), здоровье (u32), 8 атрибутов
-/// (u8, Strength … Luck — тот же порядок, что у Morrowind). При автоподсчёте Morrowind не нужны;
-/// читаются для отложенного варианта «числа Oblivion».
+/// `NPC_` `DATA` is 33 bytes: 21 skills (u8, [`SKILL_NAMES`] order), health (u32), 8 attributes
+/// (u8, Strength … Luck — the same order as in Morrowind). With auto-calculation Morrowind does not
+/// need them; they are read for the deferred "Oblivion numbers" option.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NpcStats {
     pub skills: [u8; 21],
@@ -391,9 +398,9 @@ pub struct NpcStats {
     pub attributes: [u8; 8],
 }
 
-/// Лицо FaceGen (фаза 8): коэффициенты морфов `.egm` (`FGGS` 50 симметричных, `FGGA` 30
-/// асимметричных) и `.egt` (`FGTS` 50) — f32 подряд. У всех 2 482 NPC и 15 рас `Oblivion.esm`:
-/// 200, 120 и 200 байт (T7.1).
+/// FaceGen face (phase 8): the morph coefficients of `.egm` (`FGGS` 50 symmetric, `FGGA` 30
+/// asymmetric) and `.egt` (`FGTS` 50) — f32 in a row. In all 2,482 NPCs and 15 races of
+/// `Oblivion.esm`: 200, 120 and 200 bytes (T7.1).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Face {
     pub geometry_symmetric: Vec<f32>,
@@ -406,7 +413,7 @@ fn floats(fields: &Fields<'_>, tag: Tag) -> Result<Vec<f32>> {
         None => Ok(Vec::new()),
         Some(raw) if raw.len().is_multiple_of(4) => Ok(raw
             .chunks_exact(4)
-            .map(|c| f32::from_le_bytes(c.try_into().expect("4 байта")))
+            .map(|c| f32::from_le_bytes(c.try_into().expect("4 bytes")))
             .collect()),
         Some(raw) => Err(size_error(
             fields.record_name(),
@@ -432,33 +439,33 @@ impl Face {
 pub struct Npc {
     pub editor_id: String,
     pub name: Option<String>,
-    /// `ACBS` флаги: [`NPC_FEMALE`], [`NPC_ESSENTIAL`], [`NPC_PC_LEVEL_OFFSET`] …
+    /// `ACBS` flags: [`NPC_FEMALE`], [`NPC_ESSENTIAL`], [`NPC_PC_LEVEL_OFFSET`] …
     pub flags: u32,
     pub base_spell: u16,
     pub fatigue: u16,
     pub barter_gold: u16,
-    /// Уровень или, с [`NPC_PC_LEVEL_OFFSET`], смещение от уровня игрока.
+    /// The level or, with [`NPC_PC_LEVEL_OFFSET`], an offset from the player's level.
     pub level: i16,
     pub calc_min: u16,
     pub calc_max: u16,
     pub race: u32,
     pub class: Option<u32>,
-    /// `SNAM`: фракция и ранг, в порядке файла.
+    /// `SNAM`: faction and rank, in file order.
     pub factions: Vec<(u32, i8)>,
-    /// `CNTO`: предмет (или уровневый список) и число.
+    /// `CNTO`: an item (or a leveled list) and a count.
     pub items: Vec<(u32, i32)>,
     pub spells: Vec<u32>,
     pub ai: AiData,
-    /// `PKID` — ИИ-пакеты по порядку.
+    /// `PKID` — AI packages in order.
     pub packages: Vec<u32>,
     pub hair: Option<u32>,
     pub eyes: Option<u32>,
     pub script: Option<u32>,
     pub stats: NpcStats,
     pub face: Face,
-    /// `HCLR`: цвет волос R, G, B (четвёртый байт — мусор).
+    /// `HCLR`: hair color R, G, B (the fourth byte is junk).
     pub hair_color: Option<[u8; 3]>,
-    /// `LNAM`: длина волос (f32; смысл для переноса — не нужен, читается для полноты).
+    /// `LNAM`: hair length (f32; not needed for the conversion, read for completeness).
     pub hair_length: Option<f32>,
 }
 
@@ -503,9 +510,9 @@ impl FromFields for Npc {
             eyes: fields.opt_u32(*b"ENAM")?,
             script: fields.opt_u32(*b"SCRI")?,
             stats: NpcStats {
-                skills: data[0..21].try_into().expect("21 байт"),
+                skills: data[0..21].try_into().expect("21 bytes"),
                 health: u32_at(&data, 21),
-                attributes: data[25..33].try_into().expect("8 байт"),
+                attributes: data[25..33].try_into().expect("8 bytes"),
             },
             face: Face::read(fields)?,
             hair_color: fields.opt_fixed::<4>(*b"HCLR")?.map(|c| [c[0], c[1], c[2]]),
@@ -514,19 +521,20 @@ impl FromFields for Npc {
     }
 }
 
-/// Тип пакета ИИ «бродить» (`PKDT`).
+/// The "wander" AI package type (`PKDT`).
 pub const PACKAGE_WANDER: u8 = 5;
 
-/// Пакет ИИ — только то, что нужно для wander на месте (решение владельца 2026-09-27).
+/// An AI package — only what is needed for wandering in place (owner's decision 2026-09-27).
 ///
-/// `PKDT` — 8 байт (флаги u32, тип u8, 3 байта) у 6 648 из 7 209 `PACK` `Oblivion.esm`, 4 байта
-/// (флаги u16, тип u8, байт) у 561; `PLDT` — 12 байт (тип места i32, цель u32, радиус i32) у 6 576
-/// (2026-09-27, скрипт по файлу; раскладка по UESP «Mod File Format/PACK»).
+/// `PKDT` is 8 bytes (flags u32, type u8, 3 bytes) in 6,648 of 7,209 `PACK` records of
+/// `Oblivion.esm`, 4 bytes (flags u16, type u8, a byte) in 561; `PLDT` is 12 bytes (location type
+/// i32, target u32, radius i32) in 6,576 (2026-09-27, a script over the file; layout per UESP "Mod
+/// File Format/PACK").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Package {
-    /// 0 найти, 1 следовать, 2 сопровождать, 3 есть, 4 спать, 5 бродить, 6 идти, …
+    /// 0 find, 1 follow, 2 escort, 3 eat, 4 sleep, 5 wander, 6 travel, …
     pub kind: u8,
-    /// Радиус места, юниты; `None` — места нет.
+    /// Location radius, units; `None` means no location.
     pub radius: Option<i32>,
 }
 

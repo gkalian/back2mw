@@ -1,16 +1,16 @@
-//! Havok-блоки Oblivion: коллизия статики.
+//! Oblivion Havok blocks: static collision.
 //!
-//! Многие поля — «unused» в терминах `nif.xml`, это выравнивание Havok; читаются, чтобы
-//! курсор шёл правильно, и в модель не попадают.
+//! Many fields are "unused" in `nif.xml` terms — this is Havok alignment; they are read to keep the
+//! cursor right and do not go into the model.
 
 use super::common::{BlockRef, read_ref, read_ref_list};
 use super::cursor::Cursor;
 use super::error::Result;
 
-/// `HavokFilter`: слой, флаги, группа — упакованы в 4 байта.
+/// `HavokFilter`: layer, flags, group — packed into 4 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HavokFilter {
-    /// `OblivionLayer`: 1 — статика, 2 — анимированная статика, 5 — клаттер и т. д.
+    /// `OblivionLayer`: 1 — static, 2 — animated static, 5 — clutter, and so on.
     pub layer: u8,
     pub flags: u8,
     pub group: u16,
@@ -27,7 +27,7 @@ fn read_filter(cur: &mut Cursor<'_>) -> Result<HavokFilter> {
 /// `bhkCollisionObject`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BhkCollisionObject {
-    /// Узел, которому принадлежит коллизия (`Ptr`).
+    /// The node the collision belongs to (`Ptr`).
     pub target: BlockRef,
     pub flags: u16,
     pub body: BlockRef,
@@ -41,21 +41,21 @@ pub fn read_collision_object(cur: &mut Cursor<'_>) -> Result<BhkCollisionObject>
     })
 }
 
-/// `bhkRigidBody` и `bhkRigidBodyT` (раскладка одна, различает лишь тип).
+/// `bhkRigidBody` and `bhkRigidBodyT` (one layout, only the type differs).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkRigidBody {
-    /// `bhkRigidBodyT`: сдвиг и поворот тела действуют.
+    /// `bhkRigidBodyT`: the body's translation and rotation apply.
     pub translated: bool,
     pub shape: BlockRef,
     pub filter: HavokFilter,
-    /// Сдвиг тела в havok-юнитах (четвёртая компонента — выравнивание).
+    /// Body translation in havok units (the fourth component is padding).
     pub translation: [f32; 4],
-    /// Кватернион `x y z w`.
+    /// Quaternion `x y z w`.
     pub rotation: [f32; 4],
     pub mass: f32,
     pub friction: f32,
     pub restitution: f32,
-    /// `hkMotionType`: 1 — динамика … 7 — «замороженный»; для статики — 7 или 1.
+    /// `hkMotionType`: 1 — dynamic … 7 — "keyframed"; for statics, 7 or 1.
     pub motion_system: u8,
     pub quality_type: u8,
     pub constraints: Vec<BlockRef>,
@@ -63,39 +63,39 @@ pub struct BhkRigidBody {
 }
 
 pub fn read_rigid_body(cur: &mut Cursor<'_>, translated: bool) -> Result<BhkRigidBody> {
-    // bhkWorldObject; у 10.0.1.x после формы ещё `u32`.
+    // bhkWorldObject; in 10.0.1.x there is one more `u32` after the shape.
     let shape = read_ref(cur)?;
     if cur.version() <= 0x0A00_0102 {
         cur.u32()?;
     }
     let filter = read_filter(cur)?;
-    // Информация о мире: 4 + broad phase (1) + 3 + property (12).
+    // World info: 4 + broad phase (1) + 3 + property (12).
     cur.bytes(4 + 1 + 3 + 12)?;
-    // bhkEntity: отклик, 1 байт, задержка callback.
+    // bhkEntity: response, 1 byte, callback delay.
     cur.bytes(1 + 1 + 2)?;
-    // bhkRigidBodyCInfo550_660; первые 16 байт и три `f32` скоростей — с 10.1.0.0.
+    // bhkRigidBodyCInfo550_660; the first 16 bytes and three velocity `f32` since 10.1.0.0.
     let old = cur.version() < 0x0A01_0000;
     if !old {
         cur.bytes(4)?; // unused 01
-        let _cinfo_filter = read_filter(cur)?; // дублирует filter выше
+        let _cinfo_filter = read_filter(cur)?; // duplicates the filter above
         cur.bytes(4)?; // unused 02
-        cur.bytes(1 + 1 + 2)?; // отклик, unused 03, задержка callback
+        cur.bytes(1 + 1 + 2)?; // response, unused 03, callback delay
     }
     cur.bytes(4)?; // unused 04
     let translation = cur.floats()?;
     let rotation = cur.floats()?;
-    cur.bytes(16 + 16)?; // скорости: линейная и угловая
-    cur.bytes(48)?; // тензор инерции
-    cur.bytes(16)?; // центр масс
+    cur.bytes(16 + 16)?; // velocities: linear and angular
+    cur.bytes(48)?; // inertia tensor
+    cur.bytes(16)?; // center of mass
     let mass = cur.f32()?;
-    cur.bytes(4 + 4)?; // демпфирование: линейное, угловое
+    cur.bytes(4 + 4)?; // damping: linear, angular
     let friction = cur.f32()?;
     let restitution = cur.f32()?;
     if !old {
-        cur.bytes(4 + 4 + 4)?; // макс. скорости и глубина проникновения
+        cur.bytes(4 + 4 + 4)?; // max velocities and penetration depth
     }
     let motion_system = cur.u8()?;
-    cur.bytes(1 + 1)?; // тип деактиватора, деактивация решателя
+    cur.bytes(1 + 1)?; // deactivator type, solver deactivation
     let quality_type = cur.u8()?;
     cur.bytes(12)?; // unused 05
     let constraints = read_ref_list(cur)?;
@@ -117,14 +117,15 @@ pub fn read_rigid_body(cur: &mut Cursor<'_>, translated: bool) -> Result<BhkRigi
     })
 }
 
-/// `bhkMoppBvTreeShape`: обёртка над формой; MOPP-код не нужен, читается ради длины.
+/// `bhkMoppBvTreeShape`: a wrapper over a shape; the MOPP code is not needed and is read only for
+/// its length.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkMoppBvTreeShape {
     pub shape: BlockRef,
     pub scale: f32,
-    /// Размер MOPP-кода в байтах; сам код отброшен.
+    /// Size of the MOPP code in bytes; the code itself is dropped.
     pub mopp_size: usize,
-    /// Смещение MOPP: `xyz` — начало, `w` — коэффициент квантования.
+    /// MOPP offset: `xyz` is the origin, `w` the quantization factor.
     pub mopp_offset: [f32; 4],
 }
 
@@ -133,7 +134,7 @@ pub fn read_mopp_shape(cur: &mut Cursor<'_>) -> Result<BhkMoppBvTreeShape> {
     cur.bytes(12)?;
     let scale = cur.f32()?;
     let mopp_size = cur.len_u32()?;
-    // Смещение кода — с 10.1.0.0.
+    // Code offset since 10.1.0.0.
     let mopp_offset = if cur.version() >= 0x0A01_0000 {
         cur.floats()?
     } else {
@@ -148,7 +149,7 @@ pub fn read_mopp_shape(cur: &mut Cursor<'_>) -> Result<BhkMoppBvTreeShape> {
     })
 }
 
-/// `bhkNiTriStripsShape`: форма коллизии по `NiTriStripsData`.
+/// `bhkNiTriStripsShape`: a collision shape from `NiTriStripsData`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BhkNiTriStripsShape {
     /// `OblivionHavokMaterial`.
@@ -165,7 +166,7 @@ pub fn read_tri_strips_shape(cur: &mut Cursor<'_>) -> Result<BhkNiTriStripsShape
     let radius = cur.f32()?;
     cur.bytes(20)?;
     let grow_by = cur.u32()?;
-    // Масштаб — с 10.1.0.0.
+    // Scale since 10.1.0.0.
     let scale = if cur.version() >= 0x0A01_0000 {
         cur.floats()?
     } else {
@@ -187,9 +188,9 @@ pub fn read_tri_strips_shape(cur: &mut Cursor<'_>) -> Result<BhkNiTriStripsShape
     })
 }
 
-/// `bhkMeshShape` (только 10.0.1.0): предшественник `bhkNiTriStripsShape` — та же сетка по
-/// `NiTriStripsData`, поэтому читается в ту же структуру. Раскладка по `nif.xml`: два `u32`,
-/// радиус, два `u32`, масштаб, свойства формы (по 12 байт), три `u32`, ссылки на данные.
+/// `bhkMeshShape` (only 10.0.1.0): the predecessor of `bhkNiTriStripsShape` — the same mesh from
+/// `NiTriStripsData`, so it is read into the same structure. The layout per `nif.xml`: two `u32`,
+/// radius, two `u32`, scale, shape properties (12 bytes each), three `u32`, data references.
 pub fn read_mesh_shape(cur: &mut Cursor<'_>) -> Result<BhkNiTriStripsShape> {
     cur.bytes(8)?;
     let radius = cur.f32()?;

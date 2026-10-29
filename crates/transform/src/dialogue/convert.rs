@@ -1,30 +1,35 @@
-//! Отобранные реплики → темы, приветствия, голос и убеждение Morrowind (T10.6, T10.7).
+//! Selected responses → Morrowind topics, greetings, voice and persuasion (T10.6, T10.7).
 //!
-//! Решения владельца (`docs/ru/types/dial.md`):
+//! The owner's decisions (`docs/en/types/dial.md`):
 //!
-//! * **Говорящий.** Условия на говорящего, которые не меняются в игре (`GetIsID`, раса, класс,
-//!   фракция и ранг, пол, `GetIsPlayableRace`), вычисляются по переносимым NPC: получается набор
-//!   тех, кто может сказать реплику. Он выражается полями `INFO` — `ONAM`, если NPC один, иначе
-//!   общие у всех в наборе раса/класс/пол/фракция плюс `Not ID` на тех, кого поля захватили
-//!   лишними. Так у Morrowind остаётся одна фракция NPC и варианты класса (T7.3), а
-//!   `GetIsPlayableRace` не тратит слоты на цепочку «Not Race». Не вышло уложиться в слоты — копия
-//!   на каждого NPC с `ONAM`, если их не больше [`super::MAX_VARIANTS`]. Реплика без `ONAM` —
-//!   с фильтром `Local ob_npc = 0` (решение 2): ванильным NPC без переменной он не проходит.
-//! * **Прочие условия** — поля `DATA`/`ANAM`/`DNAM` и фильтры `SCVR` (не больше 6 на копию).
-//! * **Выбор `TCLT`** (решение 9) — как в ванили: в результат `Choice "<тема>" n`, реплики
-//!   темы-варианта — копиями в ту же тему с фильтром `Choice = n`, выше прочих реплик. Тема, до
-//!   которой в Oblivion доходят только выбором, своей темой не становится.
-//! * **Приветствия** (решение 10) — в начало `Greeting 0`.
-//! * **Скрипт-результат Oblivion** (решение 11) не переносится: в `BNAM` только наши
+//! * **Speaker.** Conditions on the speaker that do not change in the game (`GetIsID`, race, class,
+//!   faction and rank, sex, `GetIsPlayableRace`) are computed over the carried-over NPCs: the
+//!   result is the set of those who can say the response. It is expressed by `INFO` fields — `ONAM`
+//!   if there is one NPC, otherwise the race/class/sex/faction shared by everyone in the set plus
+//!   `Not ID` on those the fields caught in excess. This way Morrowind keeps one NPC faction and
+//!   class variants (T7.3), and `GetIsPlayableRace` does not spend slots on a chain of "Not Race".
+//!   If it does not fit into the slots — a copy per NPC with `ONAM`, if there are no more than
+//!   [`super::MAX_VARIANTS`] of them. A response without `ONAM` gets the filter `Local ob_npc = 0`
+//!   (decision 2): vanilla NPCs without the variable do not pass it.
+//! * **Other conditions** — the `DATA`/`ANAM`/`DNAM` fields and `SCVR` filters (no more than 6 per
+//!   copy).
+//! * **`TCLT` choice** (decision 9) — as in vanilla: `Choice "<topic>" n` in the result, the
+//!   responses of the choice topic as copies in the same topic with the filter `Choice = n`, above
+//!   the other responses. A topic that Oblivion reaches only through a choice does not become a
+//!   topic of its own.
+//! * **Greetings** (decision 10) — at the start of `Greeting 0`.
+//! * **The Oblivion result script** (decision 11) is not carried over: `BNAM` holds only our
 //!   `AddTopic`/`Choice`/`Goodbye`.
-//! * **Текст длиннее 512** (решение 12) делится по ответам: продолжение — копия реплики с
-//!   фильтром `Choice = m`, у предыдущей части `Choice "Continue" m`.
-//! * Тема с именем, которое уже есть в `Morrowind.esm`, дописывается в ванильную: наш блок встаёт в
-//!   её начало. Тема мастера другого типа (голос `Thief`) — наша не переносится.
-//! * **Голосовые и служебные темы** (T10.7) — в ванильные темы голоса и убеждения по
-//!   [`super::voice`], тоже в начало; темы без пары не переносятся. Их реплики не открывают
-//!   выбора и не прощаются: голос звучит вне окна разговора, убеждение — реакция внутри него. В
-//!   результате — только `AddTopic`; текст, которому нужно продолжение, не переносится.
+//! * **Text longer than 512** (decision 12) is split by responses: the continuation is a copy of
+//!   the response with the filter `Choice = m`, and the previous part has `Choice "Continue" m`.
+//! * A topic whose name already exists in `Morrowind.esm` is added to the vanilla one: our block
+//!   goes to its start. A master topic of another type (the `Thief` voice) — ours is not carried
+//!   over.
+//! * **Voice and service topics** (T10.7) go into the vanilla voice and persuasion topics via
+//!   [`super::voice`], also at the start; topics without a pair are not carried over. Their
+//!   responses open no choices and do not say goodbye: a voice plays outside the conversation
+//!   window, persuasion is a reaction inside it. The result has only `AddTopic`; text that needs a
+//!   continuation is not carried over.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -38,28 +43,29 @@ use tes4_read::{Comparison, Condition, ConditionValue, TOPIC_TOPIC, TopicTree};
 use super::{FilterKind, NPC_VARIABLE, Selected, holds};
 use crate::skills::SKILLS;
 
-/// Тема Oblivion с приветствиями.
+/// The Oblivion topic with greetings.
 pub const GREETING_EDID: &str = "GREETING";
 
-/// Тема Morrowind, в начало которой встают приветствия (решение 10).
+/// The Morrowind topic at whose start the greetings go (decision 10).
 pub const GREETING_TOPIC: &str = "Greeting 0";
 
-/// Предел имени темы: у ванили самое длинное — 36 знаков («Imperial Office of Census and
-/// Excise»); предел движка не измерен.
+/// Topic name limit: the longest in vanilla is 36 characters ("Imperial Office of Census and
+/// Excise"); the engine limit is not measured.
 pub const MAX_TOPIC_LEN: usize = 36;
 
-/// Золото игрока — ванильный предмет (`GetGold` → фильтр `Item`, как `5IX…Gold_001` у ванили).
+/// The player's gold is a vanilla item (`GetGold` → the `Item` filter, like `5IX…Gold_001` in
+/// vanilla).
 pub const GOLD: &str = "Gold_001";
 
-/// Флаг реплики Oblivion «прощание»: после неё разговор кончается.
+/// The Oblivion response's "goodbye" flag: the conversation ends after it.
 const INFO_GOODBYE: u8 = 0x01;
 
-/// Номера функций Oblivion, которым нужна своя обработка внутри вида фильтра.
+/// Numbers of Oblivion functions that need their own handling inside a filter kind.
 const IS_RAINING: u32 = 62;
 const IS_SNOWING: u32 = 75;
 const GET_PC_EXPELLED: u32 = 193;
 
-/// Функции `SCVR` Morrowind.
+/// Morrowind `SCVR` functions.
 const MW_PC_REPUTATION: u8 = 5;
 const MW_PC_LEVEL: u8 = 6;
 const MW_PC_STRENGTH: u8 = 10;
@@ -79,119 +85,127 @@ const MW_LEVEL: u8 = 61;
 const MW_ATTACKED: u8 = 62;
 const MW_TALKED_TO_PC: u8 = 63;
 const MW_SHOULD_ATTACK: u8 = 71;
-/// Характеристики игрока, кроме силы: 51…57 (интеллект … удача) в порядке Oblivion 1…7.
+/// Player attributes other than strength: 51…57 (intelligence … luck) in Oblivion order 1…7.
 const MW_PC_INTELLIGENCE: u8 = 51;
-/// Навыки игрока: 11 + номер навыка Morrowind (Block = 0 … HandToHand = 26).
+/// Player skills: 11 + the Morrowind skill number (Block = 0 … HandToHand = 26).
 const MW_PC_SKILL_FIRST: u8 = 11;
 
-/// Погода Morrowind: 4 дождь, 5 гроза, 8 снег, 9 метель.
+/// Morrowind weather: 4 rain, 5 thunder, 8 snow, 9 blizzard.
 const WEATHER_RAIN: (i32, i32) = (4, 5);
 const WEATHER_SNOW: i32 = 8;
 
-/// Переносимый NPC: что о нём знает Oblivion (для вычисления условий) и что — Morrowind (для
-/// полей реплики).
+/// A carried-over NPC: what Oblivion knows about it (for computing conditions) and what Morrowind
+/// does (for the response's fields).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Speaker {
-    /// Абсолютный `FormID`.
+    /// Absolute `FormID`.
     pub form_id: u32,
     pub id: String,
     pub race: String,
     pub class: String,
     pub faction: Option<(String, i8)>,
     pub female: bool,
-    /// Oblivion, абсолютные `FormID`.
+    /// Oblivion, absolute `FormID`s.
     pub source_race: u32,
     pub source_class: Option<u32>,
     pub source_factions: Vec<(u32, i8)>,
-    /// Раса играбельна в Oblivion (`RACE` флаг 0x1).
+    /// The race is playable in Oblivion (`RACE` flag 0x1).
     pub playable: bool,
-    /// Папка голоса в архивах Oblivion, `<раса голоса>\<m|f>` (`high elf\m`; T10.8): раса голоса — из
-    /// `VNAM` расы по полу или сама раса, имя — её `FULL` в нижнем регистре. `None` — у расы нет имени.
+    /// The voice folder in the Oblivion archives, `<voice race>\<m|f>` (`high elf\m`; T10.8): the
+    /// voice race is from the race's `VNAM` by sex or the race itself, the name is its `FULL` in
+    /// lower case. `None` means the race has no name.
     pub voice: Option<String>,
 }
 
-/// Поиск файлов голоса: абсолютный `FormID` реплики и папка голоса → пути ответов по номеру.
+/// Voice file lookup: the response's absolute `FormID` and the voice folder → response paths by
+/// number.
 pub type VoiceLookup<'a> = dyn Fn(u32, &str) -> Option<BTreeMap<u8, String>> + 'a;
 
-/// Всё, что конвертация знает вокруг реплик.
-#[expect(missing_debug_implementations, reason = "поля — замыкания поиска")]
+/// Everything the conversion knows around the responses.
+#[expect(
+    missing_debug_implementations,
+    reason = "the fields are lookup closures"
+)]
 pub struct World<'a> {
     pub speakers: &'a [Speaker],
-    /// `FormID` в файле → абсолютный (параметры условий).
+    /// `FormID` in the file → absolute (condition parameters).
     pub map: &'a dyn Fn(u32) -> Option<u32>,
-    /// Предмет плагина или ванильный по абсолютному `FormID`.
+    /// A plugin or vanilla item by absolute `FormID`.
     pub item: &'a dyn Fn(u32) -> Option<String>,
-    /// NPC (для `GetDeadCount`) по абсолютному `FormID`.
+    /// An NPC (for `GetDeadCount`) by absolute `FormID`.
     pub actor: &'a dyn Fn(u32) -> Option<String>,
-    /// Имя ячейки Morrowind по абсолютному `FormID` ячейки Oblivion.
+    /// Morrowind cell name by the absolute `FormID` of the Oblivion cell.
     pub cell: &'a dyn Fn(u32) -> Option<String>,
-    /// ID фракции Morrowind (для фракции игрока).
+    /// Morrowind faction ID (for the player's faction).
     pub faction: &'a dyn Fn(u32) -> Option<String>,
-    /// Ванильная глобальная переменная с тем же именем, что `GLOB` Oblivion.
+    /// A vanilla global variable with the same name as the Oblivion `GLOB`.
     pub global: &'a dyn Fn(u32) -> Option<(String, VarType)>,
-    /// Файлы голоса ответов реплики по номеру ответа (`TRDT`): абсолютный `FormID` реплики и папка
-    /// голоса говорящего ([`Speaker::voice`]) → пути в архивах (T10.8).
+    /// The voice files of a response's answers by answer number (`TRDT`): the response's absolute
+    /// `FormID` and the speaker's voice folder ([`Speaker::voice`]) → paths in the archives
+    /// (T10.8).
     pub voice: &'a VoiceLookup<'a>,
-    /// Темы мастера.
+    /// Master topics.
     pub vanilla: &'a [VanillaTopic],
 }
 
-/// Почему копия реплики не записана.
+/// Why a response copy was not written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum WriteRejection {
-    /// Ни один переносимый NPC не проходит условия на говорящего.
+    /// No carried-over NPC passes the conditions on the speaker.
     NoSpeaker,
-    /// Сравнение не выражается фильтром (номер функции Oblivion): `GetDisposition <`, «не в
-    /// фракции» у игрока и т. п.
+    /// The comparison cannot be expressed by a filter (Oblivion function number):
+    /// `GetDisposition <`, "not in faction" for the player, and so on.
     Comparison(u32),
-    /// Условие заведомо ложно в Morrowind: нужен предмет, ячейка или фракция, которых нет в
-    /// плагине, два разных значения одного поля.
+    /// The condition is certainly false in Morrowind: it needs an item, a cell or a faction missing
+    /// from the plugin, or two different values of one field.
     Never,
-    /// `GLOB` без ванильной пары.
+    /// A `GLOB` without a vanilla counterpart.
     Global,
-    /// Больше [`MAX_FILTERS`] фильтров и говорящих больше, чем копий.
+    /// More than [`MAX_FILTERS`] filters and more speakers than copies.
     TooManyFilters,
-    /// Один ответ длиннее [`MAX_TEXT_LEN`]: делить нечем.
+    /// One answer is longer than [`MAX_TEXT_LEN`]: there is nothing to split it by.
     TooLong,
-    /// Имя темы занято темой мастера другого типа или длиннее [`MAX_TOPIC_LEN`]; у голосовой —
-    /// нет ванильной темы того же типа.
+    /// The topic name is taken by a master topic of another type or is longer than
+    /// [`MAX_TOPIC_LEN`]; for a voice topic — there is no vanilla topic of the same type.
     TopicName,
-    /// Голосовая или служебная тема без пары в `data/voice_topics.tsv` (T10.7).
+    /// A voice or service topic without a pair in `data/voice_topics.tsv` (T10.7).
     NoPair,
-    /// Озвучиваемая реплика (голос), у голоса говорящих нет файла хоть одного ответа (T10.8).
+    /// A voiced response (Voice) whose speakers' voice lacks the file of at least one answer
+    /// (T10.8).
     NoVoice,
 }
 
-/// Итог записи тем.
+/// Result of writing the topics.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WriteReport {
-    /// Тем записано; из них дописано в темы мастера.
+    /// Topics written; of them added to master topics.
     pub topics: usize,
     pub merged: usize,
-    /// `INFO` записано; из них копий выбора и частей продолжения.
+    /// `INFO` written; of them choice copies and continuation parts.
     pub infos: usize,
     pub choice_copies: usize,
     pub continuations: usize,
-    /// Реплик Oblivion, от которых записана хоть одна копия; из них голосовых и служебных (T10.7).
+    /// Oblivion responses with at least one copy written; of them voice and service ones (T10.7).
     pub source_infos: usize,
     pub source_voice: usize,
-    /// `INFO` со звуком (`SNAM`, T10.8) и файлов голоса — склеек, разных по источникам.
+    /// `INFO` with sound (`SNAM`, T10.8) and voice files — joins, distinct by source.
     pub voiced: usize,
     pub voice_files: usize,
-    /// Копий `INFO`, чей говорящий выражен меткой фракции Oblivion (`Local obf_… = 0`).
+    /// `INFO` copies whose speaker is expressed by an Oblivion faction marker (`Local obf_… = 0`).
     pub faction_markers: usize,
-    /// Реплик, чей скрипт-результат Oblivion не перенесён (решение 11).
+    /// Responses whose Oblivion result script was not carried over (decision 11).
     pub results_dropped: usize,
-    /// Тем Oblivion, до которых доходят только выбором.
+    /// Oblivion topics reached only through a choice.
     pub choice_only_topics: usize,
-    /// Их реплик, до которых выбор так и не дошёл: реплика-родитель не перенесена или вариант не
-    /// предлагается ни одной перенесённой.
+    /// Their responses that no choice ever reached: the parent response was not carried over or the
+    /// choice is not offered by any carried-over one.
     pub unreached: usize,
-    /// Отвергнутые копии (вариант «или» × говорящие) по причинам.
+    /// Rejected copies ("or" variant × speakers) by reason.
     pub rejected: BTreeMap<WriteRejection, usize>,
 }
 
-/// Ошибка, которую нельзя обойти отказом от реплики: ID столкнулся с ванильным.
+/// An error that cannot be worked around by dropping the response: an ID collided with a vanilla
+/// one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdClash {
     pub topic: String,
@@ -210,8 +224,8 @@ impl std::fmt::Display for IdClash {
     }
 }
 
-/// Сравнение, которое остаётся после приведения к целым: `Ok(None)` — верно всегда,
-/// `Err(())` — никогда.
+/// The comparison that remains after converting to integers: `Ok(None)` — always true, `Err(())` —
+/// never.
 type IntCmp = Result<Option<(Cmp, i32)>, ()>;
 
 fn out_cmp(c: Comparison) -> Cmp {
@@ -225,13 +239,13 @@ fn out_cmp(c: Comparison) -> Cmp {
     }
 }
 
-/// Сравнение целой функции с числом Oblivion (`f32`): дробный порог сдвигается к ближайшему
-/// целому, `== 2.5` не бывает никогда, `!= 2.5` — всегда.
+/// Comparing an integer function with an Oblivion number (`f32`): a fractional threshold moves to
+/// the nearest integer, `== 2.5` is never true, `!= 2.5` always.
 fn int_cmp(c: Comparison, v: f32) -> IntCmp {
     let fl = v.floor();
     let to_i = |x: f32| -> Result<i32, ()> {
         if x.is_finite() && x >= i32::MIN as f32 && x <= i32::MAX as f32 {
-            #[expect(clippy::cast_possible_truncation, reason = "целое в пределах i32")]
+            #[expect(clippy::cast_possible_truncation, reason = "an integer within i32")]
             Ok(x as i32)
         } else {
             Err(())
@@ -248,7 +262,8 @@ fn int_cmp(c: Comparison, v: f32) -> IntCmp {
     }))
 }
 
-/// Нижняя граница «не меньше k» по сравнению; иначе `None` (сравнение не выражается).
+/// The lower bound "at least k" from the comparison; otherwise `None` (the comparison cannot be
+/// expressed).
 fn lower_bound(c: Comparison, v: f32) -> Option<Result<i32, ()>> {
     match int_cmp(c, v) {
         Err(()) => Some(Err(())),
@@ -258,8 +273,8 @@ fn lower_bound(c: Comparison, v: f32) -> Option<Result<i32, ()>> {
     }
 }
 
-/// Условие-«да/нет»: `Some(true)` — утверждает, `Some(false)` — отрицает, `None` — верно всегда;
-/// `Err` — никогда.
+/// A yes/no condition: `Some(true)` asserts, `Some(false)` denies, `None` is always true; `Err` is
+/// never.
 fn polarity(c: &Condition) -> Result<Option<bool>, ()> {
     let v = number(c);
     match (holds(c.comparison, 1.0, v), holds(c.comparison, 0.0, v)) {
@@ -273,12 +288,12 @@ fn polarity(c: &Condition) -> Result<Option<bool>, ()> {
 fn number(c: &Condition) -> f32 {
     match c.value {
         ConditionValue::Number(v) => v,
-        // Отбор (T10.5) отвергает сравнения с `GLOB`; сюда они не доходят.
+        // Selection (T10.5) rejects comparisons with `GLOB`; they do not get here.
         ConditionValue::Global(_) => f32::NAN,
     }
 }
 
-/// Условия на говорящего, которые вычисляются по NPC.
+/// Conditions on the speaker that are computed over NPCs.
 fn is_static(kind: FilterKind) -> bool {
     matches!(
         kind,
@@ -292,7 +307,7 @@ fn is_static(kind: FilterKind) -> bool {
     )
 }
 
-/// Значение функции условия у NPC.
+/// The value of a condition function for an NPC.
 fn static_value(
     c: &Condition,
     kind: FilterKind,
@@ -311,14 +326,14 @@ fn static_value(
             .iter()
             .find(|(f, _)| Some(*f) == p)
             .map_or(-1.0, |(_, r)| f32::from(*r)),
-        // `GetIsSex`: параметр 0 — мужской, 1 — женский.
+        // `GetIsSex`: parameter 0 is male, 1 female.
         FilterKind::Sex => yes(s.female == (c.param1 == 1)),
         FilterKind::PlayableRace => yes(s.playable),
-        _ => unreachable!("is_static отбирает только эти виды"),
+        _ => unreachable!("is_static selects only these kinds"),
     }
 }
 
-/// Как выражен говорящий: поля и фильтры.
+/// How the speaker is expressed: fields and filters.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct SpeakerExpr {
     speaker: String,
@@ -328,10 +343,11 @@ struct SpeakerExpr {
     rank: i8,
     female: Option<bool>,
     not_ids: Vec<String>,
-    /// Нужен `Local ob_npc = 0`: поля могут пропустить ванильного NPC.
+    /// `Local ob_npc = 0` is needed: the fields can let a vanilla NPC through.
     local: bool,
-    /// Метка фракции Oblivion (абсолютный `FormID`): фильтр `Local obf_… = 0` — «NPC во фракции».
-    /// Ванильного NPC и NPC без этой фракции он не пропускает, поэтому `ob_npc` не нужен.
+    /// An Oblivion faction marker (absolute `FormID`): the filter `Local obf_… = 0` means "the NPC
+    /// is in the faction". It does not let through a vanilla NPC or an NPC outside this faction, so
+    /// `ob_npc` is not needed.
     marker: Option<u32>,
 }
 
@@ -359,7 +375,7 @@ impl SpeakerExpr {
     }
 }
 
-/// Набор говорящих → выражения (одно, или по копии на NPC). `budget` — свободные слоты `SCVR`.
+/// A set of speakers → expressions (one, or a copy per NPC). `budget` is the free `SCVR` slots.
 fn express(
     set: &[&Speaker],
     all: &[Speaker],
@@ -420,12 +436,13 @@ fn express(
         .ok_or(WriteRejection::TooManyFilters)
 }
 
-/// Набор говорящих через метку фракции Oblivion (решение владельца 2026-09-30): у Morrowind
-/// фракция NPC одна, а у Oblivion их несколько — вторая фракция в поле `FNAM` не выражается.
-/// Метка — переменная `obf_…` в скрипте NPC этой фракции (`Local obf_… = 0` проходит только у
-/// тех, у кого она объявлена). Из фракций, общих у всего набора, берётся та, что захватывает
-/// меньше лишних (они — `Not ID`); при равенстве — меньший `FormID`. Общие поля `fields`
-/// (раса, класс, пол, фракция Morrowind) остаются: они сужают захват.
+/// A set of speakers through an Oblivion faction marker (owner's decision 2026-09-30): a Morrowind
+/// NPC has one faction, while in Oblivion it has several — the second faction cannot be expressed
+/// in the `FNAM` field. The marker is an `obf_…` variable in the script of the NPCs of that faction
+/// (`Local obf_… = 0` passes only for those that declare it). Of the factions shared by the whole
+/// set, the one that catches the fewest extras is taken (those get `Not ID`); when equal — the
+/// smaller `FormID`. The shared fields `fields` (race, class, sex, Morrowind faction) remain: they
+/// narrow the catch.
 fn marker_expr(set: &[&Speaker], all: &[Speaker], fields: &SpeakerExpr) -> Option<SpeakerExpr> {
     let chosen: BTreeSet<u32> = set.iter().map(|s| s.form_id).collect();
     let in_faction = |s: &Speaker, f: u32| s.source_factions.iter().any(|(sf, _)| *sf == f);
@@ -447,12 +464,13 @@ fn marker_expr(set: &[&Speaker], all: &[Speaker], fields: &SpeakerExpr) -> Optio
         .min_by_key(|m| (m.not_ids.len(), m.marker))
 }
 
-/// Имя метки фракции Oblivion в скрипте NPC: `obf_` + `FormID` в base36 (7 знаков) — 11 знаков.
+/// The name of an Oblivion faction marker in an NPC script: `obf_` + `FormID` in base36 (7
+/// characters) — 11 characters.
 pub fn marker_name(faction: u32) -> String {
     format!("obf_{}", crate::ids::base36_u32(faction))
 }
 
-/// Условия, которые меняются в игре: поля `DATA`/`ANAM`/`DNAM` и фильтры.
+/// Conditions that change in the game: the `DATA`/`ANAM`/`DNAM` fields and filters.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Draft {
     disposition: i32,
@@ -460,7 +478,8 @@ struct Draft {
     player_faction: String,
     player_rank: i8,
     filters: Vec<Filter>,
-    /// `GetPCExpelled`: фракция говорящего должна быть этой (у Morrowind функция смотрит её).
+    /// `GetPCExpelled`: the speaker's faction must be this one (in Morrowind the function looks at
+    /// it).
     expelled_faction: Option<String>,
 }
 
@@ -476,7 +495,7 @@ fn int_filter(kind: Out, c: &Condition) -> Result<Option<Filter>, WriteRejection
     }
 }
 
-/// Функция `SCVR` Morrowind для вида фильтра, который переходит в функцию один к одному.
+/// The Morrowind `SCVR` function for a filter kind that maps to a function one to one.
 fn plain_function(kind: FilterKind) -> Option<u8> {
     Some(match kind {
         FilterKind::Level => MW_LEVEL,
@@ -497,7 +516,7 @@ fn plain_function(kind: FilterKind) -> Option<u8> {
     })
 }
 
-/// Функция характеристики или навыка игрока по коду «actor value» Oblivion.
+/// A player attribute or skill function by the Oblivion "actor value" code.
 fn pc_stat_function(av: u32) -> Option<u8> {
     match av {
         0 => Some(MW_PC_STRENGTH),
@@ -515,7 +534,7 @@ fn set_once(field: &mut String, value: String) -> Result<(), WriteRejection> {
     }
 }
 
-/// Условие, которое меняется в игре, → поле или фильтр черновика.
+/// A condition that changes in the game → a field or a filter of the draft.
 fn dynamic(
     c: &Condition,
     kind: FilterKind,
@@ -574,7 +593,8 @@ fn dynamic(
         }
         FilterKind::PcSex => {
             if let Some(yes) = polarity(c).map_err(|()| WriteRejection::Never)? {
-                // `GetIsSex`/`GetPCIsSex`: параметр 1 — женский; у Morrowind PC Sex = 1 — женский.
+                // `GetIsSex`/`GetPCIsSex`: parameter 1 is female; in Morrowind PC Sex = 1 is
+                // female.
                 let female = (c.param1 == 1) == yes;
                 d.filters.push(Filter {
                     kind: Out::Function(MW_PC_SEX),
@@ -632,7 +652,8 @@ fn dynamic(
                     };
                     push(d, int_filter(out, c))?;
                 }
-                // Предмета (NPC) нет в Morrowind: у игрока его ноль (убитых — ноль).
+                // The item (NPC) does not exist in Morrowind: the player has zero of it (zero
+                // killed).
                 None if holds(c.comparison, 0.0, number(c)) => {}
                 None => return Err(WriteRejection::Never),
             }
@@ -668,7 +689,7 @@ fn dynamic(
     Ok(())
 }
 
-/// Черновик одного варианта: набор говорящих и поля с фильтрами.
+/// A draft of one variant: the set of speakers and the fields with filters.
 fn variant<'s>(
     conditions: &[(Condition, FilterKind)],
     world: &World<'s>,
@@ -705,18 +726,19 @@ fn variant<'s>(
     Ok((set, draft))
 }
 
-/// Ответ — пометка актёру вместо слов (`[Knight Attack Sound]`, `[GS/DS Power Attack]`): так у
-/// голосовых реплик Oblivion записаны крики без слов (`SEWorld` — 19 из 48 копий, 2026-09-29).
-/// Голос Morrowind показывает текст субтитром, поэтому такой ответ не пишется: у реплики остаются
-/// звук (T10.8) и пустой текст. У ванили пустой текст — только у голосовых без звука; что движок
-/// играет звук с пустым текстом — проверить в игре (T10.9).
+/// The answer is a note to the actor instead of words (`[Knight Attack Sound]`,
+/// `[GS/DS Power Attack]`): this is how wordless shouts are written in Oblivion voice responses
+/// (`SEWorld` — 19 of 48 copies, 2026-09-29). A Morrowind voice shows the text as a subtitle, so
+/// such an answer is not written: the response keeps the sound (T10.8) and an empty text. In
+/// vanilla only voice responses without sound have empty text; whether the engine plays a sound
+/// with empty text has to be checked in the game (T10.9).
 fn is_stage_note(text: &str) -> bool {
     let t = text.trim();
     t.len() > 2 && t.starts_with('[') && t.ends_with(']') && !t[1..t.len() - 1].contains(']')
 }
 
-/// Текст реплики частями не длиннее [`MAX_TEXT_LEN`]: ответы через пробел, граница — между
-/// ответами (решение 12).
+/// The response text in parts no longer than [`MAX_TEXT_LEN`]: answers separated by spaces, the
+/// boundary between answers (decision 12).
 fn text_parts(responses: &[String]) -> Result<Vec<String>, WriteRejection> {
     let mut parts: Vec<String> = Vec::new();
     for r in responses.iter().map(|r| r.trim()).filter(|r| !r.is_empty()) {
@@ -738,10 +760,11 @@ fn text_parts(responses: &[String]) -> Result<Vec<String>, WriteRejection> {
     Ok(parts)
 }
 
-/// ID реплики: только цифры, как у ванили, без ведущего нуля: `1`, `FormID` (10 знаков), номер
-/// выбора (3), вариант «или» (1), копия говорящего (2), часть текста (1) — 18 знаков (у ванили
-/// 12…20). Копий говорящего бывает больше десяти с T10.8: озвученная реплика — копия на каждую пару
-/// раса + пол. Разные реплики одной темы различаются хоть в одном разряде.
+/// Response ID: digits only, as in vanilla, without a leading zero: `1`, the `FormID` (10
+/// characters), the choice number (3), the "or" variant (1), the speaker copy (2), the text part
+/// (1) — 18 characters (12…20 in vanilla). Since T10.8 there can be more than ten speaker copies: a
+/// voiced response gets a copy for each race + sex pair. Different responses of one topic differ in
+/// at least one digit.
 fn info_id(
     form_id: u32,
     choice: i32,
@@ -753,18 +776,18 @@ fn info_id(
         .then(|| format!("1{form_id:010}{choice:03}{variant}{speaker:02}{part}"))
 }
 
-/// Реплики каких тем получают голос (T10.8). Голос (Voice) ванильный движок играет всегда. Играет ли
-/// он `SNAM` у темы и приветствия (у ванили они не озвучены) — в игре не
-/// проверено; до проверки они остаются без голоса.
+/// Which topics' responses get a voice (T10.8). The vanilla engine always plays Voice. Whether it
+/// plays `SNAM` for Topic and Greeting (in vanilla they are not voiced) is not checked in the game;
+/// until it is, they stay without a voice.
 fn is_voiced(kind: TopicKind) -> bool {
     kind == TopicKind::Voice
 }
 
-/// Говорящие озвученной реплики → выражения с файлом голоса. Голос у Oblivion выбирается по расе и
-/// полу говорящего, а у `INFO` Morrowind файл один, поэтому набор делится на пары раса + пол (у
-/// Morrowind раса NPC — одна на расу Oblivion, T7.2) и каждая пара — своя копия (решение 4). Пара,
-/// у голоса которой нет файла хоть одного ответа, не получает копии: голос без звука движок не
-/// показывает. Файлы копий — в `cx.voices`.
+/// Speakers of a voiced response → expressions with a voice file. In Oblivion the voice is chosen
+/// by the speaker's race and sex, while a Morrowind `INFO` has one file, so the set is split into
+/// race + sex pairs (in Morrowind an NPC's race is one per Oblivion race, T7.2), and each pair is
+/// its own copy (decision 4). A pair whose voice lacks the file of at least one answer gets no
+/// copy: the engine does not show a voice without sound. The copies' files are in `cx.voices`.
 fn voiced_exprs(
     src: &Source<'_>,
     set: &[&Speaker],
@@ -813,48 +836,50 @@ fn voiced_exprs(
     out
 }
 
-/// Ключ номера выбора в теме Morrowind.
+/// Key of a choice number in a Morrowind topic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum ChoiceKey {
-    /// Тема-вариант (индекс в дереве тем).
+    /// A choice topic (index in the topic tree).
     Topic(usize),
-    /// Продолжение: реплика, номер выбора её копии, вариант, говорящий, часть.
+    /// A continuation: the response, the choice number of its copy, the variant, the speaker, the
+    /// part.
     Continue(u32, i32, usize, usize, usize),
 }
 
-/// Одна запись `INFO` до сборки результата.
+/// One `INFO` record before the result is assembled.
 struct Entry {
     info: OutInfo,
-    /// Строки результата до выбора.
+    /// Result lines before the choice.
     lines: Vec<String>,
-    /// Выбор тем: (текст, номер, тема-вариант).
+    /// Topic choice: (text, number, choice topic).
     choices: Vec<(String, i32, usize)>,
-    /// `Choice "Continue" m` — у всех частей, кроме последней.
+    /// `Choice "Continue" m` — on all parts except the last.
     continue_to: Option<i32>,
     goodbye: bool,
 }
 
-/// Реплика Oblivion и её место в дереве.
+/// An Oblivion response and its place in the tree.
 struct Source<'t> {
     form_id: u32,
     info: &'t tes4_read::Info,
     variants: &'t [Vec<(Condition, FilterKind)>],
 }
 
-/// Сборка одной темы Morrowind.
+/// Assembling one Morrowind topic.
 struct DialBuild {
     kind: TopicKind,
     numbers: BTreeMap<ChoiceKey, i32>,
     queue: Vec<(usize, i32)>,
-    /// Над обычными: копии выбора и продолжения, в порядке появления.
+    /// Above the ordinary ones: choice and continuation copies, in order of appearance.
     top: Vec<Entry>,
     main: Vec<Entry>,
-    /// Сколько копий записано на номер выбора темы.
+    /// How many copies are written per topic choice number.
     produced: BTreeMap<i32, usize>,
 }
 
 impl DialBuild {
-    /// Тема окна разговора: её реплики открывают выбор, прощаются и продолжаются выбором.
+    /// A conversation window topic: its responses open choices, say goodbye and continue through a
+    /// choice.
     fn is_conversation(&self) -> bool {
         matches!(self.kind, TopicKind::Topic | TopicKind::Greeting)
     }
@@ -863,7 +888,7 @@ impl DialBuild {
         if let Some(n) = self.numbers.get(&key) {
             return *n;
         }
-        let n = i32::try_from(self.numbers.len() + 1).expect("номеров — сотни");
+        let n = i32::try_from(self.numbers.len() + 1).expect("there are hundreds of numbers");
         self.numbers.insert(key, n);
         if let ChoiceKey::Topic(t) = key {
             self.queue.push((t, n));
@@ -872,15 +897,15 @@ impl DialBuild {
     }
 }
 
-/// Что тема Oblivion даёт в Morrowind.
+/// What an Oblivion topic gives in Morrowind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Target {
     Dial(String, TopicKind),
-    /// До темы доходят только выбором.
+    /// The topic is reached only through a choice.
     ChoiceOnly,
-    /// Тема не переносится (имя занято или слишком длинное).
+    /// The topic is not carried over (the name is taken or too long).
     Rejected,
-    /// Голосовая или служебная без пары в таблице.
+    /// A voice or service topic without a pair in the table.
     NoPair,
 }
 
@@ -888,17 +913,17 @@ struct Ctx<'a, 't> {
     world: &'a World<'a>,
     tree: &'t [TopicTree<'t>],
     targets: &'a [Target],
-    /// Отобранные реплики по индексу темы, в порядке файла.
+    /// Selected responses by topic index, in file order.
     by_topic: &'a BTreeMap<usize, Vec<Source<'t>>>,
-    /// Индекс темы по абсолютному `FormID`.
+    /// Topic index by absolute `FormID`.
     index: &'a HashMap<Option<u32>, usize>,
     report: &'a mut WriteReport,
     touched: BTreeSet<u32>,
-    /// Реплики, до которых дошла сборка (записаны или отвергнуты).
+    /// Responses the assembly reached (written or rejected).
     reached: BTreeSet<u32>,
-    /// Файлы голоса: `SNAM` → пути ответов в архивах по порядку (T10.8).
+    /// Voice files: `SNAM` → answer paths in the archives, in order (T10.8).
     voices: BTreeMap<String, Vec<String>>,
-    /// Метки фракций, на которые ссылаются реплики (абсолютные `FormID`).
+    /// Faction markers the responses reference (absolute `FormID`s).
     markers: BTreeSet<u32>,
 }
 
@@ -910,12 +935,13 @@ fn choice_filter(n: i32) -> Filter {
     }
 }
 
-/// Кавычка в тексте выбора закрыла бы строку результата.
+/// A quote in the choice text would close the result string.
 fn quoted(text: &str) -> String {
     text.replace('"', "'")
 }
 
-/// Копии одной реплики Oblivion в теме: обычные (`choice` = 0) или копии выбора номер `choice`.
+/// Copies of one Oblivion response in a topic: ordinary ones (`choice` = 0) or copies for choice
+/// number `choice`.
 fn produce(src: &Source<'_>, choice: i32, dial: &mut DialBuild, cx: &mut Ctx<'_, '_>) {
     cx.reached.insert(src.form_id);
     let texts: Vec<String> = src
@@ -995,7 +1021,8 @@ fn produce(src: &Source<'_>, choice: i32, dial: &mut DialBuild, cx: &mut Ctx<'_,
                 info.faction.clone_from(&expr.faction);
                 info.speaker_rank = expr.rank;
                 info.female = expr.female;
-                // Файл — на всю реплику: у первой части (голос не делится, T10.7).
+                // The file is for the whole response: on the first part (a voice is not split,
+                // T10.7).
                 if k == 0 && !sound.is_empty() {
                     info.sound.clone_from(sound);
                     cx.report.voiced += 1;
@@ -1074,7 +1101,7 @@ fn produce(src: &Source<'_>, choice: i32, dial: &mut DialBuild, cx: &mut Ctx<'_,
     }
 }
 
-/// Результат последней части: `AddTopic` на темы `NAME`, выбор `TCLT`, прощание.
+/// The result of the last part: `AddTopic` for the `NAME` topics, the `TCLT` choice, goodbye.
 fn fill_result(src: &Source<'_>, entry: &mut Entry, dial: &mut DialBuild, cx: &Ctx<'_, '_>) {
     let index_of = |form_id: u32| cx.index.get(&(cx.world.map)(form_id)).copied();
     for &t in &src.info.add_topics {
@@ -1104,7 +1131,7 @@ fn fill_result(src: &Source<'_>, entry: &mut Entry, dial: &mut DialBuild, cx: &C
     entry.goodbye = src.info.flags & INFO_GOODBYE != 0;
 }
 
-/// Готовый результат: строки, затем `Choice` (живые варианты) или `Goodbye`.
+/// The finished result: the lines, then `Choice` (live variants) or `Goodbye`.
 fn render(entry: &mut Entry, produced: &BTreeMap<i32, usize>) {
     let mut lines = std::mem::take(&mut entry.lines);
     if let Some(m) = entry.continue_to {
@@ -1125,7 +1152,7 @@ fn render(entry: &mut Entry, produced: &BTreeMap<i32, usize>) {
     entry.info.result = lines.join("\r\n");
 }
 
-/// `DIAL` `DATA` мастера для типа темы.
+/// The master's `DIAL` `DATA` for a topic type.
 fn vanilla_kind(kind: TopicKind) -> u8 {
     match kind {
         TopicKind::Topic => 0,
@@ -1135,9 +1162,9 @@ fn vanilla_kind(kind: TopicKind) -> u8 {
     }
 }
 
-/// Голосовая или служебная тема Oblivion → ванильная тема по таблице (T10.7). Пары нет — тема не
-/// переносится; у мастера нет темы с этим именем того же типа — тоже (новую голосовую тему движок
-/// не спросит).
+/// An Oblivion voice or service topic → a vanilla topic via the table (T10.7). No pair — the topic
+/// is not carried over; the master has no topic with that name of the same type — likewise (the
+/// engine will not ask for a new voice topic).
 fn voice_target(edid: &str, vanilla: &HashMap<String, &VanillaTopic>) -> Target {
     let Some((name, kind)) = super::voice::VOICE_TOPICS.target(edid) else {
         return Target::NoPair;
@@ -1148,29 +1175,29 @@ fn voice_target(edid: &str, vanilla: &HashMap<String, &VanillaTopic>) -> Target 
     }
 }
 
-/// Итог конвертации диалогов плагина.
+/// Result of converting a plugin's dialogue.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Converted {
     pub topics: Vec<OutTopic>,
-    /// Файлы голоса (T10.8): `SNAM` (относительно `Sound\`) → mp3 ответов в архивах по порядку;
-    /// склеивает и пишет стадия.
+    /// Voice files (T10.8): `SNAM` (relative to `Sound\`) → answer mp3s in the archives, in order;
+    /// the stage joins and writes them.
     pub voices: BTreeMap<String, Vec<String>>,
-    /// Метки фракций Oblivion, нужные репликам (абсолютные `FormID`): переменную `obf_…`
-    /// ([`marker_name`]) объявляет скрипт каждого NPC этой фракции.
+    /// Oblivion faction markers the responses need (absolute `FormID`s): the `obf_…` variable
+    /// ([`marker_name`]) is declared by the script of every NPC of that faction.
     pub markers: BTreeSet<u32>,
     pub report: WriteReport,
 }
 
-/// Отобранные реплики → темы Morrowind в порядке первого появления в файле: темы и приветствия
-/// (T10.6), голос и убеждение (T10.7), файлы голоса (T10.8).
+/// Selected responses → Morrowind topics in order of first appearance in the file: topics and
+/// greetings (T10.6), voice and persuasion (T10.7), voice files (T10.8).
 pub fn convert(
     tree: &[TopicTree<'_>],
     selected: &[Selected],
     world: &World<'_>,
 ) -> Result<Converted, IdClash> {
     let mut report = WriteReport::default();
-    // Темы, до которых доходят выбором (`TCLT` любой реплики файла), и темы, которые реплики
-    // добавляют игроку (`NAME` отобранных).
+    // Topics reached through a choice (`TCLT` of any response in the file), and topics the
+    // responses add for the player (`NAME` of the selected ones).
     let choice_targets: BTreeSet<Option<u32>> = tree
         .iter()
         .flat_map(|t| &t.infos)
@@ -1238,7 +1265,7 @@ pub fn convert(
             report.rejected.insert(why, copies);
         }
     }
-    // Темы Morrowind в порядке первого появления и их темы Oblivion.
+    // Morrowind topics in order of first appearance and their Oblivion topics.
     let mut dials: Vec<(String, TopicKind, Vec<usize>)> = Vec::new();
     for &i in by_topic.keys() {
         let Target::Dial(name, kind) = &targets[i] else {
@@ -1318,8 +1345,8 @@ pub fn convert(
         cx.report.topics += 1;
         cx.report.infos += infos.len();
         out.push(OutTopic {
-            // У темы мастера имя пишется как у мастера: ID сравниваются без регистра, но CS
-            // показывает то, что в файле.
+            // A master topic's name is written as in the master: IDs are compared
+            // case-insensitively, but the CS shows what is in the file.
             name: master.map_or(name, |v| v.name.clone()),
             kind,
             before_vanilla: master
@@ -1346,12 +1373,13 @@ pub fn convert(
     })
 }
 
-/// Скрипты-метки NPC. Без меток фракций у всех — [`super::NPC_SCRIPT`] с одной `ob_npc`
-/// (решение 2). NPC фракции с меткой получает скрипт `ob_npc_<хеш>` с `ob_npc` и переменными
-/// меток его фракций ([`marker_name`]): один скрипт на каждый набор меток. Итог: ID NPC → ID
-/// скрипта (только у тех, кому нужен не `ob_npc`) и скрипты — (ID, переменные) по возрастанию ID.
-/// Два набора с одним хешем — ошибка (не прячем, как пути).
-#[expect(clippy::type_complexity, reason = "пара простых таблиц")]
+/// NPC marker scripts. Without faction markers everyone gets [`super::NPC_SCRIPT`] with a single
+/// `ob_npc` (decision 2). An NPC of a faction with a marker gets the script `ob_npc_<hash>` with
+/// `ob_npc` and the marker variables of its factions ([`marker_name`]): one script per set of
+/// markers. Result: NPC ID → script ID (only for those who need something other than `ob_npc`) and
+/// the scripts — (ID, variables) by ascending ID. Two sets with the same hash are an error (not
+/// hidden, as with paths).
+#[expect(clippy::type_complexity, reason = "a pair of simple tables")]
 pub fn marker_scripts(
     speakers: &[Speaker],
     markers: &BTreeSet<u32>,
@@ -1375,7 +1403,7 @@ pub fn marker_scripts(
         let hash = crate::paths::fnv1a64(shorts.join("|").as_bytes());
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "берутся младшие 32 бита хеша"
+            reason = "the low 32 bits of the hash are taken"
         )]
         let id = format!(
             "{}_{}",
@@ -1399,8 +1427,8 @@ pub fn marker_scripts(
     Ok((by_npc, scripts.into_iter().collect()))
 }
 
-/// Переносимые NPC плагина как говорящие: данные Oblivion из `NPC_` и `RACE` (параметры —
-/// абсолютные `FormID`), Morrowind — из сконвертированных NPC.
+/// The plugin's carried-over NPCs as speakers: Oblivion data from `NPC_` and `RACE` (parameters are
+/// absolute `FormID`s), Morrowind data from the converted NPCs.
 pub fn speakers(
     plugin: &tes4_read::Plugin,
     map: &dyn Fn(u32) -> Option<u32>,
@@ -1424,8 +1452,8 @@ pub fn speakers(
             _ => {}
         }
     }
-    // Раса голоса — `VNAM` по полу, 0 — своя (замер `Oblivion.esm` 2026-09-30: папки голоса в
-    // архивах — ровно `FULL` рас, которые так получаются).
+    // The voice race is `VNAM` by sex, 0 means its own (measured on `Oblivion.esm` 2026-09-30: the
+    // voice folders in the archives are exactly the `FULL` of the races obtained this way).
     let voice = |race: u32, female: bool| -> Option<String> {
         let own = races.get(&race)?;
         let by_sex = own.voices[usize::from(female)];

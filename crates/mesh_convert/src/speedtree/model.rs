@@ -1,14 +1,14 @@
-//! Модель дерева из потока тегов `.spt`: глобальные параметры, уровни (ствол, ветки, уровень
-//! листвы), карты листвы, объекты коллизии. Смысл тегов — `docs/ru/formats/spt.md`.
+//! Tree model from an `.spt` tag stream: global parameters, levels (trunk, branches, foliage
+//! level), foliage maps, collision objects. The meaning of the tags is in `docs/en/formats/spt.md`.
 //!
-//! Берётся только то, что нужно генератору и сборке меша; остальное (LOD, свет, ветер, ваи,
-//! тени) читается токенизатором и здесь пропускается.
+//! Only what the generator and the mesh build need is taken; the rest (LOD, lighting, wind, fronds,
+//! shadows) is read by the tokenizer and skipped here.
 
 use super::{SptError, Token, Value, tokens};
 
-/// Сплайн Безье SpeedTree: значение параметра вдоль ветки. `min`…`max` — диапазон, в который
-/// отображается `y` кривой, `variance` — разброс, `points` — опорные точки
-/// `[x, y, dx, dy, длина касательной]`.
+/// A SpeedTree Bézier spline: a parameter's value along a branch. `min`…`max` is the range the
+/// curve's `y` is mapped into, `variance` the variation, `points` the control points
+/// `[x, y, dx, dy, tangent length]`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BezierSpline {
     pub min: f32,
@@ -18,7 +18,7 @@ pub struct BezierSpline {
 }
 
 impl BezierSpline {
-    /// Разбирает текст `BezierSpline min max var { N  x y dx dy len … }`.
+    /// Parses the text `BezierSpline min max var { N  x y dx dy len … }`.
     pub fn parse(text: &str) -> Option<Self> {
         let mut words = text.split_whitespace();
         if words.next()? != "BezierSpline" {
@@ -48,10 +48,10 @@ impl BezierSpline {
     }
 }
 
-/// Корневые вздутия уровня (`16003`…`16012`).
+/// The level's root bulges (`16003`…`16012`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Flares {
-    /// `16002`: упаковка сегментов по длине (показатель).
+    /// `16002`: segment packing along the length (exponent).
     pub segment_pack: f32,
     pub count: i32,
     pub balance: f32,
@@ -65,12 +65,12 @@ pub struct Flares {
     pub length_exponent: f32,
 }
 
-/// Уровень: ствол, ветки очередного порядка или последний — уровень листвы (у него часть
-/// полей значит другое, `docs/ru/formats/spt.md`).
+/// A level: the trunk, branches of the next order, or the last one — the foliage level (some fields
+/// mean something else there, `docs/en/formats/spt.md`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Level {
-    /// `6000`…`6007`, `6017`: возмущение, гравитация, гибкость, профиль гибкости, длина,
-    /// радиус, профиль радиуса, начальный угол, профиль гравитации.
+    /// `6000`…`6007`, `6017`: disturbance, gravity, flexibility, flexibility profile, length,
+    /// radius, radius profile, start angle, gravity profile.
     pub disturbance: BezierSpline,
     pub gravity: BezierSpline,
     pub flexibility: BezierSpline,
@@ -82,7 +82,7 @@ pub struct Level {
     pub gravity_profile: BezierSpline,
     pub cross_segments: i32,
     pub length_segments: i32,
-    /// `6010`…`6012`: где на этом уровне рождаются дети и с какой частотой.
+    /// `6010`…`6012`: where on this level children are born and how often.
     pub child_first: f32,
     pub child_last: f32,
     pub child_frequency: f32,
@@ -96,23 +96,24 @@ pub struct Level {
     pub flares: Flares,
 }
 
-/// Карта листвы (`1007`…`1008`).
+/// A foliage map (`1007`…`1008`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct LeafMap {
     pub blossom: bool,
     pub color: [f32; 3],
     pub orientation_variance: f32,
-    /// Путь, как его записал редактор (`C:\…\Leaves.tga`); игра берёт текстуру из записи `TREE`.
+    /// The path as the editor wrote it (`C:\…\Leaves.tga`); the game takes the texture from the
+    /// `TREE` record.
     pub texture: String,
     pub origin: [f32; 3],
-    /// `4005`: размер карточки / 100.
+    /// `4005`: card size / 100.
     pub size: [f32; 3],
-    /// `4006`: размер без деления — выводится из `4005` (`docs/ru/formats/spt.md`).
+    /// `4006`: the size without division — derived from `4005` (`docs/en/formats/spt.md`).
     pub size_raw: [f32; 3],
     pub f4007: f32,
 }
 
-/// Объект коллизии (`12002`…`12004`), в единицах SpeedTree.
+/// A collision object (`12002`…`12004`), in SpeedTree units.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Collision {
     Sphere {
@@ -130,31 +131,31 @@ pub enum Collision {
     },
 }
 
-/// Дерево целиком.
+/// The whole tree.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tree {
     pub bark_texture: String,
-    /// `2005`: главное семя (0 — случайное).
+    /// `2005`: the main seed (0 means random).
     pub seed: i32,
-    /// `2006`, `2007`: размер в футах SpeedTree и его разброс.
+    /// `2006`, `2007`: size in SpeedTree feet and its variation.
     pub size: f32,
     pub size_variance: f32,
-    /// `16013`: семя вздутий.
+    /// `16013`: the bulge seed.
     pub flare_seed: i32,
     pub levels: Vec<Level>,
-    /// `3007`, `3008`: допуск размещения листвы и режим столкновений (0 нет, 1 ветка, 2 дерево).
+    /// `3007`, `3008`: foliage placement tolerance and collision mode (0 none, 1 branch, 2 tree).
     pub leaf_tolerance: f32,
     pub leaf_collision: i32,
     pub leaf_maps: Vec<LeafMap>,
     pub collision: Vec<Collision>,
-    /// `8003`, `8005`: материалы коры и листвы — diffuse, ambient, specular, emissive (по 3),
-    /// блеск.
+    /// `8003`, `8005`: bark and foliage materials — diffuse, ambient, specular, emissive (3 each),
+    /// shininess.
     pub bark_material: Vec<f32>,
     pub leaf_material: Vec<f32>,
-    /// `10002`: прямоугольники карт листвы в сводной текстуре — по одному на карту, четыре
-    /// угла `(u, v)` в осях TGA (v вверх). Пусто — у каждой карты текстура целиком.
+    /// `10002`: foliage map rectangles in the texture atlas — one per map, four corners `(u, v)` in
+    /// TGA axes (v up). Empty means each map has the whole texture.
     pub leaf_quads: Vec<[f32; 8]>,
-    /// Правила цветения: `3000` порог позиции, `3001` глубина, `3002` вес.
+    /// Blossom rules: `3000` position threshold, `3001` depth, `3002` weight.
     pub blossom_distance: f32,
     pub blossom_depth: i32,
     pub blossom_weight: f32,
@@ -193,7 +194,7 @@ fn byte(t: &Token) -> Result<bool, SptError> {
 
 fn floats<const N: usize>(t: &Token) -> Result<[f32; N], SptError> {
     match &t.value {
-        Value::Floats(v) if v.len() >= N => Ok(v[..N].try_into().expect("длина проверена")),
+        Value::Floats(v) if v.len() >= N => Ok(v[..N].try_into().expect("the length is checked")),
         _ => Err(structure(
             t,
             lang::tr("ожидались f32", "expected f32 values"),
@@ -216,7 +217,7 @@ fn spline(t: &Token) -> Result<BezierSpline, SptError> {
     BezierSpline::parse(&text).ok_or(SptError::BadSpline { at: t.at, text })
 }
 
-/// Уровень в процессе сборки: сплайны по слотам 0…8 (`6000`…`6007`, `6017`).
+/// A level being assembled: splines by slots 0…8 (`6000`…`6007`, `6017`).
 #[derive(Default)]
 struct LevelBuilder {
     splines: [Option<BezierSpline>; 9],
@@ -263,7 +264,7 @@ impl LevelBuilder {
     }
 }
 
-/// Разбирает `.spt` в [`Tree`].
+/// Parses an `.spt` into a [`Tree`].
 pub fn parse(data: &[u8]) -> Result<Tree, SptError> {
     let tokens = tokens(data)?;
     let mut tree = Tree {
@@ -287,7 +288,7 @@ pub fn parse(data: &[u8]) -> Result<Tree, SptError> {
     let mut declared_levels = None;
     let mut level: Option<LevelBuilder> = None;
     let mut leaf: Option<LeafMap> = None;
-    // 15002/15003 и 16002…16012 идут наборами по одному на уровень, в порядке уровней.
+    // 15002/15003 and 16002…16012 come in sets of one per level, in level order.
     let mut tiling: Vec<(bool, f32)> = Vec::new();
     let mut flares: Vec<Flares> = Vec::new();
 
@@ -315,7 +316,7 @@ pub fn parse(data: &[u8]) -> Result<Tree, SptError> {
                     continue;
                 }
                 1017 => {
-                    let b = level.take().expect("уровень открыт");
+                    let b = level.take().expect("a level is open");
                     tree.levels.push(b.finish(t)?);
                     continue;
                 }
@@ -340,7 +341,7 @@ pub fn parse(data: &[u8]) -> Result<Tree, SptError> {
                 4005 => m.size = floats(t)?,
                 4006 => m.size_raw = floats(t)?,
                 4007 => m.f4007 = float(t)?,
-                1008 => tree.leaf_maps.push(leaf.take().expect("карта открыта")),
+                1008 => tree.leaf_maps.push(leaf.take().expect("a map is open")),
                 _ => {
                     return Err(structure(
                         t,
@@ -451,7 +452,9 @@ pub fn parse(data: &[u8]) -> Result<Tree, SptError> {
         }
     }
 
-    let end = tokens.last().expect("токенизатор не отдаёт пустой поток");
+    let end = tokens
+        .last()
+        .expect("the tokenizer does not return an empty stream");
     if level.is_some() || leaf.is_some() {
         return Err(structure(
             end,

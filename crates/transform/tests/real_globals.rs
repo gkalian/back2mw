@@ -1,12 +1,12 @@
-//! Глобальные переменные `Oblivion.esm` (T11.1): все `GLOB` читаются и расходятся по трём путям —
-//! ванильные по таблице `data/globals.tsv` или по имени, без пары, свои. Требует
-//! `BACK2MW_GAME_DATA` (нужен и `Morrowind.esm`).
+//! Global variables of `Oblivion.esm` (T11.1): all `GLOB` are read and split into three paths —
+//! vanilla ones via the `data/globals.tsv` table or by name, ones without a pair, our own. Needs
+//! `BACK2MW_GAME_DATA` (`Morrowind.esm` is needed too).
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test -p transform --test real_globals -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Глобальные переменные».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Global variables".
 
 mod common;
 
@@ -18,7 +18,7 @@ use transform::IdAllocator;
 use transform::globals::{ENGINE_GLOBALS, convert};
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn globals_of_oblivion_go_three_ways() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
@@ -32,7 +32,7 @@ fn globals_of_oblivion_go_three_ways() {
     let out = convert(&plugin, &mut ids, |_| true, Some, &vanilla, true).unwrap();
     let r = &out.report;
     println!(
-        "GLOB {}: своих {}, на ванильные {:?}, без пары {:?}; замечаний {}",
+        "GLOB {}: our own {}, onto vanilla {:?}, without a pair {:?}; notes {}",
         r.seen,
         out.globals.len(),
         out.vanilla,
@@ -49,7 +49,7 @@ fn globals_of_oblivion_go_three_ways() {
     );
     assert_eq!(r.unsupported, ["GameDaysPassed"]);
     assert_eq!(out.globals.len(), 87);
-    // Каждая строка таблицы движковых переменных встретилась в `Oblivion.esm`.
+    // Every row of the engine variable table occurred in `Oblivion.esm`.
     for edid in [
         "GameHour",
         "GameDay",

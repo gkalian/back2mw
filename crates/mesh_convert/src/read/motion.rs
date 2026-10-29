@@ -1,23 +1,24 @@
-//! Анимация меша, прочитанная со значениями (T2.6): последовательности `NiControllerSequence`,
-//! узлы, которые они двигают, и ключи поворота и сдвига этих узлов.
+//! Mesh animation read with its values (T2.6): `NiControllerSequence` sequences, the nodes they
+//! move, and the rotation and translation keys of those nodes.
 //!
-//! Общий разбор ([`super::parse`]) анимацию читает ради длины и отбрасывает (`anim.rs`): мешу
-//! Morrowind она не нужна. Нужна она двери — по последовательности `Open` видно, где у створки
-//! петля (`crate::door`). Поэтому значения читаются вторым проходом и только по запросу: по
-//! смещениям блоков из [`super::parse_with_offsets`], теми же раскладками, что в `anim.rs`
-//! (`nif.xml`, 20.0.0.4/5 и 10.2.0.0; у 10.1.0.106 блок управления несёт строки сам).
+//! The general parse ([`super::parse`]) reads animation only for its length and drops it
+//! (`anim.rs`): a Morrowind mesh does not need it. A door does — the `Open` sequence shows where
+//! the leaf's hinge is (`crate::door`). So the values are read in a second pass and only on
+//! request: by block offsets from [`super::parse_with_offsets`], with the same layouts as in
+//! `anim.rs` (`nif.xml`, 20.0.0.4/5 and 10.2.0.0; in 10.1.0.106 a controlled block carries the
+//! strings itself).
 //!
-//! Что берётся: имя последовательности, начало и конец, для каждого блока управления — имя узла
-//! и, если интерполятор — `NiTransformInterpolator`, его поза и ключи `NiTransformData`. Прочие
-//! интерполяторы (цвет, видимость, смешивающие) остаются без ключей. Наклоны ключей (квадратичные,
-//! TBC) не берутся: двери нужны крайние положения, а не кривая между ними.
+//! What is taken: the sequence name, start and stop, and for each controlled block — the node name
+//! and, if the interpolator is a `NiTransformInterpolator`, its pose and the `NiTransformData`
+//! keys. Other interpolators (color, visibility, blend) stay without keys. Key tangents (quadratic,
+//! TBC) are not taken: a door needs the extreme positions, not the curve between them.
 
 use super::common::{BlockRef, read_ref};
 use super::cursor::Cursor;
 use super::error::Result;
 use super::{SourceNif, header};
 
-/// Последовательность анимации.
+/// An animation sequence.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sequence {
     pub name: String,
@@ -26,44 +27,45 @@ pub struct Sequence {
     pub tracks: Vec<Track>,
 }
 
-/// Блок управления: какой узел двигает последовательность и чем.
+/// A controlled block: which node the sequence moves, and with what.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Track {
-    /// Имя узла-цели (из палитры строк или из самого блока).
+    /// Target node name (from the string palette or from the block itself).
     pub node: String,
-    /// Ключи, если интерполятор — `NiTransformInterpolator`.
+    /// Keys, if the interpolator is a `NiTransformInterpolator`.
     pub keys: Option<TransformKeys>,
 }
 
-/// Поза интерполятора и ключи его `NiTransformData`.
+/// The interpolator pose and the keys of its `NiTransformData`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TransformKeys {
-    /// Сдвиг позы; `None` — не задан (в файле −`f32::MAX`).
+    /// Pose translation; `None` means not set (−`f32::MAX` in the file).
     pub pose_translation: Option<[f32; 3]>,
-    /// Поворот позы, кватернион `w, x, y, z`; `None` — не задан.
+    /// Pose rotation, quaternion `w, x, y, z`; `None` means not set.
     pub pose_rotation: Option<[f32; 4]>,
     pub rotations: Rotations,
-    /// Ключи сдвига: время и значение.
+    /// Translation keys: time and value.
     pub translations: Vec<(f32, [f32; 3])>,
 }
 
-/// Ключи поворота.
+/// Rotation keys.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Rotations {
     #[default]
     None,
-    /// Время и кватернион `w, x, y, z`.
+    /// Time and quaternion `w, x, y, z`.
     Quat(Vec<(f32, [f32; 4])>),
-    /// Три дорожки углов Эйлера (X, Y, Z), радианы: время и угол.
+    /// Three Euler angle tracks (X, Y, Z), radians: time and angle.
     Euler([Vec<(f32, f32)>; 3]),
 }
 
-/// «Не задано» у позы интерполятора: экспортёр пишет −`f32::MAX` в поля, которые берутся из ключей.
+/// "Not set" in an interpolator pose: the exporter writes −`f32::MAX` into the fields taken from
+/// the keys.
 pub(super) fn is_unset(v: f32) -> bool {
     v <= -3.0e38
 }
 
-/// Курсор на начале блока `index`; `None` — такого блока нет.
+/// A cursor at the start of block `index`; `None` means there is no such block.
 pub(super) fn cursor_at<'a>(
     bytes: &'a [u8],
     source: &SourceNif,
@@ -77,36 +79,38 @@ pub(super) fn cursor_at<'a>(
     Some(cur)
 }
 
-/// Последовательность как она записана: блоки управления со ссылками, без чтения ключей.
+/// A sequence as written: controlled blocks with references, without reading the keys.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawSequence {
     pub name: String,
-    /// Тип цикла: 0 — петля, 1 — туда-обратно, 2 — зажать.
+    /// Cycle type: 0 — loop, 1 — reverse (ping-pong), 2 — clamp.
     pub cycle: u32,
     pub frequency: f32,
     pub start: f32,
     pub stop: f32,
-    /// Блок `NiTextKeyExtraData` с метками последовательности.
+    /// The `NiTextKeyExtraData` block with the sequence's text keys.
     pub text_keys: BlockRef,
-    /// Корень накопления: узел, чей сдвиг и поворот движок превращает в движение актёра.
+    /// The accumulation root: the node whose translation and rotation the engine turns into the
+    /// actor's movement.
     pub accum_root: String,
     pub blocks: Vec<ControlledBlock>,
 }
 
-/// Блок управления: что двигать (узел и контроллер на нём) и чем (интерполятор).
+/// A controlled block: what to move (the node and the controller on it) and with what (the
+/// interpolator).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlledBlock {
     pub interpolator: BlockRef,
-    /// Контроллер, которому последовательность подставляет интерполятор (у частиц —
-    /// `NiPSysEmitterCtlr`: темп рождения).
+    /// The controller into which the sequence plugs the interpolator (for particles —
+    /// `NiPSysEmitterCtlr`: the birth rate).
     pub controller: BlockRef,
-    /// Имя узла-цели (из палитры строк или из самого блока).
+    /// Target node name (from the string palette or from the block itself).
     pub node: String,
 }
 
-/// Все последовательности меша в порядке файла, с ключами преобразований узлов. У версий до
-/// 10.1.0.106 блок управления устроен иначе (имя цели и контроллер с данными вместо
-/// интерполятора) — для них список пуст.
+/// All sequences of the mesh in file order, with node transform keys. In versions before 10.1.0.106
+/// a controlled block is structured differently (a target name and a controller with data instead
+/// of an interpolator) — for them the list is empty.
 pub fn sequences(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<Vec<Sequence>> {
     let mut out = Vec::new();
     for raw in raw_sequences(bytes, source, offsets)? {
@@ -127,7 +131,7 @@ pub fn sequences(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<
     Ok(out)
 }
 
-/// Все последовательности меша в порядке файла, без ключей.
+/// All sequences of the mesh in file order, without keys.
 pub fn raw_sequences(
     bytes: &[u8],
     source: &SourceNif,
@@ -149,7 +153,7 @@ pub fn raw_sequences(
     Ok(out)
 }
 
-/// Имя цели блока управления до того, как прочитана палитра.
+/// Target name of a controlled block before the palette is read.
 enum Target {
     Inline(String),
     Palette { palette: BlockRef, offset: u32 },
@@ -171,10 +175,10 @@ fn sequence(
         for _ in 0..blocks {
             let interpolator = read_ref(cur)?;
             let controller = read_ref(cur)?;
-            cur.u8()?; // приоритет
+            cur.u8()?; // priority
             let palette = read_ref(cur)?;
-            let offset = cur.u32()?; // имя узла
-            cur.bytes(16)?; // тип свойства, тип контроллера, две переменные
+            let offset = cur.u32()?; // node name
+            cur.bytes(16)?; // property type, controller type, two variables
             controlled.push((
                 interpolator,
                 controller,
@@ -186,10 +190,10 @@ fn sequence(
         for _ in 0..blocks {
             let interpolator = read_ref(cur)?;
             let controller = read_ref(cur)?;
-            read_ref(cur)?; // смешивающий интерполятор
-            cur.u16()?; // его индекс
+            read_ref(cur)?; // blend interpolator
+            cur.u16()?; // its index
             if cur.bsver() > 0 {
-                cur.u8()?; // приоритет
+                cur.u8()?; // priority
             }
             let node = cur.sized_string()?;
             for _ in 0..4 {
@@ -198,19 +202,19 @@ fn sequence(
             controlled.push((interpolator, controller, Target::Inline(node)));
         }
     }
-    cur.f32()?; // вес
+    cur.f32()?; // weight
     let text_keys = read_ref(cur)?;
     let cycle = cur.u32()?;
     let frequency = cur.f32()?;
     if version <= 0x0A04_0001 {
-        cur.f32()?; // фаза
+        cur.f32()?; // phase
     }
     let start = cur.f32()?;
     let stop = cur.f32()?;
     if version == header::VERSION_10_1_0_106 {
-        cur.bool()?; // проигрывать назад
+        cur.bool()?; // play backwards
     }
-    read_ref(cur)?; // менеджер
+    read_ref(cur)?; // manager
     let accum_root = cur.sized_string()?;
 
     let mut blocks = Vec::with_capacity(controlled.len());
@@ -239,8 +243,8 @@ fn sequence(
     })
 }
 
-/// Строка палитры `NiStringPalette` со смещения `offset` до нуля. Нет палитры или смещение за её
-/// концом (у пустых полей экспортёр пишет `0xFFFF_FFFF`) — пустая строка.
+/// A `NiStringPalette` string from offset `offset` up to the zero. No palette, or an offset past
+/// its end (the exporter writes `0xFFFF_FFFF` for empty fields), gives an empty string.
 fn palette_string(
     bytes: &[u8],
     source: &SourceNif,
@@ -265,7 +269,7 @@ fn palette_string(
     Ok(rest.split('\0').next().unwrap_or("").to_owned())
 }
 
-/// Поза и ключи интерполятора; `None` — блок не `NiTransformInterpolator`.
+/// The interpolator pose and keys; `None` means the block is not a `NiTransformInterpolator`.
 fn transform_keys(
     bytes: &[u8],
     source: &SourceNif,
@@ -283,7 +287,7 @@ fn transform_keys(
     };
     let translation: [f32; 3] = cur.floats()?;
     let rotation: [f32; 4] = cur.floats()?;
-    cur.f32()?; // масштаб
+    cur.f32()?; // scale
     if cur.version() <= 0x0A01_006D {
         cur.bytes(3)?; // TRS Valid
     }
@@ -316,7 +320,7 @@ pub(super) fn rotations(cur: &mut Cursor<'_>) -> Result<Rotations> {
     let kind = cur.u32()?;
     if kind == 4 {
         if cur.version() <= 0x0A01_0000 {
-            cur.f32()?; // порядок осей
+            cur.f32()?; // axis order
         }
         let mut axes: [Vec<(f32, f32)>; 3] = Default::default();
         for axis in &mut axes {
@@ -339,7 +343,7 @@ pub(super) fn rotations(cur: &mut Cursor<'_>) -> Result<Rotations> {
     Ok(Rotations::Quat(keys))
 }
 
-/// `KeyGroup` из `N` чисел на значение: время и значение каждого ключа; наклоны пропускаются.
+/// A `KeyGroup` of `N` numbers per value: the time and value of each key; tangents are skipped.
 pub(super) fn key_group<const N: usize>(cur: &mut Cursor<'_>) -> Result<Vec<(f32, [f32; N])>> {
     let count = cur.len_u32()?;
     if count == 0 {

@@ -1,7 +1,9 @@
-//! Измерение T11.5e: вместимость камней душ и души ванильных существ `Morrowind.esm`. По ним
-//! стоит `data/creature_souls.tsv` — какое число души получает существо Oblivion без донора.
+//! Measurement T11.5e: soul gem capacity and the souls of vanilla `Morrowind.esm` creatures.
+//! `data/creature_souls.tsv` rests on them — which soul value an Oblivion creature without a donor
+//! gets.
 //!
-//! Это измерение, синтетики нет; числа переносятся в `docs/ru/formats/tes3.md`, «Существа».
+//! This is a measurement, there is no synthetic test; the numbers are carried into
+//! `docs/en/formats/tes3.md`, "Creatures".
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -15,7 +17,7 @@ use std::collections::BTreeMap;
 use tes3::esp::{Creature, GameSetting, MiscItem, Plugin};
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn soul_gem_capacities_and_vanilla_souls() {
     let mut plugin = Plugin::new();
     plugin
@@ -32,9 +34,9 @@ fn soul_gem_capacities_and_vanilla_souls() {
     let mult: f32 = multiplier
         .trim_matches(|c: char| !c.is_ascii_digit() && c != '.')
         .parse()
-        .expect("число");
+        .expect("a number");
 
-    // Вместимость камня — его цена на множитель.
+    // A gem's capacity is its value times a multiplier.
     let mut gems: Vec<(u32, String)> = plugin
         .objects_of_type::<MiscItem>()
         .filter(|m| m.id.to_ascii_lowercase().starts_with("misc_soulgem_"))
@@ -44,11 +46,11 @@ fn soul_gem_capacities_and_vanilla_souls() {
     let mut capacities = Vec::new();
     for (value, id) in &gems {
         let capacity = *value as f32 * mult;
-        println!("  {id}: цена {value}, вместимость {capacity}");
+        println!("  {id}: value {value}, capacity {capacity}");
         capacities.push(capacity);
     }
 
-    // Души существ: сколько каких, и в какой наименьший камень каждая входит.
+    // Creature souls: how many of each, and which smallest gem each one fits into.
     let mut souls: BTreeMap<u32, usize> = BTreeMap::new();
     let mut by_gem: BTreeMap<String, (usize, u32, u32)> = BTreeMap::new();
     for c in plugin.objects_of_type::<Creature>() {
@@ -58,20 +60,18 @@ fn soul_gem_capacities_and_vanilla_souls() {
             .iter()
             .zip(&capacities)
             .find(|(_, capacity)| soul as f32 <= **capacity)
-            .map_or("не входит ни в один", |((_, id), _)| {
-                id.as_str()
-            });
+            .map_or("fits into none", |((_, id), _)| id.as_str());
         let row = by_gem.entry(gem.to_owned()).or_insert((0, u32::MAX, 0));
         row.0 += 1;
         row.1 = row.1.min(soul);
         row.2 = row.2.max(soul);
     }
-    println!("души существ (значение — записей): {souls:?}");
+    println!("creature souls (value — records): {souls:?}");
     for (gem, (count, lo, hi)) in &by_gem {
-        println!("  наименьший камень {gem}: существ {count}, души {lo}…{hi}");
+        println!("  smallest gem {gem}: creatures {count}, souls {lo}…{hi}");
     }
 
-    // На этих числах стоит `data/creature_souls.tsv`.
+    // `data/creature_souls.tsv` rests on these numbers.
     let named = |name: &str| {
         gems.iter()
             .zip(&capacities)

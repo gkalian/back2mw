@@ -1,17 +1,17 @@
-//! Иконки инвентаря: DDS Oblivion → DDS размера Morrowind.
+//! Inventory icons: Oblivion DDS → DDS of Morrowind size.
 //!
-//! Ванильный движок рисует иконку в её собственном размере в пикселях, а иконки Morrowind —
-//! 32×32 (`Morrowind.bsa`: 948 из 951 иконок вещей, остальные 16×16; 2026-09-25). Иконки
-//! Oblivion — 64×64, и в инвентаре они выходили вдвое крупнее соседних (игра, 2026-09-25).
-//! Поэтому иконка больше [`ICON_SIZE`] уменьшается усреднением блоков пикселей и пишется
-//! несжатой 32-битной BGRA — в этой раскладке приходят иконки Oblivion, и движок её показал.
+//! The vanilla engine draws an icon at its own pixel size, and Morrowind icons are 32×32
+//! (`Morrowind.bsa`: 948 of 951 item icons, the rest 16×16; 2026-09-25). Oblivion icons are 64×64,
+//! and in the inventory they came out twice as large as their neighbors (game, 2026-09-25). So an
+//! icon larger than [`ICON_SIZE`] is shrunk by averaging pixel blocks and written as uncompressed
+//! 32-bit BGRA — Oblivion icons come in this layout, and the engine showed it.
 //!
-//! Читаются несжатые RGB/RGBA по маскам и DXT1/DXT3/DXT5 — всё, что встретилось у иконок модов;
-//! остальное — [`IconError::Unsupported`], и вызывающий копирует файл как есть.
+//! Uncompressed RGB/RGBA by masks and DXT1/DXT3/DXT5 are read — everything encountered in mod
+//! icons; the rest is [`IconError::Unsupported`], and the caller copies the file as is.
 
 use std::fmt;
 
-/// Размер стороны иконки Morrowind.
+/// Morrowind icon side size.
 pub const ICON_SIZE: u32 = 32;
 
 const HEADER_LEN: usize = 128;
@@ -21,13 +21,13 @@ const DDPF_RGB: u32 = 0x40;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IconError {
-    /// Нет сигнатуры `DDS ` или заголовок короче 128 байт.
+    /// No `DDS ` signature or the header is shorter than 128 bytes.
     NotDds,
-    /// Данных меньше, чем требует заголовок.
+    /// Less data than the header requires.
     Truncated { needed: usize, have: usize },
-    /// Формат пикселей, который мы не читаем.
+    /// A pixel format we do not read.
     Unsupported { four_cc: [u8; 4], bits: u32 },
-    /// Сторона не делится на коэффициент уменьшения.
+    /// The side is not divisible by the shrink factor.
     OddSize { width: u32, height: u32 },
 }
 
@@ -65,15 +65,15 @@ fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
 }
 
-/// Картинка RGBA8, строки сверху вниз.
+/// An RGBA8 image, rows top to bottom.
 struct Image {
     width: u32,
     height: u32,
     rgba: Vec<[u8; 4]>,
 }
 
-/// Уменьшает иконку до [`ICON_SIZE`] по большей стороне. `Ok(None)` — уже не больше, файл
-/// годится как есть.
+/// Shrinks the icon to [`ICON_SIZE`] on the larger side. `Ok(None)` means it is already no larger,
+/// the file is fine as is.
 pub fn shrink_icon(bytes: &[u8]) -> Result<Option<Vec<u8>>, IconError> {
     if bytes.len() < HEADER_LEN || &bytes[..4] != b"DDS " {
         return Err(IconError::NotDds);
@@ -94,8 +94,8 @@ pub fn shrink_icon(bytes: &[u8]) -> Result<Option<Vec<u8>>, IconError> {
     Ok(Some(encode(&downscale(&image, factor))))
 }
 
-/// Средний цвет RGB (0…255) верхнего уровня DDS — для оттенков лица и волос (T8.4): текстуру не
-/// перекрашиваем, а множитель материала считаем от её среднего.
+/// Average RGB color (0…255) of the DDS top level — for face and hair tints (T8.4): we do not
+/// recolor the texture but compute the material multiplier from its average.
 pub fn mean_color(bytes: &[u8]) -> Result<[f32; 3], IconError> {
     if bytes.len() < HEADER_LEN || &bytes[..4] != b"DDS " {
         return Err(IconError::NotDds);
@@ -110,14 +110,14 @@ pub fn mean_color(bytes: &[u8]) -> Result<[f32; 3], IconError> {
     let n = image.rgba.len().max(1);
     #[expect(
         clippy::cast_precision_loss,
-        reason = "сумма байтов картинки до 4096² — меньше 2^32, в f32 с точностью до долей процента"
+        reason = "the byte sum of an image up to 4096² is below 2^32; in f32 it is accurate to a fraction of a percent"
     )]
     let mean = sum.map(|s| s as f32 / n as f32);
     Ok(mean)
 }
 
-/// Верхний уровень DDS: (ширина, высота, пиксели RGBA строками сверху вниз). Нужен запеканию
-/// кожи лица (T8.8): база — текстура расы.
+/// The DDS top level: (width, height, RGBA pixels in rows top to bottom). Needed for baking face
+/// skin (T8.8): the base is the race texture.
 pub fn decode_rgba(bytes: &[u8]) -> Result<(u32, u32, Vec<[u8; 4]>), IconError> {
     if bytes.len() < HEADER_LEN || &bytes[..4] != b"DDS " {
         return Err(IconError::NotDds);
@@ -188,7 +188,7 @@ fn decode(bytes: &[u8], width: u32, height: u32) -> Result<Image, IconError> {
                     }
                     let shifted = (raw & m) >> m.trailing_zeros();
                     let max = m >> m.trailing_zeros();
-                    u8::try_from(shifted * 255 / max).expect("значение канала ≤ его максимума")
+                    u8::try_from(shifted * 255 / max).expect("a channel value is ≤ its maximum")
                 };
                 [
                     channel(masks[0]),
@@ -213,20 +213,22 @@ fn rgb565(c: u16) -> [u8; 3] {
     let g = u32::from(c >> 5) & 0x3f;
     let b = u32::from(c) & 0x1f;
     [
-        u8::try_from(r * 255 / 31).expect("5 бит"),
-        u8::try_from(g * 255 / 63).expect("6 бит"),
-        u8::try_from(b * 255 / 31).expect("5 бит"),
+        u8::try_from(r * 255 / 31).expect("5 bits"),
+        u8::try_from(g * 255 / 63).expect("6 bits"),
+        u8::try_from(b * 255 / 31).expect("5 bits"),
     ]
 }
 
 fn mix(a: [u8; 3], b: [u8; 3], wa: u32, wb: u32) -> [u8; 3] {
     let m = |x: u8, y: u8| {
-        u8::try_from((u32::from(x) * wa + u32::from(y) * wb) / (wa + wb)).expect("среднее байтов")
+        u8::try_from((u32::from(x) * wa + u32::from(y) * wb) / (wa + wb))
+            .expect("the average of bytes")
     };
     [m(a[0], b[0]), m(a[1], b[1]), m(a[2], b[2])]
 }
 
-/// Цвета блока DXT (последние 8 байт блока); `four_color` — режим без прозрачного цвета.
+/// DXT block colors (the last 8 bytes of the block); `four_color` is the mode without a transparent
+/// color.
 fn color_block(b: &[u8], four_color: bool) -> [[u8; 4]; 16] {
     let c0 = u16::from_le_bytes([b[0], b[1]]);
     let c1 = u16::from_le_bytes([b[2], b[3]]);
@@ -272,7 +274,7 @@ fn decode_block(four_cc: &[u8; 4], b: &[u8]) -> [[u8; 4]; 16] {
                     0 => a0,
                     1 => a1,
                     _ => {
-                        let i = u32::try_from(i).expect("индекс < 8");
+                        let i = u32::try_from(i).expect("index < 8");
                         ((8 - i) * a0 + (i - 1) * a1) / 7
                     }
                 })
@@ -283,23 +285,23 @@ fn decode_block(four_cc: &[u8; 4], b: &[u8]) -> [[u8; 4]; 16] {
                     6 => 0,
                     7 => 255,
                     _ => {
-                        let i = u32::try_from(i).expect("индекс < 8");
+                        let i = u32::try_from(i).expect("index < 8");
                         ((6 - i) * a0 + (i - 1) * a1) / 5
                     }
                 })
             };
             let bits = u64::from_le_bytes([b[2], b[3], b[4], b[5], b[6], b[7], 0, 0]);
             for (k, p) in px.iter_mut().enumerate() {
-                let index = usize::try_from((bits >> (3 * k)) & 7).expect("три бита");
-                p[3] = u8::try_from(alpha[index]).expect("альфа ≤ 255");
+                let index = usize::try_from((bits >> (3 * k)) & 7).expect("three bits");
+                p[3] = u8::try_from(alpha[index]).expect("alpha ≤ 255");
             }
             px
         }
     }
 }
 
-/// Среднее по блокам `factor × factor`. Цвет усредняется с весом альфы, чтобы прозрачный фон
-/// (часто чёрный) не темнил края иконки.
+/// Average over `factor × factor` blocks. The color is averaged weighted by alpha, so a transparent
+/// background (often black) does not darken the icon's edges.
 fn downscale(image: &Image, factor: u32) -> Image {
     let (w, h) = (image.width / factor, image.height / factor);
     let f = factor as usize;
@@ -318,13 +320,13 @@ fn downscale(image: &Image, factor: u32) -> Image {
                     alpha += a;
                 }
             }
-            let n = u32::try_from(f * f).expect("коэффициент мал");
+            let n = u32::try_from(f * f).expect("the factor is small");
             let color: [u32; 3] = if alpha > 0 {
                 std::array::from_fn(|c| sum[c] / alpha)
             } else {
                 std::array::from_fn(|c| plain[c] / n)
             };
-            let byte = |v: u32| u8::try_from(v).expect("среднее байтов ≤ 255");
+            let byte = |v: u32| u8::try_from(v).expect("the average of bytes is ≤ 255");
             rgba.push([
                 byte(color[0]),
                 byte(color[1]),
@@ -340,22 +342,22 @@ fn downscale(image: &Image, factor: u32) -> Image {
     }
 }
 
-/// Несжатый DDS A8R8G8B8 без мип-уровней.
+/// Uncompressed DDS A8R8G8B8 without mip levels.
 fn encode(image: &Image) -> Vec<u8> {
     let mut out = Vec::with_capacity(HEADER_LEN + image.rgba.len() * 4);
     let mut put = |v: u32| out.extend_from_slice(&v.to_le_bytes());
     put(u32::from_le_bytes(*b"DDS "));
-    put(124); // размер заголовка
+    put(124); // header size
     put(0x1 | 0x2 | 0x4 | 0x8 | 0x1000); // CAPS | HEIGHT | WIDTH | PITCH | PIXELFORMAT
     put(image.height);
     put(image.width);
-    put(image.width * 4); // шаг строки
-    put(0); // глубина
-    put(0); // мип-уровни
+    put(image.width * 4); // row pitch
+    put(0); // depth
+    put(0); // mip levels
     for _ in 0..11 {
-        put(0); // резерв
+        put(0); // reserved
     }
-    put(32); // размер формата пикселей
+    put(32); // pixel format size
     put(DDPF_RGB | DDPF_ALPHAPIXELS);
     put(0); // FourCC
     put(32);

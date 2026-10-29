@@ -1,16 +1,16 @@
-//! Стадия `extract`: распаковка из BSA только нужных файлов, с кешем по манифесту (T1.2b).
+//! The `extract` stage: unpacking only the needed files from BSAs, with a cache keyed by a manifest
+//! (T1.2b).
 //!
-//! Файлы ложатся в `work/extracted/<путь в архиве>` (нижний регистр, `/` вместо `\`).
-//! Манифест `work/extract-manifest.tsv` — строка на файл, поля через табуляцию:
+//! Files go to `work/extracted/<path in archive>` (lower case, `/` instead of `\`). The manifest
+//! `work/extract-manifest.tsv` has one line per file, fields separated by tabs:
 //!
 //! ```text
-//! <имя архива> <размер архива> <время изменения архива, с> <путь в архиве> <размер файла>
+//! <archive name> <archive size> <archive modification time, s> <path in archive> <file size>
 //! ```
 //!
-//! Файл пропускается, если архив не менялся (размер и время те же), а файл на месте с тем же
-//! размером. Формат TSV, а не JSON — чтобы не тащить `serde_json` ради одного файла.
-//! Манифест переписывается целиком и отсортирован, поэтому одинаковый набор файлов даёт
-//! побайтово одинаковый манифест.
+//! A file is skipped if the archive has not changed (same size and time) and the file is in place
+//! with the same size. TSV, not JSON, so as not to pull in `serde_json` for one file. The manifest
+//! is rewritten in full and sorted, so the same set of files gives a byte-identical manifest.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -21,18 +21,18 @@ use std::time::UNIX_EPOCH;
 
 use tes4_read::BsaIndex;
 
-/// Каталог распакованного внутри рабочего.
+/// The unpacked directory inside the work directory.
 pub const EXTRACTED_DIR: &str = "extracted";
 pub const MANIFEST_NAME: &str = "extract-manifest.tsv";
 
-/// Итог стадии для одного архива.
+/// Stage result for one archive.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtractReport {
-    /// Файлов распаковано в этом прогоне.
+    /// Files unpacked in this run.
     pub extracted: usize,
-    /// Файлов пропущено: архив не менялся, файл на месте.
+    /// Files skipped: the archive has not changed, the file is in place.
     pub skipped: usize,
-    /// Запрошенные пути, которых нет в архиве.
+    /// Requested paths that are not in the archive.
     pub missing: Vec<String>,
 }
 
@@ -46,11 +46,11 @@ pub enum ExtractError {
         path: PathBuf,
         message: String,
     },
-    /// Путь из архива вышел бы за пределы рабочего каталога.
+    /// A path from the archive would escape the work directory.
     UnsafePath {
         path: String,
     },
-    /// Строка манифеста не разобралась.
+    /// A manifest line did not parse.
     Manifest {
         line: usize,
         text: String,
@@ -85,7 +85,7 @@ impl fmt::Display for ExtractError {
 
 impl std::error::Error for ExtractError {}
 
-/// Что манифест помнит про один файл.
+/// What the manifest remembers about one file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Record {
     archive_size: u64,
@@ -93,7 +93,7 @@ struct Record {
     file_size: u64,
 }
 
-/// Ключ манифеста: (имя архива, путь в архиве).
+/// Manifest key: (archive name, path in archive).
 type Manifest = BTreeMap<(String, String), Record>;
 
 fn read_manifest(path: &Path) -> Result<Manifest, ExtractError> {
@@ -146,7 +146,7 @@ fn write_manifest(path: &Path, manifest: &Manifest) -> Result<(), ExtractError> 
     })
 }
 
-/// Путь файла внутри `work/extracted`: сегменты в нижнем регистре, без `..` и пустых.
+/// File path inside `work/extracted`: segments in lower case, without `..` and empty ones.
 pub fn extracted_path(work_dir: &Path, archive_path: &str) -> Result<PathBuf, ExtractError> {
     let mut out = work_dir.join(EXTRACTED_DIR);
     let mut any = false;
@@ -175,8 +175,8 @@ fn mtime_secs(meta: &fs::Metadata) -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// Распаковывает из `archive` файлы `wanted` (пути в архиве, регистр и разделитель любые) в
-/// `work_dir`. Повторный вызов с неизменным архивом ничего не распаковывает.
+/// Unpacks files `wanted` (archive paths, any case and separator) from `archive` into `work_dir`. A
+/// repeated call with an unchanged archive unpacks nothing.
 pub fn extract(
     archive: &Path,
     wanted: &[String],
@@ -245,9 +245,9 @@ pub fn extract(
     Ok(report)
 }
 
-/// Сначала «свободные» файлы в папке данных (`DataMeshes…`, они перекрывают архивы — так
-/// работает и сама игра), затем архивы по порядку. Свободные файлы копируются в `work/extracted`
-/// каждый раз (они лежат на диске и так, копия дешёвая) и считаются распакованными.
+/// First the "loose" files in the data folder (`DataMeshes…`, they override archives — the game
+/// works the same way), then the archives in order. Loose files are copied into `work/extracted`
+/// every time (they are on disk anyway, the copy is cheap) and count as unpacked.
 pub fn extract_all(
     data_dir: &Path,
     archives: &[PathBuf],
@@ -283,9 +283,9 @@ pub fn extract_all(
     Ok(report)
 }
 
-/// Файлы прямо в каталоге `dir` (без подкаталогов) с расширением `ext`: из «свободных» файлов
-/// и из всех архивов, пути как в архиве (нижний регистр, `\`), по возрастанию. Нужен звукам
-/// Oblivion, у которых вместо файла каталог (T10.1).
+/// Files directly in directory `dir` (no subdirectories) with extension `ext`: from the "loose"
+/// files and from all archives, paths as in the archive (lower case, `\`), ascending. Needed for
+/// Oblivion sounds, which have a directory instead of a file (T10.1).
 pub fn list_directory(
     data_dir: &Path,
     archives: &[PathBuf],
@@ -339,9 +339,9 @@ pub fn list_directory(
     Ok(found.into_iter().collect())
 }
 
-/// То же по нескольким архивам подряд: путь берётся из первого, где он есть. Итог суммируется;
-/// `missing` — пути, которых нет ни в одном. Архив, которого нет на диске, пропускается, если
-/// он не первый (дополнения могут быть не установлены).
+/// The same over several archives in a row: a path is taken from the first one that has it. The
+/// results are summed; `missing` lists paths found in none. An archive missing from disk is skipped
+/// unless it is the first (expansions may not be installed).
 pub fn extract_many(
     archives: &[PathBuf],
     wanted: &[String],

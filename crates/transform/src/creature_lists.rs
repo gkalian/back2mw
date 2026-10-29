@@ -1,20 +1,22 @@
-//! Уровневые списки существ: `LVLC` Oblivion → `LEVC` Morrowind (T11.4).
+//! Leveled creature lists: Oblivion `LVLC` → Morrowind `LEVC` (T11.4).
 //!
-//! Список тот же, что у предметов (`crate::leveled`), с отличиями, измеренными 2026-10-01
-//! (`docs/ru/formats/tes4.md`, «Размещения существ и списки существ»; ванильная сторона —
+//! The list is the same as for items (`crate::leveled`), with differences measured on 2026-10-01
+//! (`docs/en/formats/tes4.md`, "Creature placements and creature lists"; the vanilla side is
 //! `tes3_out/tests/real_vanilla_leveled.rs`):
-//! - в строках — существа, **NPC** и вложенные списки; ваниль Morrowind держит в `LEVC` все три
-//!   (`Morrowind.esm` — 28 строк с NPC, Bloodmoon — 11 вложенных), поэтому строка остаётся, если её
-//!   цель перенесена;
-//! - числа у строки `LEVC` нет: число больше 1 (8 строк `Oblivion.esm`, табуны лошадей и оленей)
-//!   становится 1 — то же решение, что у `LVLI`;
-//! - флаг «на каждый» (`LVLF` 0x02) у `LEVC` не существует и без числа ничего не значит;
-//! - шаблон `TNAM` (характеристики выбранному существу даёт другое существо) и скрипт `SCRI`
-//!   списка не переносятся — у `LEVC` таких полей нет;
-//! - список, в котором после переноса не осталось строк, не пишется, и ссылки на него уходят.
+//! - the rows hold creatures, **NPCs** and nested lists; vanilla Morrowind keeps all three in
+//!   `LEVC` (`Morrowind.esm` — 28 rows with NPCs, Bloodmoon — 11 nested), so a row stays if its
+//!   target was carried over;
+//! - a `LEVC` row has no count: a count above 1 (8 rows of `Oblivion.esm`, herds of horses and
+//!   deer) becomes 1 — the same decision as for `LVLI`;
+//! - the "each item" flag (`LVLF` 0x02) does not exist for `LEVC` and means nothing without a
+//!   count;
+//! - the list's template `TNAM` (another creature gives its stats to the chosen one) and script
+//!   `SCRI` are not carried over — `LEVC` has no such fields;
+//! - a list left with no rows after the conversion is not written, and references to it go away.
 //!
-//! В мире список стоит ссылкой `REFR` (у Oblivion — 8 005), у Morrowind — временной ссылкой на
-//! `LEVC` (у ванили все 7 478 временные): её ставит `crate::exterior`.
+//! In the world a list stands as a `REFR` reference (8,005 in Oblivion), in Morrowind as a
+//! temporary reference to a `LEVC` (all 7,478 in vanilla are temporary): `crate::exterior` places
+//! it.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -24,18 +26,20 @@ use tes4_read::{FromFields, LEVELED_ALL_LEVELS, LeveledCreatures, Plugin};
 use crate::ids::IdAllocator;
 use crate::npcs::ActorError;
 
-/// Список цели и что при переносе потерялось.
+/// The target list and what was lost in the conversion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConvertedCreatureList {
     pub list: LeveledCreature,
-    /// Строки, чья цель не нашлась (существо без донора, NPC не из мира, чужой плагин): выброшены.
+    /// Rows whose target was not found (a creature without a donor, an NPC not from the world,
+    /// another plugin): dropped.
     pub unresolved: usize,
-    /// Строк с числом больше 1: число стало 1.
+    /// Rows with a count above 1: the count became 1.
     pub counted: usize,
     pub notes: Vec<String>,
 }
 
-/// `LVLC` → `LEVC`. `resolve` переводит `FormID` строки (как в файле) в ID цели; `None` — цели нет.
+/// `LVLC` → `LEVC`. `resolve` turns a row's `FormID` (as in the file) into the target ID; `None`
+/// means there is no target.
 pub fn convert_creature_list(
     source: &LeveledCreatures,
     id: String,
@@ -104,18 +108,18 @@ pub fn convert_creature_list(
     }
 }
 
-/// Сколько убрала [`prune_creature_lists`].
+/// How much [`prune_creature_lists`] removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PrunedLists {
-    /// Строк из списков.
+    /// Rows from lists.
     pub entries: usize,
-    /// Списков, оставшихся пустыми: они не пишутся.
+    /// Lists left empty: they are not written.
     pub lists: usize,
 }
 
-/// Убирает из списков строки, чья цель отсутствует (`missing`). Пустой список тоже отсутствует:
-/// выбирать движку не из чего, а ссылка на него из другого списка стала бы битой — поэтому до
-/// неподвижной точки.
+/// Removes from the lists the rows whose target is missing (`missing`). An empty list is missing
+/// too: the engine has nothing to choose from, and a reference to it from another list would become
+/// broken — hence iterating to a fixed point.
 pub fn prune_creature_lists(
     lists: &mut Vec<(u32, LeveledCreature)>,
     missing: impl Fn(&str) -> bool,
@@ -146,33 +150,33 @@ pub fn prune_creature_lists(
     pruned
 }
 
-/// Итог по плагину.
+/// Result for a plugin.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConvertedCreatureLists {
-    /// Абсолютный `FormID` источника и список, в порядке файла.
+    /// The source's absolute `FormID` and the list, in file order.
     pub lists: Vec<(u32, LeveledCreature)>,
     pub report: CreatureListsReport,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreatureListsReport {
-    /// `LVLC` источника, которые просили перенести.
+    /// Source `LVLC` that were requested to be carried over.
     pub seen: usize,
-    /// Строк выброшено: цель не перенесена.
+    /// Rows dropped: the target was not carried over.
     pub entries_unresolved: usize,
-    /// Списков не записано: ни одной строки не осталось.
+    /// Lists not written: not a single row remained.
     pub empty: usize,
-    /// Строк с числом больше 1.
+    /// Rows with a count above 1.
     pub counted: usize,
-    /// Списков с шаблоном `TNAM` и со скриптом `SCRI`: то и другое не переносится.
+    /// Lists with a `TNAM` template and with an `SCRI` script: neither is carried over.
     pub templates_dropped: usize,
     pub scripts_dropped: usize,
-    /// Замечания по спискам: «`LVLC` <EDID>: …».
+    /// Notes on lists: "`LVLC` <EDID>: …".
     pub notes: Vec<String>,
 }
 
-/// Списки существ плагина. `wanted` — какие (`None` — все); `actor` — ID перенесённого существа
-/// или NPC по абсолютному `FormID` (вложенные списки находятся сами).
+/// The plugin's creature lists. `wanted` says which (`None` means all); `actor` is the ID of a
+/// carried-over creature or NPC by absolute `FormID` (nested lists are found by themselves).
 pub fn convert_creature_lists(
     plugin: &Plugin,
     map: impl Fn(u32) -> Option<u32>,
@@ -190,7 +194,7 @@ pub fn convert_creature_lists(
             .map_err(|e| ActorError::Read(format!("{:08X}: {e}", r.header.form_id)))?;
         sources.push((id, list));
     }
-    // ID всем спискам сразу: строка может вести на список, стоящий в файле ниже.
+    // IDs for all lists at once: a row can point to a list further down in the file.
     let mut list_ids: HashMap<u32, String> = HashMap::new();
     for (form_id, source) in &sources {
         let id = ids
@@ -204,7 +208,8 @@ pub fn convert_creature_lists(
         out.report.templates_dropped += usize::from(source.template.is_some());
         out.report.scripts_dropped += usize::from(source.script.is_some());
         let converted = convert_creature_list(source, list_ids[form_id].clone(), |file_id| {
-            // Строка списка на самого себя — бесконечный выбор у движка: выбрасывается.
+            // A list row pointing at the list itself is an endless choice for the engine: it is
+            // dropped.
             let target = map(file_id).filter(|t| t != form_id)?;
             list_ids.get(&target).cloned().or_else(|| actor(target))
         });
@@ -224,18 +229,19 @@ pub fn convert_creature_lists(
     Ok(out)
 }
 
-/// Что достижимо из списков существ.
+/// What is reachable from the creature lists.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Reachable {
-    /// Сами списки — названные и вложенные в них.
+    /// The lists themselves — the named ones and those nested in them.
     pub lists: BTreeSet<u32>,
-    /// Цели строк, не являющиеся списками плагина: существа и NPC (в том числе из мастеров).
+    /// Row targets that are not lists of the plugin: creatures and NPCs (including those from
+    /// masters).
     pub actors: BTreeSet<u32>,
 }
 
-/// Списки существ, достижимые из `roots` (абсолютные `FormID`; не списки пропускаются), и их
-/// строки-актёры: всё это нужно конвертировать, даже если само в мире не стоит, — список в мире
-/// порождает именно их.
+/// Creature lists reachable from `roots` (absolute `FormID`s; non-lists are skipped), and their
+/// actor rows: all of this has to be converted even if it does not stand in the world itself — the
+/// list in the world spawns exactly these.
 pub fn reachable(
     plugin: &Plugin,
     map: impl Fn(u32) -> Option<u32>,

@@ -1,8 +1,8 @@
-//! T1.8: `STAT` Oblivion → плагин Morrowind, сквозным путём через все три крейта.
-//! T9.1: `WEAP` → `WEAP`; T1.14: короткие пути `MODL`/`ITEX` на всём `Oblivion.esm`.
+//! T1.8: Oblivion `STAT` → a Morrowind plugin, end to end through all three crates. T9.1: `WEAP` →
+//! `WEAP`; T1.14: short `MODL`/`ITEX` paths over the whole `Oblivion.esm`.
 //!
-//! Синтетический тест идёт на CI. Локальные (`#[ignore]`) прогоняют весь `Oblivion.esm`
-//! и отдают плагин `esmtool`:
+//! The synthetic test runs on CI. The local ones (`#[ignore]`) run the whole `Oblivion.esm` and
+//! hand the plugin to `esmtool`:
 //! ```text
 //! $env:BACK2MW_GAME_DATA = 'C:\path\to\back2mw-data\tes'
 //! $env:BACK2MW_ESMTOOL = 'C:\path\to\back2mw-data\OpenMW 0.51.0\esmtool.exe'
@@ -57,19 +57,19 @@ fn synthetic_plugin_goes_through_transform_and_tes3_out() {
         .concat(),
     );
     let bytes = synth::plugin(GameFormat::Tes4, &synth::header_fields(3), &[group]);
-    let source = Plugin::parse(&bytes).expect("синтетический плагин TES4");
+    let source = Plugin::parse(&bytes).expect("synthetic TES4 plugin");
 
-    let converted = convert_statics(&source, &mut IdAllocator::default()).expect("конвертация");
+    let converted = convert_statics(&source, &mut IdAllocator::default()).expect("conversion");
     assert_eq!(converted.report.without_model, 1);
 
     let mut builder = PluginBuilder::new("back2mw", "T1.8").with_master("Morrowind.esm", 1);
     for object in converted.objects {
         builder.add(object);
     }
-    let out = builder.to_bytes().expect("запись плагина");
+    let out = builder.to_bytes().expect("writing the plugin");
 
     let mut parsed = Tes3Plugin::new();
-    parsed.load_bytes(&out).expect("чтение записанного плагина");
+    parsed.load_bytes(&out).expect("reading the written plugin");
     let statics: Vec<_> = parsed
         .objects
         .iter()
@@ -94,23 +94,23 @@ fn synthetic_plugin_goes_through_transform_and_tes3_out() {
 }
 
 fn esmtool() -> PathBuf {
-    let raw = std::env::var_os("BACK2MW_ESMTOOL").expect("BACK2MW_ESMTOOL не задана");
+    let raw = std::env::var_os("BACK2MW_ESMTOOL").expect("BACK2MW_ESMTOOL is not set");
     let path = PathBuf::from(raw);
     assert!(
         path.is_file(),
-        "BACK2MW_ESMTOOL не файл: {}",
+        "BACK2MW_ESMTOOL is not a file: {}",
         path.display()
     );
     path
 }
 
-/// Пишет плагин во временный файл, отдаёт `esmtool dump`. Возвращает код успеха и дамп в нижнем
-/// регистре.
+/// Writes the plugin to a temporary file and hands it to `esmtool dump`. Returns the success flag
+/// and the dump in lower case.
 fn dump_with_esmtool(esmtool: &Path, objects: Vec<Object>, tag: &str) -> (bool, String) {
     dump_plugin_with_esmtool(esmtool, objects, Vec::new(), tag)
 }
 
-/// То же, с уровневыми списками.
+/// The same, with leveled lists.
 fn dump_plugin_with_esmtool(
     esmtool: &Path,
     objects: Vec<Object>,
@@ -129,15 +129,15 @@ fn dump_plugin_with_esmtool(
     dump_builder_with_esmtool(esmtool, builder, tag)
 }
 
-/// Плагин из готового строителя (с `Morrowind.esm` мастером) → `esmtool dump`.
+/// A plugin from a ready builder (with `Morrowind.esm` as master) → `esmtool dump`.
 fn dump_builder_with_esmtool(esmtool: &Path, builder: PluginBuilder, tag: &str) -> (bool, String) {
     let path = std::env::temp_dir().join(format!("back2mw_{tag}_{}.esp", std::process::id()));
-    builder.save(&path).expect("сохранить плагин");
+    builder.save(&path).expect("save the plugin");
     let out = Command::new(esmtool)
         .arg("dump")
         .arg(&path)
         .output()
-        .expect("esmtool запускается");
+        .expect("esmtool runs");
     let _ = std::fs::remove_file(&path);
     (
         out.status.success(),
@@ -146,14 +146,14 @@ fn dump_builder_with_esmtool(esmtool: &Path, builder: PluginBuilder, tag: &str) 
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_stat_of_oblivion_esm_is_written_and_read_by_esmtool() {
     let esmtool = esmtool();
     let esm = common::game_file("Oblivion.esm");
-    let bytes = std::fs::read(&esm).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(&esm).expect("read Oblivion.esm");
     let source = Plugin::parse(&bytes).expect("Plugin::parse");
 
-    let converted = convert_statics(&source, &mut IdAllocator::default()).expect("конвертация");
+    let converted = convert_statics(&source, &mut IdAllocator::default()).expect("conversion");
     let r = converted.report.clone();
     let total = converted.objects.len();
     let max_mesh = converted
@@ -172,20 +172,20 @@ fn every_stat_of_oblivion_esm_is_written_and_read_by_esmtool() {
     let (ok, text) = dump_with_esmtool(&esmtool, converted.objects, "t18");
     let in_dump = text.matches("record: stat").count();
 
-    println!("=== STAT Oblivion.esm → плагин Morrowind ===");
-    println!("  записей STAT в источнике:   {}", r.seen);
-    println!("  пустых (пропущено):         {}", r.empty);
-    println!("  без MODL (пропущено):       {}", r.without_model);
+    println!("=== Oblivion.esm STAT → Morrowind plugin ===");
+    println!("  STAT records in the source: {}", r.seen);
+    println!("  empty (skipped):            {}", r.empty);
+    println!("  without MODL (skipped):     {}", r.without_model);
     println!(
-        "  примеры без MODL:           {:?}",
+        "  examples without MODL:      {:?}",
         r.without_model_examples
     );
-    println!("  записано:                   {total}");
-    println!("  самый длинный ID:           {max_id}");
-    println!("  самый длинный путь меша:    {max_mesh} (предел {MAX_PATH_LEN})");
-    println!("  STAT в дампе esmtool:       {in_dump}");
+    println!("  written:                    {total}");
+    println!("  longest ID:                 {max_id}");
+    println!("  longest mesh path:          {max_mesh} (limit {MAX_PATH_LEN})");
+    println!("  STAT in the esmtool dump:   {in_dump}");
 
-    assert!(ok, "esmtool отверг плагин");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
     assert_eq!(r.seen, total + r.empty + r.without_model);
     assert!(max_mesh <= MAX_PATH_LEN);
@@ -193,7 +193,7 @@ fn every_stat_of_oblivion_esm_is_written_and_read_by_esmtool() {
 
 fn all_models_of_oblivion_esm() -> ConvertedObjects {
     let esm = common::game_file("Oblivion.esm");
-    let bytes = std::fs::read(&esm).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(&esm).expect("read Oblivion.esm");
     let source = Plugin::parse(&bytes).expect("Plugin::parse");
     convert_models_mapped(
         &source,
@@ -203,39 +203,39 @@ fn all_models_of_oblivion_esm() -> ConvertedObjects {
         false,
         RecordKinds::AllWithModels,
     )
-    .expect("конвертация")
+    .expect("conversion")
 }
 
-/// Все модели и иконки `Oblivion.esm` (все 21 тип с моделью): короткий путь влезает в предел
-/// CS и уникален для каждого различного исходного пути.
+/// All models and icons of `Oblivion.esm` (all 21 types with a model): the short path fits into the
+/// CS limit and is unique for each distinct source path.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn short_paths_fit_and_never_collide_on_oblivion_esm() {
     let converted = all_models_of_oblivion_esm();
     let mut by_short: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut sources = 0usize;
-    // Свет без модели (T2.2) пути меша не имеет.
+    // A light without a model (T2.2) has no mesh path.
     for origin in &converted.origins {
         if let Some(tree) = &origin.tree {
-            // Меш дерева различают `.spt`, семя и листва.
+            // Tree meshes are told apart by `.spt`, seed and foliage.
             let source = format!("{}#{:?}#{:?}", origin.model, tree.seed, tree.leaves);
             by_short
                 .entry(tree.mesh.clone())
                 .or_default()
                 .insert(source.to_ascii_lowercase());
         } else if !origin.model.is_empty() {
-            let short = mesh_path(&origin.model).expect("путь представим");
+            let short = mesh_path(&origin.model).expect("the path is representable");
             by_short
                 .entry(short)
                 .or_default()
-                .insert(paths::normalize(&origin.model).expect("путь представим"));
+                .insert(paths::normalize(&origin.model).expect("the path is representable"));
         }
         if let Some(icon) = &origin.icon {
-            let short = paths::icon_path(icon).expect("путь представим");
+            let short = paths::icon_path(icon).expect("the path is representable");
             by_short
                 .entry(short)
                 .or_default()
-                .insert(paths::normalize(icon).expect("путь представим"));
+                .insert(paths::normalize(icon).expect("the path is representable"));
         }
     }
     for set in by_short.values() {
@@ -244,25 +244,26 @@ fn short_paths_fit_and_never_collide_on_oblivion_esm() {
     let collisions: Vec<_> = by_short.iter().filter(|(_, set)| set.len() > 1).collect();
     let longest = by_short.keys().map(String::len).max().unwrap_or(0);
 
-    println!("=== короткие пути, Oblivion.esm, все типы с моделью ===");
-    println!("  записей:                    {}", converted.objects.len());
-    println!("  различных путей источника:  {sources}");
-    println!("  коротких путей:             {}", by_short.len());
-    println!("  самый длинный:              {longest} (предел {MAX_PATH_LEN})");
-    println!("  столкновений:               {}", collisions.len());
+    println!("=== short paths, Oblivion.esm, all types with a model ===");
+    println!("  records:                    {}", converted.objects.len());
+    println!("  distinct source paths:      {sources}");
+    println!("  short paths:                {}", by_short.len());
+    println!("  longest:                    {longest} (limit {MAX_PATH_LEN})");
+    println!("  collisions:                 {}", collisions.len());
 
     assert!(collisions.is_empty(), "{collisions:?}");
     assert!(longest <= MAX_PATH_LEN);
 }
 
-/// Всё оружие `Oblivion.esm` → `WEAP` Morrowind, `esmtool` читает каждое.
+/// All weapons of `Oblivion.esm` → Morrowind `WEAP`, `esmtool` reads each one.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_weapon_of_oblivion_esm_becomes_a_weap_read_by_esmtool() {
     let esmtool = esmtool();
     let converted = all_models_of_oblivion_esm();
     let r = converted.report.clone();
-    // Стрелы (`AMMO` → `WEAP`, T2.1) тоже `Weapon`, но это предметы: их считает тест предметов.
+    // Arrows (`AMMO` → `WEAP`, T2.1) are also `Weapon`, but they are items: the items test counts
+    // them.
     let weapons: Vec<Object> = converted
         .objects
         .into_iter()
@@ -283,26 +284,29 @@ fn every_weapon_of_oblivion_esm_becomes_a_weap_read_by_esmtool() {
     let in_dump = text.matches("record: weap").count();
 
     println!("=== WEAP Oblivion.esm → WEAP Morrowind ===");
-    println!("  оружия перенесено:          {}", r.weapons);
-    println!("  по типам Morrowind:         {kinds:?}");
-    println!("  без иконки:                 {without_icon}");
-    println!("  со скриптом (снят):         {}", r.dropped_scripts);
-    println!("  с зачарованием (снято):     {}", r.dropped_enchantments);
-    println!("  замечаний по WEAP:          {}", weapon_problems.len());
+    println!("  weapons carried over:       {}", r.weapons);
+    println!("  by Morrowind type:          {kinds:?}");
+    println!("  without an icon:            {without_icon}");
+    println!("  with a script (dropped):    {}", r.dropped_scripts);
+    println!(
+        "  with an enchantment (dropped): {}",
+        r.dropped_enchantments
+    );
+    println!("  WEAP notes:                 {}", weapon_problems.len());
     for p in weapon_problems.iter().take(10) {
         println!("    {p}");
     }
-    println!("  WEAP в дампе esmtool:       {in_dump}");
+    println!("  WEAP in the esmtool dump:   {in_dump}");
 
-    assert!(ok, "esmtool отверг плагин");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
     assert_eq!(r.weapons, total);
 }
 
-/// T2.1: все предметы `Oblivion.esm` (`MISC`, `KEYM`, `SGST`, `SLGM`, `BOOK`, `ALCH`, `INGR`,
-/// `APPA`, стрелы `AMMO`) → записи Morrowind, `esmtool` читает каждую.
+/// T2.1: all items of `Oblivion.esm` (`MISC`, `KEYM`, `SGST`, `SLGM`, `BOOK`, `ALCH`, `INGR`,
+/// `APPA`, `AMMO` arrows) → Morrowind records, `esmtool` reads each one.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_item_of_oblivion_esm_becomes_an_item_read_by_esmtool() {
     let esmtool = esmtool();
     let converted = all_models_of_oblivion_esm();
@@ -342,19 +346,19 @@ fn every_item_of_oblivion_esm_becomes_an_item_read_by_esmtool() {
         .map(|t| text.matches(&format!("record: {t}")).count())
         .sum();
 
-    println!("=== предметы Oblivion.esm → Morrowind ===");
-    println!("  по видам:            {kinds:?}");
-    println!("  учебников с навыком: {skill_books}");
-    println!("  предметов в отчёте:  {}", r.items);
-    println!("  в дампе esmtool:     {in_dump} из {total}");
-    assert!(ok, "esmtool отверг плагин");
+    println!("=== Oblivion.esm items → Morrowind ===");
+    println!("  by kind:              {kinds:?}");
+    println!("  skill books:          {skill_books}");
+    println!("  items in the report:  {}", r.items);
+    println!("  in the esmtool dump:  {in_dump} of {total}");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
     assert_eq!(r.items, total);
 }
 
-/// T2.1a: камни душ `Oblivion.esm` ложатся на ванильные камни Morrowind, записей не дают.
+/// T2.1a: soul gems of `Oblivion.esm` map onto vanilla Morrowind soul gems and give no records.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn soul_gems_of_oblivion_esm_point_at_vanilla_gems() {
     let converted = all_models_of_oblivion_esm();
     let mut by_target: BTreeMap<&str, usize> = BTreeMap::new();
@@ -370,15 +374,15 @@ fn soul_gems_of_oblivion_esm_point_at_vanilla_gems() {
         .filter(|e| e.to_ascii_lowercase().contains("soulgem"))
         .collect();
 
-    println!("=== камни душ Oblivion.esm ===");
-    println!("  на ванильные: {} {by_target:?}", converted.vanilla.len());
-    println!("  остались предметами: {plain:?}");
+    println!("=== Oblivion.esm soul gems ===");
+    println!("  onto vanilla: {} {by_target:?}", converted.vanilla.len());
+    println!("  stayed items: {plain:?}");
     assert_eq!(converted.report.soul_gems, converted.vanilla.len());
     let azura = converted
         .vanilla
         .iter()
         .find(|v| v.editor_id == "AzurasStar")
-        .expect("звезда Азуры");
+        .expect("Azura's Star");
     assert_eq!(azura.id, "Misc_SoulGem_Azura");
     for v in &converted.vanilla {
         if v.editor_id.to_ascii_lowercase().contains("black") {
@@ -387,12 +391,12 @@ fn soul_gems_of_oblivion_esm_point_at_vanilla_gems() {
     }
 }
 
-/// T2.1a: каждая картинка из текста книг `Oblivion.esm` лежит в каком-нибудь из архивов,
-/// которые обыскивает прогон (`pipeline::source_archives`), по пути `textures\menus\<src>` —
-/// значит, стадия ассетов найдёт её. Картинки Shivering Isles (он влит в `Oblivion.esm`) лежат в
+/// T2.1a: every image from the book text of `Oblivion.esm` lies in one of the archives the run
+/// searches (`pipeline::source_archives`), at the path `textures\menus\<src>` — so the assets stage
+/// will find it. Shivering Isles images (it is merged into `Oblivion.esm`) are in
 /// `DLCShiveringIsles - Textures.bsa`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_book_image_of_oblivion_esm_is_in_the_source_archives() {
     let converted = all_models_of_oblivion_esm();
     let books = converted
@@ -408,9 +412,9 @@ fn every_book_image_of_oblivion_esm_is_in_the_source_archives() {
         .collect();
     let mut in_archives: BTreeMap<String, String> = BTreeMap::new();
     for archive in back2mw::pipeline::source_archives(&common::game_data_dir()) {
-        let file = std::fs::File::open(&archive).expect("открыть BSA");
+        let file = std::fs::File::open(&archive).expect("open BSA");
         let index = tes4_read::BsaIndex::read_from(&mut std::io::BufReader::new(file))
-            .expect("оглавление BSA");
+            .expect("BSA table of contents");
         let name = archive.file_name().unwrap_or_default().to_string_lossy();
         for src in &images {
             if index.find(&format!(r"textures\menus\{src}")).is_some() {
@@ -433,27 +437,26 @@ fn every_book_image_of_oblivion_esm_is_in_the_source_archives() {
         .filter_map(|src| transform::book_art_path(src))
         .collect();
 
-    println!("=== картинки книг Oblivion.esm ===");
-    println!("  книг с картинками: {books}");
-    println!("  разных картинок:   {}", images.len());
-    println!("  из архива SI:      {from_si}");
-    println!("  нет в архивах:     {missing:?}");
+    println!("=== Oblivion.esm book images ===");
+    println!("  books with images: {books}");
+    println!("  distinct images:   {}", images.len());
+    println!("  from the SI archive: {from_si}");
+    println!("  missing from archives: {missing:?}");
     assert!(books > 0 && !images.is_empty());
-    // Единственная дыра — в самих данных Oblivion: книга ссылается на
-    // `Book/Vehk_201x325.dds`, а файла нет ни в одном архиве игры (2026-09-25). Прогон её
-    // пропускает с предупреждением.
+    // The only hole is in Oblivion's own data: a book references `Book/Vehk_201x325.dds`, and the
+    // file is in none of the game's archives (2026-09-25). The run skips it with a warning.
     assert_eq!(missing, [r"book\vehk_201x325.dds"]);
-    assert_eq!(names.len(), images.len(), "имена в BookArt не совпадают");
+    assert_eq!(names.len(), images.len(), "names in BookArt do not match");
 }
 
-/// T2.2: объекты мира `Oblivion.esm` (`ACTI`, `DOOR`, `CONT`, `LIGH`, `FLOR`, `FURN`) → записи
-/// Morrowind, `esmtool` читает каждую. Содержимое контейнеров: что получило ID и почему
-/// остальное — нет.
+/// T2.2: world objects of `Oblivion.esm` (`ACTI`, `DOOR`, `CONT`, `LIGH`, `FLOR`, `FURN`) →
+/// Morrowind records, `esmtool` reads each one. Container contents: what got an ID and why the rest
+/// did not.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_world_object_of_oblivion_esm_is_written_and_read_by_esmtool() {
     let esmtool = esmtool();
-    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("read Oblivion.esm");
     let source = Plugin::parse(&bytes).expect("Plugin::parse");
     let tag_of: BTreeMap<u32, [u8; 4]> = source
         .records()
@@ -503,29 +506,29 @@ fn every_world_object_of_oblivion_esm_is_written_and_read_by_esmtool() {
         .map(|t| text.matches(&format!("record: {t}")).count())
         .sum();
 
-    println!("=== объекты мира Oblivion.esm → Morrowind ===");
-    println!("  по видам:                 {kinds:?}");
-    println!("  свет без модели:          {}", r.lights_without_model);
-    println!("  содержимое, с ID:         {}", r.contents_resolved);
-    println!("  содержимое, без ID:       {}", r.contents_unresolved);
-    println!("  содержимое CONT по типам: {contents_by_tag:?}");
-    println!("  в дампе esmtool:          {in_dump} из {total}");
-    assert!(ok, "esmtool отверг плагин");
+    println!("=== Oblivion.esm world objects → Morrowind ===");
+    println!("  by kind:                  {kinds:?}");
+    println!("  lights without a model:   {}", r.lights_without_model);
+    println!("  contents, with an ID:     {}", r.contents_resolved);
+    println!("  contents, without an ID:  {}", r.contents_unresolved);
+    println!("  CONT contents by type:    {contents_by_tag:?}");
+    println!("  in the esmtool dump:      {in_dump} of {total}");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
     assert_eq!(r.world, total);
-    // Контрольный опыт: если бы разрешение содержимого не работало, без ID было бы всё.
-    // Уровневые списки получают ID с T2.5 — см. `every_leveled_list_of_oblivion_esm_…`.
+    // Control: if content resolution did not work, everything would be without an ID. Leveled lists
+    // get IDs since T2.5 — see `every_leveled_list_of_oblivion_esm_…`.
     assert!(r.contents_resolved > r.contents_unresolved);
 }
 
-/// T2.1b: эффекты зелий и ингредиентов `Oblivion.esm` по таблице `data/effects.tsv`; `esmtool`
-/// читает записи с эффектами.
+/// T2.1b: effects of `Oblivion.esm` potions and ingredients by the `data/effects.tsv` table;
+/// `esmtool` reads the records with effects.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn potion_and_ingredient_effects_of_oblivion_esm() {
     let esmtool = esmtool();
     let converted = all_models_of_oblivion_esm();
-    let mut potions = (0usize, 0usize, 0usize); // записей, эффектов, записей без эффектов
+    let mut potions = (0usize, 0usize, 0usize); // records, effects, records without effects
     let mut ingredients = (0usize, 0usize, 0usize);
     let mut by_effect: BTreeMap<u8, usize> = BTreeMap::new();
     let items: Vec<Object> = converted
@@ -549,7 +552,7 @@ fn potion_and_ingredient_effects_of_oblivion_esm() {
         .collect();
     let mut dropped: BTreeMap<String, usize> = BTreeMap::new();
     for p in &converted.report.problems {
-        if let Some(rest) = p.split("эффект не перенесён — ").nth(1) {
+        if let Some(rest) = p.split("effect not converted — ").nth(1) {
             let code = rest.split(':').next().unwrap_or(rest).to_owned();
             *dropped.entry(code).or_default() += 1;
         }
@@ -561,25 +564,25 @@ fn potion_and_ingredient_effects_of_oblivion_esm() {
         .map(|t| text.matches(&format!("record: {t}")).count())
         .sum::<usize>();
 
-    println!("=== эффекты зелий и ингредиентов Oblivion.esm ===");
-    println!("  зелья [записей, эффектов, без эффектов]:       {potions:?}");
-    println!("  ингредиенты [записей, эффектов, без эффектов]: {ingredients:?}");
-    println!("  выброшено по кодам: {dropped:?}");
-    println!("  эффектов Morrowind по номерам: {by_effect:?}");
-    println!("  в дампе esmtool: {in_dump} из {total}");
-    assert!(ok, "esmtool отверг плагин");
+    println!("=== Oblivion.esm potion and ingredient effects ===");
+    println!("  potions [records, effects, without effects]:     {potions:?}");
+    println!("  ingredients [records, effects, without effects]: {ingredients:?}");
+    println!("  dropped by code: {dropped:?}");
+    println!("  Morrowind effects by number: {by_effect:?}");
+    println!("  in the esmtool dump: {in_dump} of {total}");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
-    assert!(potions.1 > potions.0, "у зелий есть эффекты");
+    assert!(potions.1 > potions.0, "potions have effects");
     assert!(
         ingredients.1 > 3 * ingredients.0,
-        "у ингредиентов почти всегда по четыре"
+        "ingredients almost always have four"
     );
 }
 
-/// T2.4g: деревья `Oblivion.esm` (`TREE`) → `STAT` с мешем по `.spt`; `.spt` и текстура листвы
-/// лежат в архивах источника, `esmtool` читает записи.
+/// T2.4g: `Oblivion.esm` trees (`TREE`) → `STAT` with a mesh from the `.spt`; the `.spt` and the
+/// foliage texture are in the source archives, `esmtool` reads the records.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_tree_of_oblivion_esm_becomes_a_stat_with_a_tree_mesh() {
     let esmtool = esmtool();
     let converted = all_models_of_oblivion_esm();
@@ -592,17 +595,17 @@ fn every_tree_of_oblivion_esm_becomes_a_stat_with_a_tree_mesh() {
         .collect();
     let mut wanted: BTreeSet<String> = BTreeSet::new();
     for (origin, tree, _) in &trees {
-        wanted.insert(paths::normalize(&origin.model).expect("путь представим"));
+        wanted.insert(paths::normalize(&origin.model).expect("the path is representable"));
         if let Some(leaves) = &tree.leaves {
             let path = mesh_convert::speedtree::nif::leaf_texture_path(leaves);
-            wanted.insert(paths::normalize(&path).expect("путь представим"));
+            wanted.insert(paths::normalize(&path).expect("the path is representable"));
         }
     }
     let mut found: BTreeSet<String> = BTreeSet::new();
     for archive in back2mw::pipeline::source_archives(&common::game_data_dir()) {
-        let file = std::fs::File::open(&archive).expect("открыть BSA");
+        let file = std::fs::File::open(&archive).expect("open BSA");
         let index = tes4_read::BsaIndex::read_from(&mut std::io::BufReader::new(file))
-            .expect("оглавление BSA");
+            .expect("BSA table of contents");
         found.extend(wanted.iter().filter(|p| index.find(p).is_some()).cloned());
     }
     let missing: Vec<&String> = wanted.iter().filter(|p| !found.contains(*p)).collect();
@@ -620,39 +623,39 @@ fn every_tree_of_oblivion_esm_becomes_a_stat_with_a_tree_mesh() {
     let (ok, text) = dump_with_esmtool(&esmtool, statics, "t24g");
     let in_dump = text.matches("record: stat").count();
 
-    println!("=== деревья Oblivion.esm → STAT ===");
+    println!("=== Oblivion.esm trees → STAT ===");
     println!(
-        "  записей TREE / вариантов: {} / {}",
+        "  TREE records / variants:  {} / {}",
         r.trees, r.tree_variants
     );
     println!(
-        "  разных ID, самый длинный: {} / {longest_id}",
+        "  distinct IDs, longest:    {} / {longest_id}",
         unique_ids.len()
     );
     println!(
-        "  разных .spt / мешей:      {} / {}",
+        "  distinct .spt / meshes:   {} / {}",
         spts.len(),
         meshes.len()
     );
-    println!("  семя .spt (SNAM пуст/0/1):{own_seed}");
-    println!("  без текстуры листвы:      {without_leaves}");
-    println!("  нет в архивах:            {missing:?}");
-    println!("  в дампе esmtool:          {in_dump} из {total}");
-    assert!(ok, "esmtool отверг плагин");
+    println!("  .spt seed (SNAM empty/0/1):{own_seed}");
+    println!("  without foliage texture:  {without_leaves}");
+    println!("  missing from archives:    {missing:?}");
+    println!("  in the esmtool dump:      {in_dump} of {total}");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
     assert_eq!(r.tree_variants, total);
     assert_eq!(unique_ids.len(), total);
     assert!(longest_id <= 31);
     assert!(missing.is_empty());
-    // У каждого варианта свой меш, кроме вариантов с одинаковыми `.spt`, семенем и листвой.
+    // Each variant has its own mesh, except variants with the same `.spt`, seed and foliage.
     assert!(meshes.len() <= total && meshes.len() >= spts.len());
 }
 
-/// T2.5: уровневые списки `Oblivion.esm` → `LEVI`, `esmtool` читает каждый. Каждая ссылка из
-/// списков и контейнеров ведёт на запись этого же вывода или на ванильную (золото, камни душ):
-/// без этого контрольного опыта тест прошёл бы и на пустых списках.
+/// T2.5: `Oblivion.esm` leveled lists → `LEVI`, `esmtool` reads each one. Every reference from
+/// lists and containers leads to a record of the same output or to a vanilla one (gold, soul gems):
+/// without this control the test would pass on empty lists too.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_leveled_list_of_oblivion_esm_is_written_and_read_by_esmtool() {
     let esmtool = esmtool();
     let converted = all_models_of_oblivion_esm();
@@ -715,49 +718,49 @@ fn every_leveled_list_of_oblivion_esm_is_written_and_read_by_esmtool() {
         dump_plugin_with_esmtool(&esmtool, Vec::new(), converted.leveled.clone(), "t25");
     let in_dump = text.matches("record: levi").count();
 
-    println!("=== уровневые списки Oblivion.esm → Morrowind ===");
-    println!("  LVLI источника:                {}", r.leveled_seen);
-    println!("  LEVI записано:                 {total}");
-    println!("  пустых, не записано:           {}", r.leveled_empty);
-    println!("  строк:                         {entries}, из них вложенных списков {nested}");
+    println!("=== Oblivion.esm leveled lists → Morrowind ===");
+    println!("  source LVLI:                   {}", r.leveled_seen);
+    println!("  LEVI written:                  {total}");
+    println!("  empty, not written:            {}", r.leveled_empty);
+    println!("  rows:                          {entries}, of them nested lists {nested}");
     println!(
-        "  строк без ID:                  {}",
+        "  rows without an ID:            {}",
         r.leveled_entries_unresolved
     );
     println!(
-        "  списков с числом → 1:          {}",
-        notes("заменено на 1")
+        "  lists with count → 1:          {}",
+        notes("replaced by 1")
     );
-    println!("  списков с округлённым золотом: {}", notes("золото в"));
-    println!("  монеты в строках:              {gold_piles:?}");
-    println!("  шанс > 100 зажат:              {}", notes("больше 100"));
-    println!("  уровень ≤ 0:                   {}", notes("уровень ≤ 0"));
-    println!("  «брать все»:                   {}", notes("брать все"));
-    println!("  золото → Gold_001:             {}", r.gold);
-    println!("  содержимое CONT, с ID:         {}", r.contents_resolved);
-    println!("  содержимое CONT, без ID:       {}", r.contents_unresolved);
-    println!("  из них ссылок на списки:       {container_lists}");
-    println!("  в дампе esmtool:               {in_dump} из {total}");
-    println!("  битые ссылки:                  {}", dangling.len());
+    println!("  lists with rounded gold:       {}", notes("gold in "));
+    println!("  coins in rows:                 {gold_piles:?}");
+    println!("  chance > 100 clamped:          {}", notes("above 100"));
+    println!("  level ≤ 0:                     {}", notes("level ≤ 0"));
+    println!("  \"use all\":                     {}", notes("use all"));
+    println!("  gold → Gold_001:               {}", r.gold);
+    println!("  CONT contents, with an ID:     {}", r.contents_resolved);
+    println!("  CONT contents, without an ID:  {}", r.contents_unresolved);
+    println!("  of them references to lists:   {container_lists}");
+    println!("  in the esmtool dump:           {in_dump} of {total}");
+    println!("  dangling references:           {}", dangling.len());
     for d in dangling.iter().take(10) {
         println!("    {d}");
     }
-    assert!(ok, "esmtool отверг плагин");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(in_dump, total);
-    assert!(dangling.is_empty(), "ссылки на несуществующие записи");
-    assert_eq!(r.gold, 1, "Gold001 — одна запись");
+    assert!(dangling.is_empty(), "references to nonexistent records");
+    assert_eq!(r.gold, 1, "Gold001 is one record");
     assert!(total > 0 && container_lists > 0 && nested > 0);
     assert_eq!(total + r.leveled_empty, r.leveled_seen);
 }
 
-/// Капюшоны (`CLOT` в слоте волос или головы) → шлемы с рейтингом 0 (решение владельца
-/// 2026-09-27), `esmtool` читает их вместе с частями тела. Вес решает класс брони: шлем до
-/// 5 × 0.6 = 3 (`iHelmWeight`, `fLightMaxMod`) — лёгкий.
+/// Hoods (`CLOT` in the hair or head slot) → helmets with rating 0 (owner's decision 2026-09-27),
+/// `esmtool` reads them together with the body parts. The weight decides the armor class: a helmet
+/// up to 5 × 0.6 = 3 (`iHelmWeight`, `fLightMaxMod`) is light.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_hood_of_oblivion_esm_becomes_a_helmet_read_by_esmtool() {
     let esmtool = esmtool();
-    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("прочитать Oblivion.esm");
+    let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("read Oblivion.esm");
     let source = Plugin::parse(&bytes).expect("Plugin::parse");
     let head = tes4_read::WORN_HEAD | tes4_read::WORN_HAIR;
     let hoods: BTreeSet<String> = source
@@ -784,7 +787,7 @@ fn every_hood_of_oblivion_esm_becomes_a_helmet_read_by_esmtool() {
         .report
         .problems
         .iter()
-        .filter(|p| p.contains("головная одежда"))
+        .filter(|p| p.contains("head clothing"))
         .count();
     let mut helmets = Vec::new();
     let mut bodies = Vec::new();
@@ -795,7 +798,7 @@ fn every_hood_of_oblivion_esm_becomes_a_helmet_read_by_esmtool() {
         match o {
             Object::Armor(a) => helmets.push(a.clone()),
             Object::BodyPart(_) => bodies.push(o.clone()),
-            other => panic!("{}: не шлем — {other:?}", origin.editor_id),
+            other => panic!("{}: not a helmet — {other:?}", origin.editor_id),
         }
     }
     let weights: Vec<f32> = helmets.iter().map(|a| a.weight).collect();
@@ -810,18 +813,15 @@ fn every_hood_of_oblivion_esm_becomes_a_helmet_read_by_esmtool() {
     let (ok, text) = dump_with_esmtool(&esmtool, objects, "hoods");
     let in_dump = text.matches("record: armo").count();
 
-    println!("=== капюшоны Oblivion.esm → шлемы ===");
-    println!("  CLOT на голову:     {}", hoods.len());
-    println!(
-        "  шлемов:             {total}, частей тела {}",
-        bodies.len()
-    );
-    println!("  лёгких (вес ≤ 3):   {light}; веса {weights:?}");
-    println!("  отказов «головная одежда»: {refused}");
-    println!("  в дампе esmtool:    {in_dump} из {total}");
-    assert!(ok, "esmtool отверг плагин");
+    println!("=== Oblivion.esm hoods → helmets ===");
+    println!("  CLOT for the head:  {}", hoods.len());
+    println!("  helmets:            {total}, body parts {}", bodies.len());
+    println!("  light (weight ≤ 3): {light}; weights {weights:?}");
+    println!("  \"head clothing\" refusals: {refused}");
+    println!("  in the esmtool dump: {in_dump} of {total}");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(refused, 0);
-    assert_eq!(total, hoods.len(), "каждый капюшон — шлем");
+    assert_eq!(total, hoods.len(), "every hood is a helmet");
     assert_eq!(in_dump, total);
     assert!(
         helmets
@@ -830,11 +830,11 @@ fn every_hood_of_oblivion_esm_becomes_a_helmet_read_by_esmtool() {
     );
 }
 
-/// T9.4: зачарования и заклинания `Oblivion.esm` → `ENCH`/`SPEL`, `esmtool` читает каждую запись;
-/// каждая ссылка вещи на зачарование ведёт на записанное `ENCH` — контрольный опыт: без него
-/// тест прошёл бы и при пустых ссылках.
+/// T9.4: `Oblivion.esm` enchantments and spells → `ENCH`/`SPEL`, `esmtool` reads each record; every
+/// item reference to an enchantment leads to a written `ENCH` — the control: without it the test
+/// would pass with empty references too.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_ESMTOOL"]
 fn every_enchantment_and_spell_of_oblivion_esm_is_written_and_read_by_esmtool() {
     let esmtool = esmtool();
     let converted = all_models_of_oblivion_esm();
@@ -888,7 +888,7 @@ fn every_enchantment_and_spell_of_oblivion_esm_is_written_and_read_by_esmtool() 
     let mut spell_kinds: BTreeMap<String, usize> = BTreeMap::new();
     for s in &converted.spells {
         let k = if s.always_succeeds {
-            "малая сила".to_owned()
+            "lesser power".to_owned()
         } else {
             format!("{:?}", s.kind)
         };
@@ -915,42 +915,42 @@ fn every_enchantment_and_spell_of_oblivion_esm_is_written_and_read_by_esmtool() 
     let ench_in_dump = text.matches("record: ench").count();
     let spel_in_dump = text.matches("record: spel").count();
 
-    println!("=== зачарования и заклинания Oblivion.esm → Morrowind ===");
+    println!("=== Oblivion.esm enchantments and spells → Morrowind ===");
     println!(
-        "  ENCH записано:            {} ({by_kind:?}), вариантов по заряду {variants}",
+        "  ENCH written:             {} ({by_kind:?}), charge variants {variants}",
         converted.enchantments.len()
     );
-    println!("  эффектов в ENCH:          {effects}");
-    println!("  вещей с зачарованием:     {linked:?}");
-    println!("  вещей без зачарования:    {}", r.dropped_enchantments);
+    println!("  effects in ENCH:          {effects}");
+    println!("  items with enchantment:   {linked:?}");
+    println!("  items without enchantment: {}", r.dropped_enchantments);
     println!(
-        "  ENCH не перенесено:       {}",
-        notes("ENCH ", "не перенесено")
+        "  ENCH not converted:       {}",
+        notes("ENCH ", "not converted")
     );
     println!(
-        "  применений на заряд (заряд/стоимость): мин {:?} медиана {:?} макс {:?}",
+        "  uses per charge (charge/cost): min {:?} median {:?} max {:?}",
         charges.first(),
         charges.get(charges.len() / 2),
         charges.last()
     );
     println!(
-        "  SPEL источника:           {}, записано {} ({spell_kinds:?}), не перенесено {}",
+        "  source SPEL:              {}, written {} ({spell_kinds:?}), not converted {}",
         r.spells_seen, r.spells, r.spells_dropped
     );
     println!(
-        "  эффектов > 8, обрезано:   ENCH {}, SPEL {}",
-        notes("ENCH ", "не больше 8"),
-        notes("SPEL ", "не больше 8")
+        "  effects > 8, truncated:   ENCH {}, SPEL {}",
+        notes("ENCH ", "at most"),
+        notes("SPEL ", "at most")
     );
-    println!("  в дампе esmtool:          ENCH {ench_in_dump}, SPEL {spel_in_dump}");
-    println!("  битые ссылки:             {}", dangling.len());
+    println!("  in the esmtool dump:      ENCH {ench_in_dump}, SPEL {spel_in_dump}");
+    println!("  dangling references:      {}", dangling.len());
     for d in dangling.iter().take(10) {
         println!("    {d}");
     }
-    assert!(ok, "esmtool отверг плагин");
+    assert!(ok, "esmtool rejected the plugin");
     assert_eq!(ench_in_dump, converted.enchantments.len());
     assert_eq!(spel_in_dump, converted.spells.len());
-    assert!(dangling.is_empty(), "ссылки на незаписанные ENCH");
+    assert!(dangling.is_empty(), "references to unwritten ENCH");
     assert_eq!(r.spells + r.spells_dropped, r.spells_seen);
     assert!(linked.values().sum::<usize>() > 1000);
 }

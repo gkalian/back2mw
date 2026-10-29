@@ -1,46 +1,48 @@
-//! Объекты мира (T2.2): `ACTI` → `ACTI`, `DOOR` → `DOOR`, `CONT` → `CONT`, `LIGH` → `LIGH`,
-//! `FLOR` → органический `CONT`, `FURN` → `ACTI` (мебели в Morrowind нет). `GRAS` остаётся
-//! `STAT` — это делает общее ядро.
+//! World objects (T2.2): `ACTI` → `ACTI`, `DOOR` → `DOOR`, `CONT` → `CONT`, `LIGH` → `LIGH`, `FLOR`
+//! → an organic `CONT`, `FURN` → `ACTI` (Morrowind has no furniture). `GRAS` stays a `STAT` — the
+//! shared core does this.
 //!
-//! Правила и измерения — `docs/ru/formats/tes4.md`, «Объекты мира» (2026-09-25):
+//! Rules and measurements — `docs/en/formats/tes4.md`, "World objects" (2026-09-25):
 //!
-//! * `DATA` контейнера Oblivion — собственный вес ящика, а у Morrowind `CNDT` — вместимость. Их
-//!   нельзя переносить друг в друга: вместимость — 200, мода и медиана 769 обычных контейнеров
-//!   `Morrowind.esm`. У растений — 0, как у ванильной флоры.
-//! * Флаг «пополняется» у обоих — 0x02.
-//! * Флаги света Oblivion 0x1…0x8 и 0x20…0x100 значат то же, что у Morrowind. 0x10 у Oblivion не
-//!   описан (у Morrowind это «огонь»), 0x200/0x400 — прожектор, которого у Morrowind нет: эти
-//!   три бита снимаются.
-//! * Содержимое контейнеров и растений — `FormID` источника: их переводит в ID общее ядро, когда
-//!   весь плагин уже прочитан (предметы могут стоять в файле после контейнера).
+//! * An Oblivion container's `DATA` is the box's own weight, while Morrowind's `CNDT` is the
+//!   capacity. They cannot be carried over into each other: the capacity is 200, the mode and
+//!   median of the 769 ordinary containers of `Morrowind.esm`. Plants get 0, like vanilla flora.
+//! * The "respawns" flag is 0x02 in both.
+//! * Oblivion light flags 0x1…0x8 and 0x20…0x100 mean the same as in Morrowind. Oblivion's 0x10 is
+//!   undocumented (in Morrowind it is "fire"), 0x200/0x400 is a spot light, which Morrowind does
+//!   not have: these three bits are cleared.
+//! * The contents of containers and plants are source `FormID`s: the shared core turns them into
+//!   IDs once the whole plugin is read (items can come after the container in the file).
 
 use tes3_out::{Activator, Container, Door, Light, MAX_FIELD_LEN, Object};
 use tes4_read::{ContainerItem, WorldData, WorldSource};
 
 use crate::weapons::display_name;
 
-/// Вместимость обычного контейнера: мода и медиана `CNDT` у 769 неорганических контейнеров
-/// `Morrowind.esm` (2026-09-25).
+/// Capacity of an ordinary container: the mode and median of `CNDT` over the 769 inorganic
+/// containers of `Morrowind.esm` (2026-09-25).
 pub const CONTAINER_CAPACITY: f32 = 200.0;
 
-/// Флаги света, которые у Oblivion и Morrowind значат одно и то же.
+/// Light flags that mean the same in Oblivion and Morrowind.
 const SHARED_LIGHT_FLAGS: u32 = 0x1 | 0x2 | 0x4 | 0x8 | 0x20 | 0x40 | 0x80 | 0x100;
 
-/// Флаг «пополняется» у `CONT` Oblivion.
+/// The "respawns" flag of an Oblivion `CONT`.
 const CONTAINER_RESPAWNS: u8 = 0x02;
 
-/// Объект мира Morrowind и что к нему прилагается.
+/// A Morrowind world object and what comes with it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConvertedWorld {
     pub object: Object,
-    /// Замечания о потерях.
+    /// Notes about losses.
     pub notes: Vec<String>,
-    /// Содержимое контейнера: `FormID` как в файле источника и число. ID выдаёт ядро.
+    /// Container contents: the `FormID` as in the source file and the count. The core issues the
+    /// IDs.
     pub contents: Vec<ContainerItem>,
 }
 
-/// Объект мира из записи Oblivion; `id`, `mesh`, `icon` уже выданы (`mesh` пуст у света без
-/// модели). Звуки ставит общее ядро, когда весь плагин прочитан (T10.1).
+/// A world object from an Oblivion record; `id`, `mesh`, `icon` are already issued (`mesh` is empty
+/// for a light without a model). Sounds are set by the shared core once the whole plugin is read
+/// (T10.1).
 pub fn convert_world(source: &WorldSource, id: &str, mesh: &str, icon: &str) -> ConvertedWorld {
     let mut notes = Vec::new();
     let name = match source.name.as_deref() {
@@ -178,14 +180,14 @@ mod tests {
             "",
         );
         let Object::Container(cont) = &c.object else {
-            panic!("контейнер");
+            panic!("container");
         };
         assert_eq!(
             cont.capacity, CONTAINER_CAPACITY,
-            "вес ящика — не вместимость"
+            "the box's weight is not its capacity"
         );
         assert!(cont.respawns && !cont.organic);
-        assert!(cont.items.is_empty(), "ID выдаёт ядро");
+        assert!(cont.items.is_empty(), "the core issues the IDs");
         assert_eq!(c.contents, items);
     }
 
@@ -200,7 +202,7 @@ mod tests {
             "",
         );
         let Object::Container(cont) = &c.object else {
-            panic!("контейнер");
+            panic!("container");
         };
         assert!(cont.organic && cont.respawns);
         assert_eq!(cont.capacity, 0.0);
@@ -236,7 +238,7 @@ mod tests {
             "ob\\torch_0123456789.dds",
         );
         let Object::Light(l) = &c.object else {
-            panic!("свет");
+            panic!("light");
         };
         assert_eq!(l.flags, 0x1 | 0x8 | 0x20);
         assert_eq!((l.time, l.radius, l.value), (-1, 300, 5));

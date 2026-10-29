@@ -1,9 +1,9 @@
 name: CI
 
-# Только на изменения кода и того, что читает код и тесты (docs/notes_en.tsv встроен в
-# transform: английские причины выброшенных эффектов). Документация собирается своим workflow
-# (docs.yml), релиз — по тегу (release.yml). `branches` нужен, чтобы пуш тега не запускал CI
-# повторно: релиз сам гоняет тесты. Списки путей у push и pull_request должны совпадать.
+# Only on changes to the code and to what the code and tests read (docs/notes_en.tsv is embedded into
+# transform: the English reasons for dropped effects). The documentation is built by its own workflow
+# (docs.yml), the release by tag (release.yml). `branches` is needed so that pushing a tag does not run CI
+# again: the release runs the tests itself. The path lists of push and pull_request must match.
 on:
   push:
     branches: ["**"]
@@ -45,28 +45,28 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Формат
+      - name: Format
         run: cargo fmt --all --check
 
       - name: Clippy
-        # Интерфейс собирается и проверяется на Windows (job ниже): на Linux ему нужны системные
-        # библиотеки окна, а целевая платформа программы — только Windows.
+        # The interface is built and checked on Windows (the job below): on Linux it needs the system
+        # window libraries, and the program's target platform is Windows only.
         run: cargo clippy --workspace --exclude gui --all-targets --all-features -- -D warnings
 
-      # Инструмент, а не игра: `esmtool` — независимый читатель TES3, которым
-      # проверяется наш собственный вывод. `command -v` стоит здесь нарочно —
-      # если пакет перестанет его ставить, шаг обязан упасть, а не дать тестам
-      # тихо пропустить проверку.
-      - name: esmtool из OpenMW
+      # A tool, not the game: `esmtool` is an independent TES3 reader that
+      # checks our own output. `command -v` is here on purpose —
+      # if the package stops installing it, the step must fail rather than let the tests
+      # silently skip the check.
+      - name: esmtool from OpenMW
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openmw
           command -v esmtool
 
-      # Тесты намеренно не требуют установленных игр: всё, что проверяется,
-      # строится на синтетических данных. Это то, чего не может референс —
-      # его тесты просят Oblivion.esm, и CI их не прогоняет.
-      - name: Тесты
+      # The tests deliberately do not require installed games: everything checked
+      # is built on synthetic data. This is what the reference cannot do —
+      # its tests ask for Oblivion.esm, and CI does not run them.
+      - name: Tests
         env:
           BACK2MW_REQUIRE_ESMTOOL: 1
         run: cargo test --workspace --exclude gui --all-targets
@@ -79,7 +79,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Clippy интерфейса
+      - name: Clippy for the interface
         run: cargo clippy -p gui -p back2mw --all-targets -- -D warnings
-      - name: Тесты
+      - name: Tests
         run: cargo test -p gui -p back2mw --all-targets

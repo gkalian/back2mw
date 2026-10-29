@@ -1,29 +1,31 @@
-//! Голова NPC (фаза 8, T8.2): части головы расы Oblivion + морфы лица → жёсткий NIF головы
-//! Morrowind.
+//! NPC head (phase 8, T8.2): the head parts of an Oblivion race + face morphs → a rigid Morrowind
+//! head NIF.
 //!
-//! **Система координат** (замер `mesh_convert/tests/real_faces.rs`, 2026-09-27,
-//! T8.2):
-//! * у Oblivion все части головы (голова, уши, рот, зубы, язык, глаза) лежат в одной системе —
-//!   системе формы головы: начало у кости `Bip01 Head`, оси мировые, Z вверх, лицо в +Y; корневые
-//!   узлы частей игнорируются (у рта корень повёрнут, а данные и без него на месте);
-//! * у Morrowind голова — жёсткий меш на узле крепления `Head` (`base_anim.nif`, ребёнок
-//!   `Bip01 Head`): Z вверх, X и Y развёрнуты на 180°; персонаж, как и у Oblivion, смотрит в +Y;
-//! * перенос — «кость в кость»: `v` → `Bip01 Head` Oblivion → `Bip01 Head` Morrowind в позе
-//!   привязки → узел `Head`. Так голова `Imperial` ложится осями как ванильная, центр — в 2 единицах
-//!   (у головы Oblivion есть кусок шеи), ширина больше ванильной на 17 % (11.2 против 9.6);
-//!   масштаб не меняется (проверка в игре — у владельца).
+//! **Coordinate system** (measured by `mesh_convert/tests/real_faces.rs`, 2026-09-27, T8.2):
+//! * in Oblivion all head parts (head, ears, mouth, teeth, tongue, eyes) lie in one system — the
+//!   head shape's system: the origin at the `Bip01 Head` bone, world axes, Z up, the face toward
+//!   +Y; the parts' root nodes are ignored (the mouth's root is rotated, but the data is in place
+//!   even without it);
+//! * in Morrowind the head is a rigid mesh on the `Head` attachment node (`base_anim.nif`, a child
+//!   of `Bip01 Head`): Z up, X and Y turned by 180°; the character, as in Oblivion, faces +Y;
+//! * the conversion is "bone to bone": `v` → Oblivion `Bip01 Head` → Morrowind `Bip01 Head` in the
+//!   bind pose → the `Head` node. This way the `Imperial` head lines up its axes like the vanilla
+//!   one, the center is within 2 units (the Oblivion head has a piece of neck), the width is 17%
+//!   larger than vanilla (11.2 versus 9.6); the scale does not change (the in-game check is the
+//!   owner's).
 //!
-//! **Нормали** после морфов пересчитываются по треугольникам, вершины на швах UV (одна позиция,
-//! разные UV) сваривают нормаль — иначе на шве виден излом света.
+//! **Normals** are recomputed from the triangles after the morphs; vertices on UV seams (one
+//! position, different UVs) weld the normal — otherwise a lighting crease shows on the seam.
 //!
-//! **Мимика** (T8.3, решение владельца — сразу): как у ванили. У всех ванильных голов (замер
-//! `real_faces::vanilla_head_morphs_and_text_keys`, 2026-09-27) на корне текстовые ключи
-//! `Talk: Start` 0, `Talk: Stop` 1.333, `Blink: Start` 1.4, `Blink: Stop` 2; на форме
-//! `NiGeomMorpherController` (флаги 0xC, частота 1, время 0…2) с `NiMorphData` из трёх
-//! относительных целей: база (все вершины, без ключей), «говорит» (рот, до 1.5 единиц, вес
-//! 0 → 1 → 0 за 0…1.4) и «моргает» (8 вершин век, около 1 единицы, вес 1 в 1.667). Цели Oblivion —
-//! разностный морф [`TALK_MORPH`] и статические [`BLINK_MORPHS`] из `.tri` части; вершины `.tri` —
-//! вершины NIF в том же порядке, а позиции статических морфов морфятся `.egm` вместе с лицом.
+//! **Expressions** (T8.3, owner's decision — right away): as in vanilla. All vanilla heads
+//! (measured by `real_faces::vanilla_head_morphs_and_text_keys`, 2026-09-27) have text keys on the
+//! root `Talk: Start` 0, `Talk: Stop` 1.333, `Blink: Start` 1.4, `Blink: Stop` 2; on the shape a
+//! `NiGeomMorpherController` (flags 0xC, frequency 1, time 0…2) with `NiMorphData` of three
+//! relative targets: the base (all vertices, no keys), "talks" (the mouth, up to 1.5 units, weight
+//! 0 → 1 → 0 over 0…1.4) and "blinks" (8 eyelid vertices, about 1 unit, weight 1 at 1.667). The
+//! Oblivion targets are the difference morph [`TALK_MORPH`] and the static [`BLINK_MORPHS`] from
+//! the part's `.tri`; the `.tri` vertices are the NIF vertices in the same order, and the static
+//! morph positions are morphed by `.egm` together with the face.
 
 use std::collections::HashMap;
 
@@ -36,14 +38,15 @@ use tes3::nif::{
 
 use crate::facegen::{Egm, Tri};
 
-/// Морф `.tri` для цели «говорит»: широко открытый рот. На `HeadHuman.tri` он сдвигает вершины до
-/// 1.88, у ванили рот открывается до 1.44–1.57; `Aah` — только до 0.61, `Oh` — 0.81 (2026-09-28).
+/// The `.tri` morph for the "talks" target: a wide-open mouth. On `HeadHuman.tri` it moves vertices
+/// by up to 1.88, in vanilla the mouth opens by up to 1.44–1.57; `Aah` only up to 0.61, `Oh` 0.81
+/// (2026-09-28).
 pub const TALK_MORPH: &str = "BigAah";
 
-/// Статические морфы `.tri` для цели «моргает».
+/// Static `.tri` morphs for the "blinks" target.
 pub const BLINK_MORPHS: [&str; 2] = ["BlinkLeft", "BlinkRight"];
 
-/// Текстовые ключи корня — как у всех ванильных голов.
+/// Root text keys — as in all vanilla heads.
 const TEXT_KEYS: [(f32, &str); 4] = [
     (0.0, "Talk: Start"),
     (1.333_333_4, "Talk: Stop"),
@@ -51,7 +54,7 @@ const TEXT_KEYS: [(f32, &str); 4] = [
     (2.0, "Blink: Stop"),
 ];
 
-/// Флаги контроллера у ванили: 0x8 — активен, 0x4 — зациклен на отрезке ключей.
+/// Controller flags in vanilla: 0x8 — active, 0x4 — looped over the key range.
 const MORPHER_FLAGS: u16 = 0xC;
 
 fn bez(time: f32, value: f32, in_tan: f32, out_tan: f32) -> NiBezFloatKey {
@@ -63,7 +66,7 @@ fn bez(time: f32, value: f32, in_tan: f32, out_tan: f32) -> NiBezFloatKey {
     }
 }
 
-/// Ключи веса цели «говорит» — как у `b_n_imperial_m_head_01`.
+/// Weight keys of the "talks" target — as in `b_n_imperial_m_head_01`.
 fn talk_keys() -> NiFloatKey {
     NiFloatKey::BezKey(vec![
         bez(0.0, 0.0, -0.0, 1.0),
@@ -72,7 +75,7 @@ fn talk_keys() -> NiFloatKey {
     ])
 }
 
-/// Ключи веса цели «моргает» — как у `b_n_imperial_m_head_01`.
+/// Weight keys of the "blinks" target — as in `b_n_imperial_m_head_01`.
 fn blink_keys() -> NiFloatKey {
     NiFloatKey::BezKey(vec![
         bez(0.0, 0.0, -0.0, 0.0),
@@ -85,13 +88,13 @@ use crate::geometry::{BaseTexture, Context, ConvertError, Converted, Stats, shap
 use crate::read::{Block, SourceNif};
 use crate::textures::TextureRegistry;
 
-/// Имя кости головы Biped.
+/// Name of the Biped head bone.
 pub const HEAD_BONE: &str = "Bip01 Head";
 
-/// Узел крепления головы в `base_anim.nif`.
+/// The head attachment node in `base_anim.nif`.
 pub const HEAD_ATTACH: &str = "Head";
 
-/// Преобразование из девяти `f32` в порядке файла (то же, что в `skin.rs`).
+/// A transform from nine `f32` in file order (the same as in `skin.rs`).
 fn affine(rotation: &[f32; 9], translation: [f32; 3]) -> Affine3A {
     Affine3A::from_mat3_translation(
         Mat3::from_cols_array(rotation).transpose(),
@@ -99,7 +102,7 @@ fn affine(rotation: &[f32; 9], translation: [f32; 3]) -> Affine3A {
     )
 }
 
-/// Первая форма NIF: индекс блока.
+/// The first shape of a NIF: its block index.
 fn first_shape(source: &SourceNif) -> Option<usize> {
     source
         .blocks
@@ -107,16 +110,17 @@ fn first_shape(source: &SourceNif) -> Option<usize> {
         .position(|b| matches!(b, Block::TriShape(_) | Block::TriStrips(_)))
 }
 
-/// Перенос вершин частей головы Oblivion в систему узла крепления `Head` Morrowind.
+/// Moving Oblivion head part vertices into the system of Morrowind's `Head` attachment node.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HeadFrame {
     pub to_mw: Affine3A,
 }
 
 impl HeadFrame {
-    /// `head` — меш головы расы (часть 0): его форма задаёт систему частей, узел `Bip01 Head` — позу
-    /// кости Oblivion. `mw_head_bone` — `Bip01 Head` Morrowind в позе привязки (`TargetSkeleton`),
-    /// `attach_local` — узел `Head` относительно `Bip01 Head` ([`attach_local`]).
+    /// `head` is the race head mesh (part 0): its shape sets the parts' system, its `Bip01 Head`
+    /// node the Oblivion bone pose. `mw_head_bone` is Morrowind's `Bip01 Head` in the bind pose
+    /// (`TargetSkeleton`), `attach_local` is the `Head` node relative to `Bip01 Head`
+    /// ([`attach_local`]).
     pub fn new(
         head: &SourceNif,
         mw_head_bone: Affine3A,
@@ -126,7 +130,7 @@ impl HeadFrame {
             what: lang::tr("в меше головы нет формы", "the head mesh has no shape").into(),
         })?;
         let (Block::TriShape(s) | Block::TriStrips(s)) = &head.blocks[shape] else {
-            unreachable!("first_shape находит только формы");
+            unreachable!("first_shape finds only shapes");
         };
         let shape_world = affine(&s.av.rotation, s.av.translation);
         let bone = head
@@ -154,8 +158,8 @@ impl HeadFrame {
 }
 
 impl HeadFrame {
-    /// То же по скелету T9.2 и байтам `base_anim.nif` (`hierarchy`): так систему строит
-    /// вызывающий, у которого нет `tes3::nif`.
+    /// The same from the T9.2 skeleton and the bytes of `base_anim.nif` (`hierarchy`): this is how
+    /// a caller without `tes3::nif` builds the system.
     pub fn from_skeleton(
         head: &SourceNif,
         skeleton: &crate::skin::TargetSkeleton,
@@ -183,7 +187,7 @@ impl HeadFrame {
     }
 }
 
-/// Узел `name` скелета Morrowind (`base_anim.nif`) относительно родителя.
+/// Node `name` of the Morrowind skeleton (`base_anim.nif`) relative to its parent.
 pub fn attach_local(hierarchy: &NiStream, name: &str) -> Option<Affine3A> {
     hierarchy
         .objects_of_type::<NiNode>()
@@ -191,35 +195,36 @@ pub fn attach_local(hierarchy: &NiStream, name: &str) -> Option<Affine3A> {
         .map(|n| Affine3A::from_mat3_translation(n.base.rotation.transpose(), n.base.translation))
 }
 
-/// Часть головы: меш, его морфы лица (у глаз и зубов `.egm` тоже есть) и выражения `.tri`.
+/// A head part: the mesh, its face morphs (eyes and teeth have an `.egm` too) and the `.tri`
+/// expressions.
 #[derive(Debug, Clone, Copy)]
 pub struct HeadPart<'a> {
     pub nif: &'a SourceNif,
     pub egm: Option<&'a Egm>,
     pub tri: Option<&'a Tri>,
-    /// Множитель рассеянного и фонового цвета материала (цвет волос — T8.4); текстура не
-    /// перекрашивается, её умножает материал.
+    /// Multiplier of the material's diffuse and ambient color (hair color — T8.4); the texture is
+    /// not recolored, the material multiplies it.
     pub tint: Option<[f32; 3]>,
-    /// Текстура слота base вместо текстуры NIF: `ICON` части у расы, глаза — `EYES` NPC (T8.7),
-    /// кожа — запечённая (T8.8).
+    /// The base slot texture instead of the NIF texture: the race's part `ICON`, eyes — the NPC's
+    /// `EYES` (T8.7), skin — the baked one (T8.8).
     pub texture: Option<PartTexture<'a>>,
 }
 
-/// Текстура части головы вместо текстуры её NIF.
+/// A head part texture instead of its NIF texture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PartTexture<'a> {
-    /// Файл источника (путь относительно `Textures\` или с ним): копируется, как текстуры мешей.
+    /// A source file (path relative to `Textures\` or including it): copied like mesh textures.
     Source(&'a str),
-    /// Имя в `Textures\` готового файла, который пишет вызывающий (запечённая кожа): в копии не
-    /// попадает.
+    /// Name in `Textures\` of a finished file the caller writes (baked skin): it does not go into
+    /// the copy list.
     Generated(&'a str),
 }
 
-/// Предел множителя цвета волос: у светлых волос на тёмной серой текстуре он больше 1.
+/// Upper limit of the hair color multiplier: for light hair on a dark gray texture it is above 1.
 pub const HAIR_TINT_MAX: f32 = 2.5;
 
-/// Цвет волос: множитель, с которым средний цвет серой текстуры причёски становится `HCLR`
-/// (решение владельца — цвет материала), в пределах 0…[`HAIR_TINT_MAX`].
+/// Hair color: the multiplier with which the average color of the gray hair texture becomes `HCLR`
+/// (owner's decision — the material color), within 0…[`HAIR_TINT_MAX`].
 pub fn hair_tint(color: [u8; 3], texture_mean: [f32; 3]) -> [f32; 3] {
     std::array::from_fn(|c| {
         if texture_mean[c] <= 0.0 {
@@ -229,13 +234,13 @@ pub fn hair_tint(color: [u8; 3], texture_mean: [f32; 3]) -> [f32; 3] {
     })
 }
 
-/// Материалы части головы: diffuse × `tint`, ambient = diffuse. Копия свойства, а не правка
-/// общего — материал бывает общим у нескольких форм.
+/// Materials of a head part: diffuse × `tint`, ambient = diffuse. A copy of the property, not an
+/// edit of the shared one — a material can be shared by several shapes.
 ///
-/// Ambient = diffuse (решение владельца 2026-09-30): у ванильных голов и тел Morrowind
-/// ambient 1.0 (`b_n_imperial_m_head_01.nif`), а у голов Oblivion — 0.588, 0.25 или 0, и в тени
-/// лицо NPC выходило заметно темнее шеи и кистей ванильного тела. У причёски ambient берёт её
-/// оттенок `HCLR`, иначе в тени волосы теряли бы цвет.
+/// Ambient = diffuse (owner's decision 2026-09-30): vanilla Morrowind heads and bodies have ambient
+/// 1.0 (`b_n_imperial_m_head_01.nif`), while Oblivion heads have 0.588, 0.25 or 0, and in the shade
+/// an NPC's face came out noticeably darker than the neck and hands of the vanilla body. For hair,
+/// ambient takes its `HCLR` tint, otherwise hair would lose its color in the shade.
 fn tint_properties(
     stream: &mut NiStream,
     properties: &mut [tes3::nif::NiLink<tes3::nif::NiProperty>],
@@ -260,8 +265,8 @@ fn tint_properties(
     }
 }
 
-/// Смещения вершин для целей «говорит» и «моргает» в системе Morrowind; `None` — у части нет
-/// ни одного из морфов или все они нулевые.
+/// Vertex offsets for the "talks" and "blinks" targets in the Morrowind system; `None` means the
+/// part has none of the morphs or all of them are zero.
 fn expressions(
     k: usize,
     part: &HeadPart<'_>,
@@ -295,8 +300,8 @@ fn expressions(
             *t = to_mw(Vec3::from(d.map(f32::from)) * m.scale);
         }
     }
-    // Позиции статических морфов: `.egm` морфит их вместе с лицом, если файл их покрывает
-    // (вершины `.egm` — вершины меша, затем статических морфов по порядку).
+    // Static morph positions: `.egm` morphs them together with the face if the file covers them
+    // (the `.egm` vertices are the mesh vertices, then the static morphs' in order).
     let stat_raw: Vec<[f32; 3]> = tri
         .stat_morphs
         .iter()
@@ -318,7 +323,7 @@ fn expressions(
     for m in &tri.stat_morphs {
         let wanted = BLINK_MORPHS.iter().any(|b| m.name.eq_ignore_ascii_case(b));
         for &i in &m.indices {
-            let i = usize::try_from(i).expect("индексы .tri проверены при чтении");
+            let i = usize::try_from(i).expect(".tri indices are checked on read");
             if wanted {
                 blink[i] += to_mw(Vec3::from(stat_morphed[at]) - Vec3::from(morphed[i]));
             }
@@ -329,14 +334,14 @@ fn expressions(
     Ok((moves(&talk) || moves(&blink)).then_some([talk, blink]))
 }
 
-/// Коэффициенты лица NPC (`FGGS`, `FGGA`).
+/// NPC face coefficients (`FGGS`, `FGGA`).
 #[derive(Debug, Clone, Copy)]
 pub struct FaceShape<'a> {
     pub symmetric: &'a [f32],
     pub asymmetric: &'a [f32],
 }
 
-/// Нормали по треугольникам; вершины одной позиции (швы UV) делят нормаль.
+/// Normals from triangles; vertices at one position (UV seams) share a normal.
 pub fn smooth_normals(vertices: &[Vec3], triangles: &[[u16; 3]]) -> Vec<Vec3> {
     let key = |v: Vec3| v.to_array().map(f32::to_bits);
     let mut group: HashMap<[u32; 3], usize> = HashMap::new();
@@ -350,7 +355,7 @@ pub fn smooth_normals(vertices: &[Vec3], triangles: &[[u16; 3]]) -> Vec<Vec3> {
     let mut sums = vec![Vec3::ZERO; group.len()];
     for t in triangles {
         let [a, b, c] = t.map(|i| vertices[usize::from(i)]);
-        // Площадь-взвешенная нормаль грани.
+        // Area-weighted face normal.
         let n = (b - a).cross(c - a);
         for &i in t {
             sums[ids[usize::from(i)]] += n;
@@ -359,8 +364,8 @@ pub fn smooth_normals(vertices: &[Vec3], triangles: &[[u16; 3]]) -> Vec<Vec3> {
     ids.iter().map(|&g| sums[g].normalize_or_zero()).collect()
 }
 
-/// Запекает голову: каждая часть — своя форма под общим корнем `name` (так формы назовёт и
-/// ваниль: корень `B_N_…_Head_01`, форма `Tri B_N_…_Head_01`).
+/// Bakes the head: each part is its own shape under the shared root `name` (vanilla names its
+/// shapes the same way: root `B_N_…_Head_01`, shape `Tri B_N_…_Head_01`).
 pub fn bake_head(
     parts: &[HeadPart<'_>],
     face: FaceShape<'_>,
@@ -385,7 +390,7 @@ pub fn bake_head(
         ctx.stream = std::mem::take(&mut stream);
         ctx.stats = stats;
         let (Block::TriShape(shape) | Block::TriStrips(shape)) = &part.nif.blocks[index] else {
-            unreachable!("first_shape находит только формы");
+            unreachable!("first_shape finds only shapes");
         };
         let (data_index, data_block) = ctx.block(index, shape.data)?;
         let (Block::TriStripsData(data) | Block::TriShapeData(data)) = data_block else {
@@ -491,7 +496,7 @@ pub fn bake_head(
         }
         stream = ctx.stream;
     }
-    // Текстовые ключи — только если есть что по ним играть.
+    // Text keys — only if there is something to play by them.
     let extra_data = if animated {
         stream
             .insert(NiTextKeyExtraData {

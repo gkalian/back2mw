@@ -3,25 +3,25 @@ use crate::container::Tag;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// `ACBS` 0x1: двуногое. В `Oblivion.esm` не стоит ни у одного из 914 `CREA` (2026-10-01).
+/// `ACBS` 0x1: biped. Not set on any of the 914 `CREA` of `Oblivion.esm` (2026-10-01).
 pub const CREATURE_BIPED: u32 = 0x0000_0001;
-/// `ACBS` 0x2: бессмертное.
+/// `ACBS` 0x2: essential.
 pub const CREATURE_ESSENTIAL: u32 = 0x0000_0002;
-/// `ACBS` 0x4: оружие и щит.
+/// `ACBS` 0x4: weapon and shield.
 pub const CREATURE_WEAPON_AND_SHIELD: u32 = 0x0000_0004;
-/// `ACBS` 0x8: возрождается.
+/// `ACBS` 0x8: respawns.
 pub const CREATURE_RESPAWN: u32 = 0x0000_0008;
-/// `ACBS` 0x10: плавает.
+/// `ACBS` 0x10: swims.
 pub const CREATURE_SWIMS: u32 = 0x0000_0010;
-/// `ACBS` 0x20: летает.
+/// `ACBS` 0x20: flies.
 pub const CREATURE_FLIES: u32 = 0x0000_0020;
-/// `ACBS` 0x40: ходит.
+/// `ACBS` 0x40: walks.
 pub const CREATURE_WALKS: u32 = 0x0000_0040;
-/// `ACBS` 0x80: уровень — смещение от уровня игрока.
+/// `ACBS` 0x80: the level is an offset from the player's level.
 pub const CREATURE_PC_LEVEL_OFFSET: u32 = 0x0000_0080;
 
-/// Тип существа (`DATA` байт 0). Смысл кодов — по UESP «Mod File Format/CREA»; у Morrowind из
-/// них есть 0…3.
+/// Creature type (`DATA` byte 0). The meaning of the codes follows UESP "Mod File Format/CREA";
+/// Morrowind has 0…3 of them.
 pub const CREATURE_TYPE_CREATURE: u8 = 0;
 pub const CREATURE_TYPE_DAEDRA: u8 = 1;
 pub const CREATURE_TYPE_UNDEAD: u8 = 2;
@@ -29,64 +29,64 @@ pub const CREATURE_TYPE_HUMANOID: u8 = 3;
 pub const CREATURE_TYPE_HORSE: u8 = 4;
 pub const CREATURE_TYPE_GIANT: u8 = 5;
 
-/// Существо (`CREA`, T11.2).
+/// A creature (`CREA`, T11.2).
 ///
-/// Раскладка измерена на `Oblivion.esm` (2026-10-01, `docs/ru/formats/tes4.md`, «Существа»): у всех 914
-/// записей `ACBS` (16), `AIDT` (12), `DATA` (20), `RNAM` (1), `BNAM`, `TNAM`, `WNAM` (по 4); `MODL`
-/// у 909, `NIFZ` у 903, `KFFZ` у 114. Звуки — группы `CSDT` (тип), за ним `CSDI` (звук) и `CSDC`
-/// (шанс): у 92 записей, 669 групп, по одному звуку на тип.
+/// The layout was measured on `Oblivion.esm` (2026-10-01, `docs/en/formats/tes4.md`, "Creatures"):
+/// all 914 records have `ACBS` (16), `AIDT` (12), `DATA` (20), `RNAM` (1), `BNAM`, `TNAM`, `WNAM`
+/// (4 each); `MODL` in 909, `NIFZ` in 903, `KFFZ` in 114. Sounds are groups of `CSDT` (type)
+/// followed by `CSDI` (sound) and `CSDC` (chance): in 92 records, 669 groups, one sound per type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Creature {
     pub editor_id: String,
     pub name: Option<String>,
-    /// `MODL` — скелет (`creatures\<папка>\skeleton.nif`), относительно `Meshes`.
+    /// `MODL` — the skeleton (`creatures\<folder>\skeleton.nif`), relative to `Meshes`.
     pub model: Option<String>,
-    /// `NIFZ` — части тела: имена файлов в папке модели, по порядку.
+    /// `NIFZ` — body parts: file names in the model folder, in order.
     pub body_parts: Vec<String>,
-    /// `KFFZ` — свои анимации сверх общих в папке: имена файлов `.kf`.
+    /// `KFFZ` — its own animations beyond the shared ones in the folder: `.kf` file names.
     pub animations: Vec<String>,
-    /// `ACBS` флаги: [`CREATURE_BIPED`], [`CREATURE_ESSENTIAL`] …
+    /// `ACBS` flags: [`CREATURE_BIPED`], [`CREATURE_ESSENTIAL`] …
     pub flags: u32,
     pub base_spell: u16,
     pub fatigue: u16,
     pub barter_gold: u16,
-    /// Уровень или, с [`CREATURE_PC_LEVEL_OFFSET`], смещение от уровня игрока.
+    /// The level or, with [`CREATURE_PC_LEVEL_OFFSET`], an offset from the player's level.
     pub level: i16,
     pub calc_min: u16,
     pub calc_max: u16,
-    /// `SNAM`: фракция и ранг, в порядке файла.
+    /// `SNAM`: faction and rank, in file order.
     pub factions: Vec<(u32, i8)>,
-    /// `CNTO`: предмет (или уровневый список) и число.
+    /// `CNTO`: an item (or a leveled list) and a count.
     pub items: Vec<(u32, i32)>,
     pub spells: Vec<u32>,
     pub ai: AiData,
-    /// `PKID` — ИИ-пакеты по порядку.
+    /// `PKID` — AI packages in order.
     pub packages: Vec<u32>,
     pub script: Option<u32>,
-    /// `INAM` — предмет, который остаётся в трупе (уровневый список).
+    /// `INAM` — the item left in the corpse (a leveled list).
     pub death_item: Option<u32>,
-    /// `ZNAM` — стиль боя (у Morrowind аналога нет).
+    /// `ZNAM` — combat style (Morrowind has no equivalent).
     pub combat_style: Option<u32>,
     pub stats: CreatureStats,
-    /// `RNAM` — дальность атаки, юниты.
+    /// `RNAM` — attack reach, units.
     pub attack_reach: u8,
-    /// `BNAM` — масштаб модели.
+    /// `BNAM` — model scale.
     pub base_scale: f32,
-    /// `TNAM` — скорость поворота.
+    /// `TNAM` — turning speed.
     pub turning_speed: f32,
-    /// `WNAM` — вес шага (звук шагов).
+    /// `WNAM` — foot weight (footstep sound).
     pub foot_weight: f32,
-    /// `CSCR` — существо, чьи звуки берутся, если своих нет.
+    /// `CSCR` — the creature whose sounds are taken if it has none of its own.
     pub sound_source: Option<u32>,
-    /// Свои звуки по типам (`CSDT`/`CSDI`/`CSDC`), в порядке файла.
+    /// Its own sounds by type (`CSDT`/`CSDI`/`CSDC`), in file order.
     pub sounds: Vec<CreatureSound>,
-    /// `NAM0` / `NAM1` — текстуры брызг и пятен крови.
+    /// `NAM0` / `NAM1` — blood spray and decal textures.
     pub blood_spray: Option<String>,
     pub blood_decal: Option<String>,
 }
 
-/// `DATA` `CREA` — 20 байт: тип, навыки бой / магия / скрытность, душа (u8), байт, здоровье (u16),
-/// 2 байта, урон атаки (u16), 8 атрибутов (u8, Strength … Luck — порядок Morrowind).
+/// `CREA` `DATA` is 20 bytes: type, combat / magic / stealth skills, soul (u8), a byte, health
+/// (u16), 2 bytes, attack damage (u16), 8 attributes (u8, Strength … Luck — the Morrowind order).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CreatureStats {
     /// [`CREATURE_TYPE_CREATURE`] …
@@ -94,21 +94,21 @@ pub struct CreatureStats {
     pub combat: u8,
     pub magic: u8,
     pub stealth: u8,
-    /// Размер души: 0 нет, 1 мелкая … 5 великая (UESP).
+    /// Soul size: 0 none, 1 petty … 5 grand (UESP).
     pub soul: u8,
     pub health: u16,
     pub attack_damage: u16,
     pub attributes: [u8; 8],
 }
 
-/// Звук существа одного типа. Тип `CSDT` (UESP): 0 левая нога, 1 правая, 2 левая задняя, 3 правая
-/// задняя, 4 idle, 5 aware, 6 атака, 7 удар по нему, 8 смерть, 9 оружие.
+/// A creature sound of one type. `CSDT` type (UESP): 0 left foot, 1 right, 2 left back, 3 right
+/// back, 4 idle, 5 aware, 6 attack, 7 hit, 8 death, 9 weapon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CreatureSound {
     pub kind: u32,
     /// `CSDI` — `SOUN`.
     pub sound: u32,
-    /// `CSDC` — шанс, %.
+    /// `CSDC` — chance, %.
     pub chance: u8,
 }
 
@@ -160,7 +160,7 @@ fn sounds(fields: &Fields<'_>) -> Result<Vec<CreatureSound>> {
     Ok(out)
 }
 
-/// Список имён файлов `NIFZ`/`KFFZ`: строки, каждая с нулём на конце.
+/// A list of `NIFZ`/`KFFZ` file names: strings, each with a trailing zero.
 fn names(fields: &Fields<'_>, tag: Tag) -> Vec<String> {
     fields.first(tag).map_or_else(Vec::new, |raw| {
         raw.split(|&b| b == 0)
@@ -220,7 +220,7 @@ impl FromFields for Creature {
                 soul: data[4],
                 health: u16_at(&data, 6),
                 attack_damage: u16_at(&data, 10),
-                attributes: data[12..20].try_into().expect("8 байт"),
+                attributes: data[12..20].try_into().expect("8 bytes"),
             },
             attack_reach: fields.fixed::<1>(*b"RNAM")?[0],
             base_scale: float(*b"BNAM")?,

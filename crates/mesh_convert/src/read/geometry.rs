@@ -2,15 +2,15 @@ use super::common::{AvObject, BlockRef, read_av_object, read_ref};
 use super::cursor::Cursor;
 use super::error::Result;
 
-/// `NiTriStrips` (`NiGeometry` для 20.0.0.4 без шейдеров Bethesda).
+/// `NiTriStrips` (`NiGeometry` for 20.0.0.4 without Bethesda shaders).
 #[derive(Debug, Clone, PartialEq)]
 pub struct NiTriStrips {
     pub av: AvObject,
     pub data: BlockRef,
     pub skin_instance: BlockRef,
-    /// `MaterialData`: имя шейдера, если он есть (`Has Shader`). У статики пусто.
+    /// `MaterialData`: the shader name, if there is one (`Has Shader`). Empty for statics.
     pub shader_name: Option<String>,
-    /// Дополнительные данные шейдера; читаются вместе с именем.
+    /// Extra shader data; read together with the name.
     pub shader_extra_data: Option<i32>,
 }
 
@@ -32,12 +32,12 @@ pub fn read_tri_strips(cur: &mut Cursor<'_>) -> Result<NiTriStrips> {
     })
 }
 
-/// Бит в `data_flags`: у вершин есть тангенты и битангенты (`NBT Method`).
+/// A bit in `data_flags`: the vertices have tangents and bitangents (`NBT Method`).
 const FLAG_TANGENTS: u16 = 4096;
-/// Число наборов UV — младшие шесть бит `data_flags`.
+/// Number of UV sets — the low six bits of `data_flags`.
 const UV_SETS_MASK: u16 = 63;
 
-/// `NiTriStripsData`: `NiGeometryData` + `NiTriBasedGeomData` + полосы.
+/// `NiTriStripsData`: `NiGeometryData` + `NiTriBasedGeomData` + strips.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NiTriStripsData {
     pub group_id: i32,
@@ -52,19 +52,19 @@ pub struct NiTriStripsData {
     pub bound_center: [f32; 3],
     pub bound_radius: f32,
     pub colors: Vec<[f32; 4]>,
-    /// Наборы UV: `data_flags & 63` штук, в каждом по `num_vertices` пар.
+    /// UV sets: `data_flags & 63` of them, each with `num_vertices` pairs.
     pub uv_sets: Vec<Vec<[f32; 2]>>,
     pub consistency_flags: u16,
     pub additional_data: BlockRef,
     pub num_triangles: u16,
     pub strips: Vec<Vec<u16>>,
-    /// Готовые треугольники: заполнены у `NiTriShapeData`, у `NiTriStripsData` пусто.
+    /// Ready triangles: filled for `NiTriShapeData`, empty for `NiTriStripsData`.
     pub triangles: Vec<[u16; 3]>,
 }
 
-/// Общая часть `NiGeometryData` до `additional_data`; полосы и треугольники пусты.
+/// The common part of `NiGeometryData` up to `additional_data`; strips and triangles are empty.
 pub(super) fn read_geometry_data(cur: &mut Cursor<'_>) -> Result<NiTriStripsData> {
-    // `Group ID` — с 10.1.0.114, флаги сохранения и сжатия — с 10.1.0.0.
+    // `Group ID` since 10.1.0.114, the keep and compress flags since 10.1.0.0.
     let group_id = if cur.version() >= 0x0A01_0072 {
         cur.i32()?
     } else {
@@ -112,7 +112,7 @@ pub(super) fn read_geometry_data(cur: &mut Cursor<'_>) -> Result<NiTriStripsData
     }
 
     let consistency_flags = cur.u16()?;
-    // `Additional Data` — с 20.0.0.4; у 10.2.0.0 поля нет.
+    // `Additional Data` since 20.0.0.4; 10.2.0.0 has no such field.
     let additional_data = if cur.version() >= 0x1400_0004 {
         read_ref(cur)?
     } else {
@@ -150,7 +150,7 @@ pub fn read_tri_strips_data(cur: &mut Cursor<'_>) -> Result<NiTriStripsData> {
         .map(|_| cur.u16().map(usize::from))
         .collect::<Result<Vec<_>>>()?;
 
-    // `Has Points` — с 10.0.1.3; раньше полосы есть всегда.
+    // `Has Points` since 10.0.1.3; earlier there are always strips.
     let has_points = cur.version() < 0x0A00_0103 || cur.bool()?;
     let mut strips = Vec::new();
     if has_points {
@@ -165,13 +165,13 @@ pub fn read_tri_strips_data(cur: &mut Cursor<'_>) -> Result<NiTriStripsData> {
     Ok(data)
 }
 
-/// `NiTriShapeData`: та же общая часть, затем число треугольников, число индексов, флаг
-/// наличия и сами треугольники, затем группы совпадающих вершин (пропускаются).
+/// `NiTriShapeData`: the same common part, then the triangle count, the index count, the presence
+/// flag and the triangles themselves, then groups of matching vertices (skipped).
 pub fn read_tri_shape_data(cur: &mut Cursor<'_>) -> Result<NiTriStripsData> {
     let mut data = read_geometry_data(cur)?;
     data.num_triangles = cur.u16()?;
     let _points = cur.u32()?;
-    // `Has Triangles` — с 10.1.0.0; раньше треугольники есть всегда.
+    // `Has Triangles` since 10.1.0.0; earlier there are always triangles.
     if cur.version() < 0x0A01_0000 || cur.bool()? {
         let n = usize::from(data.num_triangles);
         cur.check_array(n, 6)?;

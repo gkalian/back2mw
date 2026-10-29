@@ -2,43 +2,50 @@ use crate::container::Tag;
 use crate::error::{Error, Result};
 use crate::schema::{Fields, FromFields};
 
-/// `LVLF` 0x01: при выборе смотреть все строки с уровнем ≤ игрока, а не только ближайший уровень.
+/// `LVLF` 0x01: when picking, consider all rows with level ≤ the player's, not only the closest
+/// level.
 pub const LEVELED_ALL_LEVELS: u8 = 0x01;
-/// `LVLF` 0x02: число из `CNTO` контейнера — столько независимых бросков, а не одна строка ×N.
+/// `LVLF` 0x02: the count from a container's `CNTO` means that many independent rolls, not one row
+/// ×N.
 pub const LEVELED_EACH_ITEM: u8 = 0x02;
-/// `LVLF` 0x04: отдать все строки списка. В `LVLI` `Oblivion.esm` не встречается (только `LVSP`).
+/// `LVLF` 0x04: give all rows of the list. Does not occur in the `LVLI` of `Oblivion.esm` (only in
+/// `LVSP`).
 pub const LEVELED_USE_ALL: u8 = 0x04;
 
-/// Уровневый список предметов `LVLI` (T2.5).
+/// A leveled item list `LVLI` (T2.5).
 ///
-/// Раскладка измерена на `Oblivion.esm` (2026-09-27, `docs/ru/formats/tes4.md`, «Уровневые
-/// списки»): 1 398 записей. У 1 376 порядок `EDID, LVLD, LVLF, LVLO…`; у 22 — старый формат
-/// `EDID, LVLD, LVLO…, DATA`: вместо `LVLF` после строк 1 байт `DATA` (0 или 1), и часть строк
-/// в них — 8 байт без числа. Что `DATA` значит то же, что `LVLF`, — предположение (не
-/// проверено): оба 1 байт, и значения 0/1 входят в флаги `LVLF`.
+/// The layout was measured on `Oblivion.esm` (2026-09-27, `docs/en/formats/tes4.md`, "Leveled
+/// lists"): 1,398 records. 1,376 have the order `EDID, LVLD, LVLF, LVLO…`; 22 have the old format
+/// `EDID, LVLD, LVLO…, DATA`: instead of `LVLF`, a 1-byte `DATA` (0 or 1) after the rows, and some
+/// rows in them are 8 bytes without a count. That `DATA` means the same as `LVLF` is an assumption
+/// (not verified): both are 1 byte, and the values 0/1 are among the `LVLF` flags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeveledList {
     pub editor_id: String,
-    /// `LVLD` — шанс «ничего», %. У 5 записей старого формата — 128 (смысл неизвестен).
+    /// `LVLD` — the "nothing" chance, %. 5 old-format records have 128 (meaning unknown).
     pub chance_none: u8,
-    /// `LVLF` (или `DATA` старого формата): [`LEVELED_ALL_LEVELS`], [`LEVELED_EACH_ITEM`],
+    /// `LVLF` (or the old-format `DATA`): [`LEVELED_ALL_LEVELS`], [`LEVELED_EACH_ITEM`],
     /// [`LEVELED_USE_ALL`].
     pub flags: u8,
     pub entries: Vec<LeveledEntry>,
 }
 
-/// Строка списка `LVLO`: 12 байт — `i16` уровень, 2 байта мусора, `u32` `FormID`, `i16` число,
-/// 2 байта мусора (заполнители не нулевые, 2026-09-27); 8 байт — то же без числа (оно 1).
+/// A list row `LVLO`: 12 bytes — `i16` level, 2 junk bytes, `u32` `FormID`, `i16` count, 2 junk
+/// bytes (the padding is non-zero, 2026-09-27); 8 bytes — the same without the count (it is 1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LeveledEntry {
     pub level: i16,
-    /// `FormID` как в файле.
+    /// `FormID` as in the file.
     pub form_id: u32,
     pub count: i16,
 }
 
 fn i16_at(raw: &[u8], at: usize) -> i16 {
-    i16::from_le_bytes(raw[at..at + 2].try_into().expect("срез ровно 2 байта"))
+    i16::from_le_bytes(
+        raw[at..at + 2]
+            .try_into()
+            .expect("the slice is exactly 2 bytes"),
+    )
 }
 
 impl FromFields for LeveledList {
@@ -50,14 +57,14 @@ impl FromFields for LeveledList {
     }
 }
 
-/// Уровневый список существ `LVLC` (T11.2): тот же список, что у `LVLI`, плюс шаблон и скрипт.
+/// A leveled creature list `LVLC` (T11.2): the same list as `LVLI`, plus a template and a script.
 ///
-/// `Oblivion.esm` (2026-10-01): 682 записи; `LVLF` у 645, `LVLO` у 681 (12 байт — 4 117 строк, 8 байт —
-/// 1), до 29 строк; `TNAM` у 176, `SCRI` у 27.
+/// `Oblivion.esm` (2026-10-01): 682 records; `LVLF` in 645, `LVLO` in 681 (12 bytes — 4,117 rows, 8
+/// bytes — 1), up to 29 rows; `TNAM` in 176, `SCRI` in 27.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeveledCreatures {
     pub list: LeveledList,
-    /// `TNAM` — существо-шаблон: выбранное получает его характеристики (UESP).
+    /// `TNAM` — the template creature: the chosen one gets its stats (UESP).
     pub template: Option<u32>,
     pub script: Option<u32>,
 }
@@ -93,7 +100,9 @@ fn read_list(fields: &Fields<'_>, record: &'static str) -> Result<LeveledList> {
             };
             Ok(LeveledEntry {
                 level: i16_at(raw, 0),
-                form_id: u32::from_le_bytes(raw[4..8].try_into().expect("срез ровно 4 байта")),
+                form_id: u32::from_le_bytes(
+                    raw[4..8].try_into().expect("the slice is exactly 4 bytes"),
+                ),
                 count,
             })
         })
@@ -131,7 +140,7 @@ mod tests {
     }
 
     fn lvlo(level: i16, form_id: u32, count: i16) -> Vec<u8> {
-        // Заполнители — мусор, как в `Oblivion.esm`: читатель не должен на них смотреть.
+        // The padding is junk, as in `Oblivion.esm`: the reader must not look at it.
         let mut v = level.to_le_bytes().to_vec();
         v.extend([0xAB, 0xCD]);
         v.extend(form_id.to_le_bytes());

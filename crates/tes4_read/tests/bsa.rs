@@ -1,4 +1,4 @@
-//! Синтетические тесты ридера BSA v103. Игровых данных не требуют.
+//! Synthetic tests of the BSA v103 reader. They need no game data.
 
 use std::io::Cursor;
 
@@ -6,7 +6,7 @@ use tes4_read::BsaIndex;
 use tes4_read::error::Error;
 use tes4_read::synth;
 
-// --- вспомогательные функции ---
+// --- helper functions ---
 
 fn make_archive(compress: bool) -> (Vec<u8>, Vec<(&'static str, &'static [u8])>) {
     let files: Vec<(&str, &[u8])> = vec![
@@ -22,9 +22,9 @@ fn cursor(bytes: Vec<u8>) -> Cursor<Vec<u8>> {
     Cursor::new(bytes)
 }
 
-// --- тесты ---
+// --- tests ---
 
-/// Круговой обход (write → read): пути и содержимое совпадают.
+/// Round trip (write → read): paths and contents match.
 #[test]
 fn round_trip_uncompressed() {
     let (bytes, files) = make_archive(false);
@@ -37,16 +37,16 @@ fn round_trip_uncompressed() {
         let key = path.to_ascii_lowercase().replace('/', "\\");
         let entry = index
             .find(path)
-            .unwrap_or_else(|| panic!("не нашли «{path}»"));
+            .unwrap_or_else(|| panic!("\"{path}\" not found"));
         assert_eq!(entry.path, key);
 
         let data = index.extract(&mut cur, entry).unwrap();
-        assert_eq!(data, *expected, "данные не совпали для «{path}»");
+        assert_eq!(data, *expected, "data mismatch for \"{path}\"");
     }
 }
 
-/// Круговой обход со сжатием по умолчанию.
-/// Последний файл несёт инвертирующий бит — хранится несжатым.
+/// Round trip with compression on by default. The last file carries the inverting bit — it is
+/// stored uncompressed.
 #[test]
 fn round_trip_compressed() {
     let (bytes, files) = make_archive(true);
@@ -57,59 +57,59 @@ fn round_trip_compressed() {
 
     for (path, expected) in &files {
         let data = index.extract(&mut cur, index.find(path).unwrap()).unwrap();
-        assert_eq!(data, *expected, "данные не совпали для «{path}»");
+        assert_eq!(data, *expected, "data mismatch for \"{path}\"");
     }
 
-    // Первые два файла — сжаты, последний — нет (инвертирующий бит)
+    // The first two files are compressed, the last one is not (the inverting bit)
     assert!(
         index.entries()[0].compressed,
-        "первый файл должен быть сжат"
+        "the first file must be compressed"
     );
     assert!(
         index.entries()[1].compressed,
-        "второй файл должен быть сжат"
+        "the second file must be compressed"
     );
     assert!(
         !index.entries()[2].compressed,
-        "третий файл должен быть несжат (инвертирующий бит)"
+        "the third file must be uncompressed (the inverting bit)"
     );
 }
 
-/// Инвертирующий бит у последнего файла в несжатом архиве — файл хранится сжатым.
+/// The inverting bit on the last file in an uncompressed archive — the file is stored compressed.
 #[test]
 fn inverted_bit_on_uncompressed_archive() {
     let (bytes, _) = make_archive(false);
     let mut cur = cursor(bytes);
     let index = BsaIndex::read_from(&mut cur).unwrap();
 
-    // Первые два: несжатые (архив по умолчанию = uncompressed, бита нет)
+    // The first two: uncompressed (archive default = uncompressed, no bit)
     assert!(!index.entries()[0].compressed);
     assert!(!index.entries()[1].compressed);
-    // Последний: инвертирующий бит → сжатый
+    // The last one: inverting bit → compressed
     assert!(
         index.entries()[2].compressed,
-        "третий файл (с инвертирующим битом) должен быть сжатым в несжатом архиве"
+        "the third file (with the inverting bit) must be compressed in an uncompressed archive"
     );
 }
 
-/// Поиск без учёта регистра: '/' и '\\' равнозначны.
+/// Case-insensitive lookup: '/' and '\\' are equivalent.
 #[test]
 fn find_is_case_insensitive_and_slash_agnostic() {
     let (bytes, _) = make_archive(false);
     let mut cur = cursor(bytes);
     let index = BsaIndex::read_from(&mut cur).unwrap();
 
-    // верхний регистр
+    // upper case
     assert!(index.find("MESHES\\CLUTTER\\BOWL01.NIF").is_some());
-    // прямой слеш
+    // forward slash
     assert!(index.find("meshes/clutter/bowl01.nif").is_some());
-    // смешанный
+    // mixed
     assert!(index.find("Meshes/Clutter/Bowl01.Nif").is_some());
-    // несуществующий
+    // nonexistent
     assert!(index.find("does_not_exist.nif").is_none());
 }
 
-/// Несколько папок: порядок и принадлежность записей сохраняются.
+/// Several folders: the order and ownership of records are preserved.
 #[test]
 fn two_folders_produce_correct_entries() {
     let files: Vec<(&str, &[u8])> = vec![
@@ -122,13 +122,13 @@ fn two_folders_produce_correct_entries() {
     let index = BsaIndex::read_from(&mut cur).unwrap();
 
     assert_eq!(index.entries().len(), 3);
-    // Все три пути присутствуют
+    // All three paths are present
     for (path, _) in &files {
-        assert!(index.find(path).is_some(), "не нашли «{path}»");
+        assert!(index.find(path).is_some(), "\"{path}\" not found");
     }
 }
 
-/// Файл без папки (путь — просто имя файла).
+/// A file without a folder (the path is just a file name).
 #[test]
 fn file_at_archive_root() {
     let files: Vec<(&str, &[u8])> = vec![("readme.txt", b"contents")];
@@ -142,7 +142,7 @@ fn file_at_archive_root() {
     assert_eq!(data, b"contents");
 }
 
-/// Пустой архив (нет файлов) читается без ошибок.
+/// An empty archive (no files) reads without errors.
 #[test]
 fn empty_archive_reads_cleanly() {
     let bytes = synth::bsa(&[], false);
@@ -151,7 +151,7 @@ fn empty_archive_reads_cleanly() {
     assert_eq!(index.entries().len(), 0);
 }
 
-/// Неправильная магия → NotABsa.
+/// Wrong magic → NotABsa.
 #[test]
 fn rejects_wrong_magic() {
     let mut bytes = synth::bsa(&[("f\\a.nif", b"x")], false);
@@ -163,11 +163,11 @@ fn rejects_wrong_magic() {
     );
 }
 
-/// Версия 104 → UnsupportedBsaVersion.
+/// Version 104 → UnsupportedBsaVersion.
 #[test]
 fn rejects_unsupported_version() {
     let mut bytes = synth::bsa(&[("f\\a.nif", b"x")], false);
-    // Версия — u32 LE со смещения 4
+    // The version is a u32 LE at offset 4
     bytes[4..8].copy_from_slice(&104u32.to_le_bytes());
     let mut cur = cursor(bytes);
     assert_eq!(
@@ -176,36 +176,35 @@ fn rejects_unsupported_version() {
     );
 }
 
-/// Обрезанный архив на нескольких точках не паникует — только ошибка.
+/// An archive truncated at several points does not panic — it only gives an error.
 ///
-/// `read_from` читает только структурные секции (до блока данных файлов),
-/// поэтому проверяем точки внутри заголовка, записей папок, блоков файлов
-/// и блока имён.
+/// `read_from` reads only the structural sections (up to the file data block), so we check points
+/// inside the header, the folder records, the file blocks and the name block.
 #[test]
 fn truncated_archive_is_an_error_not_a_panic() {
-    // 2 файла в одной папке "f". Структура:
-    //   заголовок:    36 байт (0..36)
-    //   записи папок: 16 байт (36..52)
-    //   блок папок:   1(len) + 1('f') + 1(NUL) + 2×16(файлы) = 35 байт (52..87)
-    //   блок имён:    "a.nif\0b.nif\0" = 12 байт (87..99)
-    //   данные файлов: после 99 (read_from их не читает)
+    // 2 files in one folder "f". Structure:
+    //   header:        36 bytes (0..36)
+    //   folder records: 16 bytes (36..52)
+    //   folder block:  1(len) + 1('f') + 1(NUL) + 2×16(files) = 35 bytes (52..87)
+    //   name block:    "a.nif\0b.nif\0" = 12 bytes (87..99)
+    //   file data:     after 99 (read_from does not read it)
     let bytes = synth::bsa(
         &[("f\\a.nif", b"hello world"), ("f\\b.nif", b"goodbye")],
         false,
     );
-    assert!(bytes.len() > 99, "архив должен быть длиннее 99 байт");
+    assert!(bytes.len() > 99, "the archive must be longer than 99 bytes");
 
     for cut in [
-        4,  // середина заголовка (после магии, до версии)
-        36, // конец заголовка, до записей папок
-        44, // середина записей папок
-        60, // середина блока папок (внутри записей файлов)
-        90, // середина блока имён файлов
+        4,  // middle of the header (after the magic, before the version)
+        36, // end of the header, before the folder records
+        44, // middle of the folder records
+        60, // middle of the folder block (inside the file records)
+        90, // middle of the file name block
     ] {
         let mut cur = cursor(bytes[..cut].to_vec());
         assert!(
             BsaIndex::read_from(&mut cur).is_err(),
-            "обрезание до {cut} байт не должно пройти"
+            "truncation to {cut} bytes must not pass"
         );
     }
 }

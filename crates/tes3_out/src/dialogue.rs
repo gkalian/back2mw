@@ -1,10 +1,11 @@
-//! Темы и реплики `DIAL`/`INFO` (T10.6).
+//! `DIAL`/`INFO` topics and responses (T10.6).
 //!
-//! Раскладка — по `Morrowind.esm` (2026-09-28, разовый скрипт по файлу, `docs/ru/formats/tes3.md`,
-//! «Диалоги»): `DIAL` и его `INFO` идут подряд, в конце файла; `INAM` — только цифры, без
-//! ведущего нуля, 12…20 знаков, уникальны в пределах темы (между темами у ванили 211 повторов);
-//! `NAME` реплики — не длиннее 512 знаков, без нуля в конце; фильтров `SCVR` — не больше 6.
-//! Строка `SCVR`: номер слота `'0'…'5'`, тип, два знака функции, операция, имя (у функций пусто).
+//! The layout follows `Morrowind.esm` (2026-09-28, a one-off script over the file,
+//! `docs/en/formats/tes3.md`, "Dialogue"): a `DIAL` and its `INFO`s come in a row, at the end of
+//! the file; `INAM` is digits only, without a leading zero, 12…20 characters, unique within a topic
+//! (vanilla has 211 repeats across topics); a response's `NAME` is no longer than 512 characters,
+//! without a trailing zero; there are no more than 6 `SCVR` filters. An `SCVR` string: slot number
+//! `'0'…'5'`, type, two function characters, operator, name (empty for functions).
 
 use std::io;
 
@@ -13,15 +14,15 @@ use tes3::esp::{
     FilterComparison, FilterFunction, FilterType, FilterValue, ObjectFlags, Sex, TES3Object,
 };
 
-/// Предел текста реплики: у ванили ровно 512 у двух реплик, длиннее нет; библиотека пишет
-/// `NAME` без нуля, как ваниль.
+/// Response text limit: in vanilla exactly two responses have 512, none is longer; the library
+/// writes `NAME` without a zero, like vanilla.
 pub const MAX_TEXT_LEN: usize = 512;
 
-/// Предел фильтров `SCVR` на реплику: слоты `'0'…'5'`.
+/// Limit of `SCVR` filters per response: slots `'0'…'5'`.
 pub const MAX_FILTERS: usize = 6;
 
-/// Тип темы Morrowind. Голосовые и убеждение (T10.7) у ванили — только свои имена тем (`Attack`,
-/// `Admire Success`, …); новых таких тем движок не спрашивает.
+/// Morrowind topic type. Voice and persuasion topics (T10.7) in vanilla have only their own topic
+/// names (`Attack`, `Admire Success`, …); the engine does not ask for new topics of these kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TopicKind {
     Topic,
@@ -30,7 +31,7 @@ pub enum TopicKind {
     Persuasion,
 }
 
-/// Операция сравнения фильтра.
+/// Filter comparison operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Comparison {
     Equal,
@@ -41,7 +42,7 @@ pub enum Comparison {
     LessOrEqual,
 }
 
-/// Тип переменной (`GLOB` `FNAM`, локальные — объявление в скрипте).
+/// Variable type (`GLOB` `FNAM`; locals are declared in the script).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VarType {
     Short,
@@ -49,16 +50,16 @@ pub enum VarType {
     Float,
 }
 
-/// Что проверяет фильтр `SCVR`.
+/// What an `SCVR` filter checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FilterKind {
-    /// Функция по номеру Morrowind (0…73): 38 PC Sex, 50 Choice, 63 Talked to PC и т. д.
+    /// A function by Morrowind number (0…73): 38 PC Sex, 50 Choice, 63 Talked to PC and so on.
     Function(u8),
     Global(String, VarType),
     Local(String, VarType),
-    /// Предметы у игрока.
+    /// Items the player has.
     Item(String),
-    /// Сколько убито с этим ID.
+    /// How many with this ID have been killed.
     Dead(String),
     NotId(String),
     NotFaction(String),
@@ -80,37 +81,37 @@ pub struct Filter {
     pub value: Value,
 }
 
-/// Реплика. Пустая строка поля — фильтра нет.
+/// A response. An empty field string means no filter.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Info {
-    /// `INAM`: только цифры (как у ванили), уникален в пределах темы.
+    /// `INAM`: digits only (as in vanilla), unique within the topic.
     pub id: String,
-    /// Отношение не ниже.
+    /// Disposition at least.
     pub disposition: i32,
-    /// Ранг говорящего в `faction` не ниже; −1 — не проверяется.
+    /// The speaker's rank in `faction` at least; −1 means not checked.
     pub speaker_rank: i8,
-    /// Пол говорящего; `None` — любой.
+    /// The speaker's sex; `None` means any.
     pub female: Option<bool>,
-    /// Ранг игрока в `player_faction` не ниже; −1 — не проверяется.
+    /// The player's rank in `player_faction` at least; −1 means not checked.
     pub player_rank: i8,
     pub speaker: String,
     pub race: String,
     pub class: String,
     pub faction: String,
-    /// Ячейка говорящего: движок сравнивает начало имени.
+    /// The speaker's cell: the engine compares the start of the name.
     pub cell: String,
     pub player_faction: String,
     pub text: String,
-    /// `SNAM`: файл голоса относительно `Sound\` (`Vo\ob\…mp3`; у ванили — `Vo\d\f\Hlo_DF000e.mp3`,
-    /// не длиннее 24 знаков). Пусто — без звука.
+    /// `SNAM`: the voice file relative to `Sound\` (`Vo\ob\…mp3`; vanilla has
+    /// `Vo\d\f\Hlo_DF000e.mp3`, no longer than 24 characters). Empty means no sound.
     pub sound: String,
     pub filters: Vec<Filter>,
-    /// Результат — текст: движок компилирует его сам при показе реплики.
+    /// The result is text: the engine compiles it itself when showing the response.
     pub result: String,
 }
 
 impl Info {
-    /// Реплика без фильтров и полей.
+    /// A response without filters and fields.
     pub fn new(id: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -132,15 +133,15 @@ impl Info {
     }
 }
 
-/// Тема с репликами плагина в порядке показа.
+/// A topic with the plugin's responses in display order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Topic {
-    /// Имя темы — оно же её ID и то, что видит игрок.
+    /// The topic name — it is also its ID and what the player sees.
     pub name: String,
     pub kind: TopicKind,
-    /// Тема уже есть в мастере: ID его первой реплики. Наш блок встаёт перед ней (`PNAM` первой
-    /// нашей пуст, `NNAM` последней — эта реплика), как пишет CS при вставке в начало. Пусто —
-    /// тема новая.
+    /// The topic already exists in the master: the ID of its first response. Our block goes before
+    /// it (the `PNAM` of our first is empty, the `NNAM` of our last is this response), as the CS
+    /// writes when inserting at the start. Empty means a new topic.
     pub before_vanilla: String,
     pub infos: Vec<Info>,
 }
@@ -149,7 +150,8 @@ fn invalid(message: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-/// Номера функций `SCVR` 0…73 — два знака ASCII (`FilterFunction` хранит их как `u16` LE).
+/// `SCVR` function numbers 0…73 are two ASCII characters (`FilterFunction` stores them as `u16`
+/// LE).
 const FUNCTIONS: [FilterFunction; 74] = {
     use FilterFunction as F;
     [
@@ -230,8 +232,8 @@ const FUNCTIONS: [FilterFunction; 74] = {
     ]
 };
 
-/// Функция переменной: `sX`/`lX`/`fX` по типу (библиотека называет `lX` `PcGold`, а `sX` —
-/// `VariableCompare`; у ванили `2sX`, `2fX`, `3sX`, `3fX`).
+/// A variable function: `sX`/`lX`/`fX` by type (the library calls `lX` `PcGold` and `sX`
+/// `VariableCompare`; vanilla has `2sX`, `2fX`, `3sX`, `3fX`).
 fn variable_function(var: VarType) -> FilterFunction {
     match var {
         VarType::Short => FilterFunction::VariableCompare,
@@ -286,8 +288,9 @@ fn filter(index: u8, f: &Filter, info: &str) -> io::Result<EspFilter> {
     })
 }
 
-/// Записи темы: `DIAL`, затем её `INFO` цепочкой `PNAM`/`NNAM`. Ошибка — реплика не ложится в
-/// пределы формата ([`MAX_TEXT_LEN`], [`MAX_FILTERS`], ID не из цифр).
+/// Records of a topic: `DIAL`, then its `INFO`s chained by `PNAM`/`NNAM`. The error means a
+/// response does not fit the format's limits ([`MAX_TEXT_LEN`], [`MAX_FILTERS`], an ID not made of
+/// digits).
 pub(crate) fn topic(t: Topic) -> io::Result<Vec<TES3Object>> {
     let (kind, kind2) = match t.kind {
         TopicKind::Topic => (DialogueType::Topic, DialogueType2::Topic),
@@ -332,7 +335,7 @@ pub(crate) fn topic(t: Topic) -> io::Result<Vec<TES3Object>> {
             .filters
             .iter()
             .enumerate()
-            .map(|(i, f)| filter(u8::try_from(i).expect("не больше 6"), f, &info.id))
+            .map(|(i, f)| filter(u8::try_from(i).expect("no more than 6"), f, &info.id))
             .collect::<io::Result<_>>()?;
         out.push(TES3Object::DialogueInfo(DialogueInfo {
             flags: ObjectFlags::default(),

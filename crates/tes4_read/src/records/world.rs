@@ -2,28 +2,30 @@ use crate::container::{Record, Tag};
 use crate::error::{Error, Result};
 use crate::schema::Fields;
 
-/// Объект мира Oblivion (T2.2): `ACTI`, `DOOR`, `CONT`, `LIGH`, `FLOR`, `FURN`.
+/// An Oblivion world object (T2.2): `ACTI`, `DOOR`, `CONT`, `LIGH`, `FLOR`, `FURN`.
 ///
-/// Раскладки измерены на `Oblivion.esm` (2026-09-25, `docs/ru/formats/tes4.md`, «Объекты мира»):
-/// `CONT` `DATA` — 5 байт у всех 873, `DOOR` `FNAM` — 1 байт у всех 501, `LIGH` `DATA` — 32 байта
-/// у 1 064 и 24 у 561 (короткая версия без затухания и угла конуса), `CNTO` — 8 байт.
+/// The layouts were measured on `Oblivion.esm` (2026-09-25, `docs/en/formats/tes4.md`, "World
+/// objects"): `CONT` `DATA` is 5 bytes in all 873, `DOOR` `FNAM` is 1 byte in all 501, `LIGH`
+/// `DATA` is 32 bytes in 1,064 and 24 in 561 (the short version without falloff and cone angle),
+/// `CNTO` is 8 bytes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorldSource {
     pub editor_id: String,
     pub name: Option<String>,
     pub model: Option<String>,
-    /// `ICON` — есть только у переносного света (2 из 1 625 `LIGH`).
+    /// `ICON` — only carriable lights have it (2 of 1,625 `LIGH`).
     pub icon: Option<String>,
     pub script: Option<u32>,
-    /// `SNAM` — `SOUN` (T10.1): у `DOOR` звук открытия, у `CONT` — тоже открытия, у `ACTI` и
-    /// `LIGH` — петля. `FormID` как в файле; 0 — `None`.
+    /// `SNAM` — a `SOUN` (T10.1): for `DOOR` the opening sound, for `CONT` also the opening, for
+    /// `ACTI` and `LIGH` a loop. `FormID` as in the file; 0 gives `None`.
     pub sound: Option<u32>,
-    /// Звук закрытия: `ANAM` у `DOOR`, `QNAM` у `CONT`.
+    /// The closing sound: `ANAM` for `DOOR`, `QNAM` for `CONT`.
     pub close_sound: Option<u32>,
     pub data: WorldData,
 }
 
-/// Предмет в контейнере (`CNTO`): `FormID` как в файле и число (отрицательное — пополняемый).
+/// An item in a container (`CNTO`): `FormID` as in the file and a count (negative means
+/// restocking).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContainerItem {
     pub form_id: u32,
@@ -33,17 +35,17 @@ pub struct ContainerItem {
 #[derive(Debug, Clone, PartialEq)]
 pub enum WorldData {
     Activator,
-    /// `FNAM`: 0x01 врата Обливиона, 0x02 автоматическая, 0x04 скрытая, 0x08 редкое использование.
+    /// `FNAM`: 0x01 Oblivion gate, 0x02 automatic, 0x04 hidden, 0x08 minimal use.
     Door {
         flags: u8,
     },
-    /// `DATA`: флаги (0x02 — пополняется) и собственный вес контейнера; `CNTO` — содержимое.
+    /// `DATA`: flags (0x02 — respawns) and the container's own weight; `CNTO` — the contents.
     Container {
         flags: u8,
         weight: f32,
         items: Vec<ContainerItem>,
     },
-    /// `PFIG` — ингредиент, который даёт растение.
+    /// `PFIG` — the ingredient the plant gives.
     Flora {
         ingredient: Option<u32>,
     },
@@ -54,20 +56,24 @@ pub enum WorldData {
 /// `LIGH` `DATA`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LightData {
-    /// Время горения, с; −1 — вечно.
+    /// Burn time, s; −1 means forever.
     pub time: i32,
     pub radius: u32,
-    /// R, G, B, не используется.
+    /// R, G, B, unused.
     pub color: [u8; 4],
-    /// 0x01 динамический, 0x02 можно нести, 0x04 отрицательный, 0x08 мерцание, 0x20 выключен,
-    /// 0x40 медленное мерцание, 0x80 пульсация, 0x100 медленная пульсация, 0x200/0x400 прожектор.
+    /// 0x01 dynamic, 0x02 can carry, 0x04 negative, 0x08 flicker, 0x20 off by default, 0x40 slow
+    /// flicker, 0x80 pulse, 0x100 slow pulse, 0x200/0x400 spot light.
     pub flags: u32,
     pub value: u32,
     pub weight: f32,
 }
 
 fn u32_at(raw: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
 impl WorldSource {
@@ -109,7 +115,7 @@ impl WorldSource {
                         }
                         Ok(ContainerItem {
                             form_id: u32_at(raw, 0),
-                            count: i32::from_le_bytes(raw[4..8].try_into().expect("4 байта")),
+                            count: i32::from_le_bytes(raw[4..8].try_into().expect("4 bytes")),
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -137,9 +143,9 @@ impl WorldSource {
                     }
                 };
                 WorldData::Light(LightData {
-                    time: i32::from_le_bytes(raw[0..4].try_into().expect("4 байта")),
+                    time: i32::from_le_bytes(raw[0..4].try_into().expect("4 bytes")),
                     radius: u32_at(raw, 4),
-                    color: raw[8..12].try_into().expect("4 байта"),
+                    color: raw[8..12].try_into().expect("4 bytes"),
                     flags: u32_at(raw, 12),
                     value: u32_at(raw, tail),
                     weight: f32::from_bits(u32_at(raw, tail + 4)),
@@ -342,7 +348,7 @@ mod tests {
         assert_eq!(
             (lamp.sound, lamp.close_sound),
             (None, None),
-            "0 — нет звука"
+            "0 means no sound"
         );
     }
 

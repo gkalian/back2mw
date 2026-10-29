@@ -1,8 +1,9 @@
-//! Подтяжка цен к Morrowind (`transform::prices`, `data/anchors/value.tsv`) на одноимённых парах
-//! `WEAP`/`ARMO` без зачарования: `Oblivion.esm` против `Morrowind.esm` + `Tribunal.esm` +
-//! `Bloodmoon.esm`. Требует `BACK2MW_GAME_DATA` (каталог со всеми четырьмя `.esm`).
+//! Bringing prices in line with Morrowind (`transform::prices`, `data/anchors/value.tsv`) on
+//! same-name pairs of `WEAP`/`ARMO` without enchantment: `Oblivion.esm` against `Morrowind.esm` +
+//! `Tribunal.esm` + `Bloodmoon.esm`. Needs `BACK2MW_GAME_DATA` (a directory with all four `.esm`
+//! files).
 //!
-//! Числа отсюда — в `docs/ru/formats/tes4.md`, «Подтяжка цен».
+//! The numbers from here are in `docs/en/formats/tes4.md`, "Price raising".
 
 mod common;
 
@@ -23,16 +24,16 @@ fn oblivion() -> ConvertedObjects {
         false,
         RecordKinds::AllWithModels,
     )
-    .expect("конвертация")
+    .expect("conversion")
 }
 
-/// Цены ванили без зачарования: (категория, имя) → цена. Стрелы и болты не берутся.
+/// Vanilla prices without enchantment: (category, name) → price. Arrows and bolts are not taken.
 fn vanilla() -> BTreeMap<(&'static str, String), u32> {
     let mut out = BTreeMap::new();
     for f in ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"] {
-        let bytes = std::fs::read(common::game_file(f)).expect("мастер Morrowind");
+        let bytes = std::fs::read(common::game_file(f)).expect("Morrowind master");
         let mut plugin = P3::new();
-        plugin.load_bytes(&bytes).expect("разбор");
+        plugin.load_bytes(&bytes).expect("parsing");
         for o in plugin.objects {
             match o {
                 TES3Object::Weapon(w)
@@ -53,7 +54,7 @@ fn vanilla() -> BTreeMap<(&'static str, String), u32> {
     out
 }
 
-/// Пары (имя, цена у нас, цена ванили); у перчаток — цена пары.
+/// Pairs (name, our price, vanilla price); for gauntlets, the price of the pair.
 fn pairs(
     objects: &[Object],
     vanilla: &BTreeMap<(&'static str, String), u32>,
@@ -87,7 +88,7 @@ fn pairs(
     out
 }
 
-/// Медиана |ln(наша / ваниль)| в разах — во сколько раз в среднем промахиваемся.
+/// Median of |ln(ours / vanilla)| as a factor — how many times off we are on average.
 fn miss(values: &[(u32, u32)]) -> f64 {
     let mut v: Vec<f64> = values
         .iter()
@@ -98,7 +99,7 @@ fn miss(values: &[(u32, u32)]) -> f64 {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn raised_prices_are_closer_to_morrowind_and_never_lower() {
     let vanilla = vanilla();
     let converted = oblivion();
@@ -120,22 +121,22 @@ fn raised_prices_are_closer_to_morrowind_and_never_lower() {
             _ => false,
         })
         .count();
-    println!("=== подтяжка цен, Oblivion.esm ===");
+    println!("=== price adjustment, Oblivion.esm ===");
     println!(
-        "  поднято: оружие {}, броня {}",
+        "  raised: weapons {}, armor {}",
         raised.weapons, raised.armor
     );
-    println!("  пар по имени без зачарования: {}", before.len());
+    println!("  pairs by name without enchantment: {}", before.len());
     println!(
-        "  промах (медиана, раз): как в Oblivion {:.2}, с подтяжкой {:.2}",
+        "  miss (median, factor): as in Oblivion {:.2}, adjusted {:.2}",
         miss(&old),
         miss(&new)
     );
     for (b, a) in before.iter().zip(&after).filter(|(b, a)| b.1 != a.1) {
-        println!("    {}: {} → {} (ваниль {})", b.0, b.1, a.1, b.2);
+        println!("    {}: {} → {} (vanilla {})", b.0, b.1, a.1, b.2);
     }
-    assert_eq!(lowered, 0, "подтяжка не опускает цены");
-    // Контрольный опыт: кривая, которая ничего не делает или бьёт мимо, ближе не станет.
+    assert_eq!(lowered, 0, "the adjustment does not lower prices");
+    // Control: a curve that does nothing or misses will not get closer.
     assert!(miss(&new) < miss(&old));
     assert!(raised.weapons > 100 && raised.armor > 100);
 }

@@ -1,6 +1,6 @@
-name: Документация
+name: Docs
 
-# Сайт Zensical → GitHub Pages. В настройках репозитория: Settings → Pages → Source: GitHub Actions.
+# Zensical site → GitHub Pages. In the repository settings: Settings → Pages → Source: GitHub Actions.
 on:
   push:
     branches: [master, main]
@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: "3.x"
       - run: pip install -r docs/requirements.txt
-      # Каждый язык — своя сборка в site/<язык>; в корне — переадресация на русский.
+      # Each language is its own build in site/<language>; the root has a redirect to Russian.
       - run: python docs/gen_tables.py
       - run: zensical build --clean
       - run: zensical build --clean -f zensical.en.toml

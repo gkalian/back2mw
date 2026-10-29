@@ -1,13 +1,13 @@
-//! Таблицы ленты существа (T11.5d): какая группа анимации Morrowind из какого клипа Oblivion
-//! (`data/creature_groups.tsv`) и какая метка клипа какой меткой ленты становится
-//! (`data/creature_marks.tsv`). Сами соответствия — в таблицах, здесь только их чтение.
+//! Creature tape tables (T11.5d): which Morrowind animation group comes from which Oblivion clip
+//! (`data/creature_groups.tsv`) and which clip text key becomes which tape key
+//! (`data/creature_marks.tsv`). The mappings themselves are in the tables; here they are only read.
 
 use std::sync::LazyLock;
 
 const GROUPS: &str = include_str!("../../../../data/creature_groups.tsv");
 const MARKS: &str = include_str!("../../../../data/creature_marks.tsv");
 
-/// Приставки имени файла клипа — стойки и среда. Файл без такой приставки — «без стойки».
+/// Clip file name prefixes — stances and environment. A file without such a prefix is "no stance".
 pub const STANCES: [&str; 7] = [
     "swim",
     "handtohand",
@@ -18,13 +18,13 @@ pub const STANCES: [&str; 7] = [
     "special",
 ];
 
-/// Вид группы: какие метки она получает (описание — в шапке `data/creature_groups.tsv`).
+/// Group kind: which keys it gets (described in the header of `data/creature_groups.tsv`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupKind {
     Loop,
     Turn,
     Once,
-    /// Как `Once`, но корень накопления стоит на месте.
+    /// Like `Once`, but the accumulation root stays in place.
     Still,
     Attack,
     CastSelf,
@@ -33,15 +33,15 @@ pub enum GroupKind {
     Fall,
 }
 
-/// Строка таблицы групп.
+/// A row of the groups table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupRule {
-    /// Имя группы Morrowind, как пишется в метке (`WalkForward`).
+    /// Morrowind group name as written in a key (`WalkForward`).
     pub group: String,
     pub kind: GroupKind,
-    /// Имена последовательностей Oblivion в нижнем регистре, по порядку предпочтения.
+    /// Oblivion sequence names in lower case, in order of preference.
     pub actions: Vec<String>,
-    /// Приставки имени файла по порядку предпочтения; пустая строка — файл без приставки.
+    /// File name prefixes in order of preference; an empty string is a file without a prefix.
     pub stances: Vec<String>,
 }
 
@@ -60,7 +60,7 @@ fn kind(text: &str) -> Option<GroupKind> {
     })
 }
 
-/// Строки таблицы без комментариев и пустых, с номером строки файла.
+/// Table rows without comments and empty lines, with the file line number.
 fn rows(table: &'static str) -> impl Iterator<Item = (usize, Vec<&'static str>)> {
     table
         .lines()
@@ -73,12 +73,12 @@ fn parse_groups(table: &'static str) -> Result<Vec<GroupRule>, String> {
     let mut out = Vec::new();
     for (line, cells) in rows(table) {
         let [group, kind_text, actions, stances, ..] = cells.as_slice() else {
-            return Err(format!("строка {line}: нужно не меньше четырёх колонок"));
+            return Err(format!("line {line}: at least four columns are needed"));
         };
-        let kind = kind(kind_text)
-            .ok_or_else(|| format!("строка {line}: неизвестный вид «{kind_text}»"))?;
+        let kind =
+            kind(kind_text).ok_or_else(|| format!("line {line}: unknown kind \"{kind_text}\""))?;
         if group.is_empty() {
-            return Err(format!("строка {line}: пустое имя группы"));
+            return Err(format!("line {line}: empty group name"));
         }
         let list = |text: &str, separator: char| -> Vec<String> {
             text.split(separator)
@@ -91,7 +91,7 @@ fn parse_groups(table: &'static str) -> Result<Vec<GroupRule>, String> {
             .filter(|a| !a.is_empty())
             .collect();
         if actions.is_empty() && kind != GroupKind::Fall {
-            return Err(format!("строка {line}: нет действия"));
+            return Err(format!("line {line}: no action"));
         }
         out.push(GroupRule {
             group: (*group).to_owned(),
@@ -103,7 +103,7 @@ fn parse_groups(table: &'static str) -> Result<Vec<GroupRule>, String> {
     Ok(out)
 }
 
-/// Метка без различий в регистре и пробелах: `Enum : Left` → `enum: left`.
+/// A text key without differences in case and spaces: `Enum : Left` → `enum: left`.
 fn normal_mark(text: &str) -> String {
     let text = text.trim().to_ascii_lowercase();
     match text.split_once(':') {
@@ -116,7 +116,7 @@ fn parse_marks(table: &'static str) -> Result<Vec<(String, Option<&'static str>)
     let mut out = Vec::new();
     for (line, cells) in rows(table) {
         let [from, to, ..] = cells.as_slice() else {
-            return Err(format!("строка {line}: нужно не меньше двух колонок"));
+            return Err(format!("line {line}: at least two columns are needed"));
         };
         out.push((normal_mark(from), (*to != "-").then_some(*to)));
     }
@@ -124,20 +124,20 @@ fn parse_marks(table: &'static str) -> Result<Vec<(String, Option<&'static str>)
 }
 
 static RULES: LazyLock<Vec<GroupRule>> = LazyLock::new(|| {
-    parse_groups(GROUPS).expect("data/creature_groups.tsv разбирается: проверено тестом")
+    parse_groups(GROUPS).expect("data/creature_groups.tsv parses: checked by a test")
 });
 
 static MARK_TABLE: LazyLock<Vec<(String, Option<&'static str>)>> = LazyLock::new(|| {
-    parse_marks(MARKS).expect("data/creature_marks.tsv разбирается: проверено тестом")
+    parse_marks(MARKS).expect("data/creature_marks.tsv parses: checked by a test")
 });
 
-/// Правила групп из `data/creature_groups.tsv`, в порядке таблицы — он же порядок ленты.
+/// Group rules from `data/creature_groups.tsv`, in table order — which is also the tape order.
 pub fn rules() -> &'static [GroupRule] {
     &RULES
 }
 
-/// Метка ленты Morrowind для метки клипа Oblivion; `None` — метка не переносится или её нет в
-/// таблице.
+/// Morrowind tape key for an Oblivion clip key; `None` means the key is not carried over or is not
+/// in the table.
 pub fn mark(text: &str) -> Option<&'static str> {
     let wanted = normal_mark(text);
     MARK_TABLE
@@ -168,15 +168,16 @@ mod tests {
         ] {
             assert!(rules.iter().any(|r| r.group == group), "{group}");
         }
-        // Решение владельца 2: сначала стойка handtohand, потом файл без приставки; плавание — в запасе.
+        // Owner's decision 2: first the handtohand stance, then the file without a prefix; swimming
+        // as a fallback.
         let walk = rules.iter().find(|r| r.group == "WalkForward").unwrap();
         assert_eq!(walk.kind, GroupKind::Loop);
         assert_eq!(walk.actions, ["forward"]);
         assert_eq!(walk.stances, ["handtohand", "", "swim"]);
-        // Запасные действия — по порядку.
+        // Fallback actions — in order.
         let run = rules.iter().find(|r| r.group == "RunForward").unwrap();
         assert_eq!(run.actions, ["fastforward", "forward"]);
-        // Три вида заклинания — одна группа.
+        // Three spell kinds — one group.
         assert_eq!(rules.iter().filter(|r| r.group == "SpellCast").count(), 3);
         assert!(parse_marks(MARKS).is_ok());
     }
@@ -189,19 +190,19 @@ mod tests {
         assert_eq!(
             mark("Enum: Idle"),
             None,
-            "в таблице есть, но не переносится"
+            "in the table, but not carried over"
         );
-        assert_eq!(mark("Hit"), None, "метки вида группы таблица не знает");
+        assert_eq!(mark("Hit"), None, "the table does not know group-kind keys");
     }
 
     #[test]
     fn a_broken_table_is_reported_with_the_line() {
         assert_eq!(
             parse_groups("Idle\tloop\tidle\t-\nWalk\tjump\tforward\t-"),
-            Err("строка 2: неизвестный вид «jump»".to_owned())
+            Err("line 2: unknown kind \"jump\"".to_owned())
         );
         assert!(parse_groups("Idle\tloop").is_err());
-        assert!(parse_groups("Idle\tloop\t\t-").is_err(), "нет действия");
+        assert!(parse_groups("Idle\tloop\t\t-").is_err(), "no action");
         assert!(parse_marks("enum: left").is_err());
     }
 }

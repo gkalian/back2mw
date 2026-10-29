@@ -1,60 +1,62 @@
-//! Клипы анимации существ, прочитанные со значениями (T11.5b): у Oblivion на каждое действие
-//! свой `.kf` с одной последовательностью `NiControllerSequence`.
+//! Creature animation clips read with their values (T11.5b): Oblivion has a separate `.kf` for each
+//! action, with one `NiControllerSequence` sequence.
 //!
-//! Как и [`super::motion`] (двери), это второй проход по смещениям блоков: общий разбор
-//! анимацию читает ради длины и отбрасывает. От `motion` клип отличается тем, что берёт всё,
-//! что нужно ленте Morrowind: метки (`NiTextKeyExtraData`), корень накопления, масштаб и
-//! B-сплайны — ими записано большинство дорожек существ (`NiBSplineCompTransformInterpolator`:
-//! опорные точки — 16-битные числа с общим смещением и множителем).
+//! Like [`super::motion`] (doors), this is a second pass over block offsets: the general parse
+//! reads animation only for its length and drops it. A clip differs from `motion` in that it takes
+//! everything the Morrowind tape needs: text keys (`NiTextKeyExtraData`), the accumulation root,
+//! scale and B-splines — most creature tracks are written with them
+//! (`NiBSplineCompTransformInterpolator`: the control points are 16-bit numbers with a shared
+//! offset and multiplier).
 //!
-//! Сплайн остаётся сплайном ([`Spline`]): в ключи с нужным шагом его превращает тот, кто пишет
-//! ленту, через [`Spline::at`]. Раскладки — `nif.xml` (20.0.0.4), проверены концом файла на всех
-//! `.kf` папок `meshes\creatures\` (`tests/real_creature_models.rs`).
+//! A spline stays a spline ([`Spline`]): whoever writes the tape turns it into keys at the needed
+//! step through [`Spline::at`]. The layouts are from `nif.xml` (20.0.0.4), checked by the end of
+//! file on all `.kf` files of the `meshes\creatures\` folders (`tests/real_creature_models.rs`).
 
 use super::SourceNif;
 use super::common::{BlockRef, read_ref};
 use super::error::{Error, Result};
 use super::motion::{Rotations, cursor_at, is_unset, key_group, raw_sequences, rotations};
 
-/// Степень B-сплайна Gamebryo: всегда кубический.
+/// Gamebryo B-spline degree: always cubic.
 const DEGREE: usize = 3;
-/// «Опорных точек нет» в поле смещения: канал стоит в позе интерполятора.
+/// "No control points" in the offset field: the channel stands in the interpolator's pose.
 const NO_HANDLE: u32 = 0xFFFF;
-/// Наибольшее значение сжатой опорной точки: `i16` делится на него и даёт −1…1.
+/// Largest value of a compressed control point: an `i16` is divided by it to give −1…1.
 const COMPACT_RANGE: f32 = 32767.0;
 
-/// Клип: одна последовательность со всеми дорожками.
+/// A clip: one sequence with all its tracks.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Clip {
     pub name: String,
-    /// Тип цикла: 0 — петля, 1 — туда-обратно, 2 — зажать.
+    /// Cycle type: 0 — loop, 1 — reverse (ping-pong), 2 — clamp.
     pub cycle: u32,
     pub frequency: f32,
     pub start: f32,
     pub stop: f32,
-    /// Корень накопления: узел, чей сдвиг движок превращает в движение актёра.
+    /// The accumulation root: the node whose translation the engine turns into the actor's
+    /// movement.
     pub accum_root: String,
-    /// Метки: время и текст (`start`, `end`, `Sound: …`, `Hit` …).
+    /// Text keys: time and text (`start`, `end`, `Sound: …`, `Hit` …).
     pub text_keys: Vec<(f32, String)>,
     pub tracks: Vec<ClipTrack>,
 }
 
-/// Дорожка: какой узел двигает клип и чем.
+/// A track: which node the clip moves, and with what.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipTrack {
     pub node: String,
-    /// Тип блока интерполятора, как в файле.
+    /// The interpolator block type, as in the file.
     pub interpolator: String,
-    /// Движение узла, если интерполятор — преобразование (ключи или сплайн).
+    /// The node's motion, if the interpolator is a transform (keys or a spline).
     pub motion: Option<BoneMotion>,
 }
 
-/// Движение одного узла: поза интерполятора и три канала.
+/// Motion of one node: the interpolator pose and three channels.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoneMotion {
-    /// Сдвиг позы; `None` — не задан (в файле −`f32::MAX`).
+    /// Pose translation; `None` means not set (−`f32::MAX` in the file).
     pub pose_translation: Option<[f32; 3]>,
-    /// Поворот позы, кватернион `w, x, y, z`.
+    /// Pose rotation, quaternion `w, x, y, z`.
     pub pose_rotation: Option<[f32; 4]>,
     pub pose_scale: Option<f32>,
     pub rotation: Rotation,
@@ -62,20 +64,20 @@ pub struct BoneMotion {
     pub scale: Channel<1>,
 }
 
-/// Канал поворота.
+/// Rotation channel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Rotation {
-    /// Ключей нет: поворот — из позы.
+    /// No keys: the rotation comes from the pose.
     None,
-    /// Время и кватернион `w, x, y, z`.
+    /// Time and quaternion `w, x, y, z`.
     Quat(Vec<(f32, [f32; 4])>),
-    /// Три дорожки углов Эйлера (X, Y, Z), радианы.
+    /// Three Euler angle tracks (X, Y, Z), radians.
     Euler([Vec<(f32, f32)>; 3]),
-    /// Сплайн кватернионов `w, x, y, z`; значение после [`Spline::at`] нужно нормировать.
+    /// A spline of quaternions `w, x, y, z`; the value after [`Spline::at`] must be normalized.
     Spline(Spline<4>),
 }
 
-/// Канал сдвига (`N` = 3) или масштаба (`N` = 1).
+/// Translation channel (`N` = 3) or scale channel (`N` = 1).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Channel<const N: usize> {
     None,
@@ -83,8 +85,8 @@ pub enum Channel<const N: usize> {
     Spline(Spline<N>),
 }
 
-/// Кубический B-сплайн с равномерными узлами, прижатый к концам (open uniform): так его
-/// считает Gamebryo (`NiBSplineBasis`) и niflib.
+/// A cubic B-spline with uniform knots, clamped at the ends (open uniform): this is how Gamebryo
+/// (`NiBSplineBasis`) and niflib compute it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Spline<const N: usize> {
     pub start: f32,
@@ -93,15 +95,15 @@ pub struct Spline<const N: usize> {
 }
 
 impl<const N: usize> Spline<N> {
-    /// Значение в момент `time` (алгоритм де Бура); за пределами отрезка — значение на его краю.
-    /// `None` — опорных точек нет.
+    /// The value at time `time` (de Boor's algorithm); outside the range, the value at its edge.
+    /// `None` means there are no control points.
     pub fn at(&self, time: f32) -> Option<[f32; N]> {
         let n = self.points.len();
         let degree = DEGREE.min(n.checked_sub(1)?);
         if degree == 0 {
             return Some(self.points[0]);
         }
-        // Узлы: 0 × (степень + 1), 1, 2, …, отрезков × (степень + 1); параметр — 0…отрезков.
+        // Knots: 0 × (degree + 1), 1, 2, …, segments × (degree + 1); the parameter is 0…segments.
         let segments = n - degree;
         let span = self.stop - self.start;
         let part = if span > 0.0 {
@@ -113,7 +115,7 @@ impl<const N: usize> Spline<N> {
         let knot = |j: usize| j.saturating_sub(degree).min(segments) as f32;
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "u в 0…segments: part зажат в 0…1, а segments — число опорных точек файла"
+            reason = "u in 0…segments: part is clamped to 0…1, and segments is the file's number of control points"
         )]
         let k = degree + (u.floor() as usize).min(segments - 1);
         let mut d: Vec<[f32; N]> = self.points[k - degree..=k].to_vec();
@@ -132,7 +134,7 @@ impl<const N: usize> Spline<N> {
     }
 }
 
-/// Все клипы файла в порядке блоков. У версий до 10.1.0.106 список пуст (см.
+/// All clips of the file in block order. For versions before 10.1.0.106 the list is empty (see
 /// [`super::motion::raw_sequences`]).
 pub fn clips(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<Vec<Clip>> {
     let mut out = Vec::new();
@@ -165,7 +167,7 @@ pub fn clips(bytes: &[u8], source: &SourceNif, offsets: &[usize]) -> Result<Vec<
     Ok(out)
 }
 
-/// Метки блока `NiTextKeyExtraData`; другого типа или нет блока — пусто.
+/// Text keys of a `NiTextKeyExtraData` block; a block of another type or no block gives empty.
 fn text_keys(
     bytes: &[u8],
     source: &SourceNif,
@@ -181,7 +183,7 @@ fn text_keys(
     let Some(mut cur) = cursor_at(bytes, source, offsets, index) else {
         return Ok(Vec::new());
     };
-    cur.sized_string()?; // имя
+    cur.sized_string()?; // name
     let count = cur.len_u32()?;
     cur.check_array(count, 8)?;
     let mut keys = Vec::with_capacity(count);
@@ -192,7 +194,8 @@ fn text_keys(
     Ok(keys)
 }
 
-/// Движение узла; `None` — интерполятор не преобразование (число, видимость, смешивающий).
+/// The node's motion; `None` means the interpolator is not a transform (a float, visibility, a
+/// blend one).
 fn bone_motion(
     bytes: &[u8],
     source: &SourceNif,
@@ -219,8 +222,8 @@ fn bone_motion(
     let rotation: [f32; 4] = cur.floats()?;
     let scale = cur.f32()?;
     let handles = [cur.u32()?, cur.u32()?, cur.u32()?];
-    // Сжатие: смещение и множитель у сдвига, поворота и масштаба. У несжатого сплайна точки —
-    // сами числа.
+    // Compression: offset and multiplier for translation, rotation and scale. In an uncompressed
+    // spline the points are the numbers themselves.
     let packing: [(f32, f32); 3] = if compact {
         let v: [f32; 6] = cur.floats()?;
         [(v[0], v[1]), (v[2], v[3]), (v[4], v[5])]
@@ -264,7 +267,7 @@ fn bone_motion(
     }))
 }
 
-/// `NiTransformInterpolator`: поза и ключи `NiTransformData`.
+/// `NiTransformInterpolator`: the pose and the keys of `NiTransformData`.
 fn keyed(bytes: &[u8], source: &SourceNif, offsets: &[usize], index: usize) -> Result<BoneMotion> {
     let mut motion = BoneMotion {
         pose_translation: None,
@@ -313,7 +316,7 @@ fn keyed(bytes: &[u8], source: &SourceNif, offsets: &[usize], index: usize) -> R
     Ok(motion)
 }
 
-/// Число опорных точек из `NiBSplineBasisData`; нет блока — 0.
+/// Number of control points from `NiBSplineBasisData`; no block gives 0.
 fn control_point_count(
     bytes: &[u8],
     source: &SourceNif,
@@ -332,12 +335,13 @@ fn control_point_count(
     cur.len_u32()
 }
 
-/// Числа `NiBSplineData`: либо `f32`, либо сжатые `i16` — смотря какой интерполятор их читает.
+/// `NiBSplineData` numbers: either `f32` or compressed `i16` — depending on which interpolator
+/// reads them.
 struct SplineValues<'a> {
     raw: &'a [u8],
-    /// Размер одного числа в байтах: 4 или 2.
+    /// Size of one number in bytes: 4 or 2.
     width: usize,
-    /// Позиция массива в файле — для ошибки.
+    /// Position of the array in the file — for the error.
     at: usize,
 }
 
@@ -384,8 +388,8 @@ impl<'a> SplineValues<'a> {
         })
     }
 
-    /// `count` опорных точек по `N` чисел, начиная с числа номер `handle`. Сжатое число —
-    /// `i16 / 32767 × множитель + смещение`.
+    /// `count` control points of `N` numbers each, starting at number `handle`. A compressed number
+    /// is `i16 / 32767 × multiplier + offset`.
     fn points<const N: usize>(
         &self,
         handle: u32,

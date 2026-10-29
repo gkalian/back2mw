@@ -1,25 +1,27 @@
-//! Тело существа (T11.5c): скелет Oblivion и его части тела → один меш Morrowind.
+//! Creature body (T11.5c): the Oblivion skeleton and its body parts → one Morrowind mesh.
 //!
-//! Существо Oblivion лежит папкой: `skeleton.nif` (кости и `BSBound`) и части тела из `NIFZ`
-//! записи — каждая своим файлом, со своей копией костей. Существо Morrowind — один файл:
-//! корень, под ним скелет от корня накопления (`Bip01`), формы и узел `Bounding Box`
-//! (`docs/ru/formats/tes3.md`, «Модель и анимация существа»).
+//! An Oblivion creature is a folder: `skeleton.nif` (bones and `BSBound`) and the body parts from
+//! the record's `NIFZ` — each in its own file, with its own copy of the bones. A Morrowind creature
+//! is one file: the root, under it the skeleton from the accumulation root (`Bip01`), the shapes
+//! and the `Bounding Box` node (`docs/en/formats/tes3.md`, "Creature model and animation").
 //!
-//! **Кости** переносятся как есть: имена, иерархия и поза файла скелета. Ретаргетинга, как у
-//! брони (`crate::skin`), нет — скелет у существа свой.
+//! **Bones** are carried over as is: names, hierarchy and the skeleton file's pose. There is no
+//! retargeting as for armor (`crate::skin`) — the creature has its own skeleton.
 //!
-//! **Кожа.** Вершина ставится в позу скелета той же формулой скиннинга, что у движка:
-//! Σ вес · (кость в скелете) · (обратная поза кости из части) · v — и записывается в
-//! пространстве корня накопления; форма — его ребёнок, обратная поза кости в выходе —
-//! `(кость)⁻¹ · корень`. Соглашение то же, что у брони, и проверено там игрой. Кость части,
-//! которой в скелете нет, отдаёт вес ближайшему предку, который в скелете есть.
+//! **Skin.** A vertex is put into the skeleton's pose by the same skinning formula the engine uses:
+//! Σ weight · (bone in the skeleton) · (inverse bone pose from the part) · v — and is written in
+//! the accumulation root's space; the shape is its child, and the bone's inverse pose in the output
+//! is `(bone)⁻¹ · root`. The convention is the same as for armor and was verified there in the
+//! game. A part's bone that the skeleton lacks gives its weight to the nearest ancestor present in
+//! the skeleton.
 //!
-//! **Жёсткая часть** (голова, глаза, шлем, жало) в выходе — ребёнок кости, без кожи, как жёсткие
-//! формы ванильных существ. Кость называет строка `Prn` на корне файла части (`Bip01 Head`), а
-//! сам файл записан в пространстве этой кости; если над формой в файле части стоит узел с именем
-//! кости, берётся он. Измерено 2026-10-02: `Prn` несут головы, глаза, шлемы и жала всех папок.
+//! **A rigid part** (head, eyes, helmet, stinger) in the output is a child of a bone, without skin,
+//! like the rigid shapes of vanilla creatures. The bone is named by the `Prn` string on the root of
+//! the part file (`Bip01 Head`), and the file itself is written in that bone's space; if a node
+//! with a bone's name stands above the shape in the part file, that one is taken. Measured
+//! 2026-10-02: heads, eyes, helmets and stingers of all folders carry `Prn`.
 //!
-//! Анимации здесь нет: лента — следующая ступень (T11.5d).
+//! There is no animation here: the tape is the next step (T11.5d).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -35,61 +37,62 @@ use crate::read::{Block, BlockRef, BsBound, NiTriStrips, NiTriStripsData, Source
 use crate::skin::{Placed, SkinError, block_name, bound_of, place, skin_affine};
 use crate::textures::TextureRegistry;
 
-/// Имя узла с габаритами существа у Morrowind.
+/// Name of the node with the creature's bounds in Morrowind.
 pub const BOUNDING_BOX: &str = "Bounding Box";
 
-/// Имя строки `NiStringExtraData` с костью-родителем жёсткой части.
+/// Name of the `NiStringExtraData` string with the parent bone of a rigid part.
 const PARENT_BONE: &str = "Prn";
 
-/// Флаги корня файла и корня накопления у ванильных существ (`r\guar.nif`).
+/// Flags of the file root and the accumulation root in vanilla creatures (`r\guar.nif`).
 const ROOT_FLAGS: u16 = 0x000A;
-/// Флаги кости, формы и узла габаритов у ванильных существ.
+/// Flags of a bone, a shape and the bounds node in vanilla creatures.
 const PLAIN_FLAGS: u16 = 0x0002;
 
-/// Часть тела: имя файла из `NIFZ` (для сообщений) и разобранный меш.
+/// A body part: the file name from `NIFZ` (for messages) and the parsed mesh.
 #[derive(Debug, Clone, Copy)]
 pub struct BodyPart<'a> {
     pub name: &'a str,
     pub source: &'a SourceNif,
 }
 
-/// Собранное тело и что в нём оказалось.
+/// The assembled body and what ended up in it.
 #[derive(Debug)]
 pub struct Body {
     pub converted: Converted,
-    /// Имя корня накопления — первой кости под корнем скелета.
+    /// Name of the accumulation root — the first bone under the skeleton root.
     pub accum_root: String,
-    /// Узлов скелета в выходе.
+    /// Skeleton nodes in the output.
     pub bones: usize,
-    /// Формы с кожей.
+    /// Skinned shapes.
     pub skinned: usize,
-    /// Жёсткие формы, повешенные под кость по имени узла-предка.
+    /// Rigid shapes hung under a bone by the name of an ancestor node.
     pub rigid: usize,
-    /// Жёсткие формы, повешенные под кость, которую называет строка `Prn` корня части.
+    /// Rigid shapes hung under the bone named by the `Prn` string of the part root.
     pub rigid_attached: usize,
-    /// Жёсткие формы без кости: повешены под корень накопления там, где стоят в файле.
+    /// Rigid shapes without a bone: hung under the accumulation root where they stand in the file.
     pub rigid_unbound: usize,
-    /// Узел `Bounding Box` записан (в скелете был `BSBound`).
+    /// The `Bounding Box` node was written (the skeleton had `BSBound`).
     pub has_bounds: bool,
 }
 
-/// Кость скелета в выходе.
+/// A skeleton bone in the output.
 struct Bone {
     link: NiLink<NiNode>,
-    /// Поза в пространстве модели: скелет стоит так, как записан.
+    /// Pose in model space: the skeleton stands as written.
     world: Affine3A,
 }
 
-/// Скелет в выходе: кости по порядку обхода и по имени.
+/// The skeleton in the output: bones in traversal order and by name.
 struct Skeleton {
     bones: Vec<Bone>,
-    /// Имя в нижнем регистре → номер кости; при повторе имени — первая.
+    /// Lower-case name → bone number; for a repeated name, the first one.
     by_name: HashMap<String, usize>,
 }
 
 impl Skeleton {
-    /// Кость для узла источника: сам узел, если его имя есть в скелете, иначе ближайший предок.
-    /// Возвращает номер кости и номер блока того узла источника, который с ней совпал.
+    /// The bone for a source node: the node itself if its name is in the skeleton, otherwise the
+    /// nearest ancestor. Returns the bone number and the block number of the source node that
+    /// matched it.
     fn find(
         &self,
         source: &SourceNif,
@@ -108,9 +111,9 @@ impl Skeleton {
         None
     }
 
-    /// Кость, к которой крепится жёсткая часть: строка `Prn` на корне её файла («родитель»,
-    /// например `Bip01 Head`). Так Oblivion вешает головы, глаза, шлемы и жала: сам файл части
-    /// записан в пространстве этой кости.
+    /// The bone a rigid part is attached to: the `Prn` string on the root of its file ("parent",
+    /// for example `Bip01 Head`). This is how Oblivion hangs heads, eyes, helmets and stingers: the
+    /// part file itself is written in that bone's space.
     fn attachment(&self, source: &SourceNif) -> Option<usize> {
         let root = source.roots.first().and_then(|r| source.block(*r))?;
         let Block::Node(root) = root else {
@@ -130,7 +133,7 @@ impl Skeleton {
     }
 }
 
-/// Поворот, сдвиг и равномерный масштаб из преобразования — в том виде, как их хранит NIF.
+/// Rotation, translation and uniform scale from a transform — in the form NIF stores them.
 fn decompose(t: Affine3A) -> (Mat3, Vec3, f32) {
     let length = t.matrix3.x_axis.length();
     let scale = if length > 1e-6 { length } else { 1.0 };
@@ -157,20 +160,20 @@ fn av(name: &str, flags: u16, local: Affine3A, properties: Vec<NiLink<NiProperty
     }
 }
 
-/// Кость скелета, как она записана в файле.
+/// A skeleton bone as written in the file.
 pub(crate) struct RestBone {
     pub(crate) name: String,
-    /// Номер родителя в том же списке; у костей под корнем файла — `None`.
+    /// Parent number in the same list; `None` for bones under the file root.
     pub(crate) parent: Option<usize>,
-    /// Поза в пространстве модели.
+    /// Pose in model space.
     pub(crate) world: Affine3A,
-    /// Поза относительно родителя; у костей под корнем файла в неё входит преобразование корня.
+    /// Pose relative to the parent; for bones under the file root it includes the root's transform.
     pub(crate) local: Affine3A,
 }
 
-/// Кости скелета в порядке обхода, родитель раньше детей: все узлы под корнем файла. Первая —
-/// корень накопления. Преобразование корня файла уходит в его детей: корень выхода единичный,
-/// как у ванили. Скелет без единой кости — ошибка.
+/// Skeleton bones in traversal order, parent before children: all nodes under the file root. The
+/// first one is the accumulation root. The file root's transform goes into its children: the output
+/// root is identity, as in vanilla. A skeleton without a single bone is an error.
 pub(crate) fn rest_bones(skeleton: &SourceNif) -> Result<Vec<RestBone>, ConvertError> {
     let root_index = skeleton
         .roots
@@ -215,9 +218,9 @@ pub(crate) fn rest_bones(skeleton: &SourceNif) -> Result<Vec<RestBone>, ConvertE
     Ok(bones)
 }
 
-/// Собирает тело существа. `name` — имя корня выхода; `skeleton` — файл `MODL` записи;
-/// `parts` — файлы `NIFZ` в порядке записи. Формы самого скелета (у призраков и атронахов они
-/// есть) переносятся так же, как формы частей.
+/// Builds a creature body. `name` is the output root's name; `skeleton` is the record's `MODL`
+/// file; `parts` are the `NIFZ` files in record order. Shapes of the skeleton itself (ghosts and
+/// atronachs have them) are carried over the same way as the parts' shapes.
 pub fn build_body<'a>(
     name: &str,
     skeleton: &'a SourceNif,
@@ -233,7 +236,7 @@ pub fn build_body<'a>(
     });
     ctx.stream.roots.push(root.cast());
 
-    // Скелет: узлы в порядке обхода, родитель раньше детей.
+    // Skeleton: nodes in traversal order, parent before children.
     let mut bones = Skeleton {
         bones: Vec::new(),
         by_name: HashMap::new(),
@@ -282,7 +285,7 @@ pub fn build_body<'a>(
         has_bounds: false,
     };
 
-    // Формы: сначала самого скелета, потом частей по порядку записи.
+    // Shapes: first the skeleton's own, then the parts' in record order.
     let sources = std::iter::once(skeleton).chain(parts.iter().map(|p| p.source));
     for source in sources {
         ctx.switch_source(source);
@@ -305,7 +308,7 @@ pub fn build_body<'a>(
         }
     }
 
-    // Габариты: `BSBound` скелета → узел `Bounding Box` с коробкой.
+    // Bounds: the skeleton's `BSBound` → the `Bounding Box` node with a box.
     let bound = skeleton.blocks.iter().find_map(|b| match b {
         Block::BsBound(b) => Some(b),
         _ => None,
@@ -326,8 +329,8 @@ pub fn build_body<'a>(
     Ok(body)
 }
 
-/// Узел габаритов, как у ванильных существ: стоит в начале координат, коробка — центр и
-/// половины сторон, оси единичные.
+/// The bounds node, as in vanilla creatures: it stands at the origin, the box is the center and
+/// half-extents, the axes are identity.
 fn bounding_box(bound: &BsBound) -> NiNode {
     NiNode {
         base: NiAVObject {
@@ -344,7 +347,7 @@ fn bounding_box(bound: &BsBound) -> NiNode {
     }
 }
 
-/// Свойства формы: свои, затем унаследованные от узлов-предков.
+/// Shape properties: its own, then those inherited from ancestor nodes.
 fn inherited_properties(
     source: &SourceNif,
     placed: &BTreeMap<usize, Placed>,
@@ -396,9 +399,9 @@ fn convert_shape(
         _ => None,
     };
     let Some(skin) = skin else {
-        // Жёсткая форма: под костью-предком с тем же смещением, что в файле части; нет такого
-        // предка — под костью из строки `Prn`, в пространстве которой записан файл; нет и её —
-        // под корнем накопления.
+        // A rigid shape: under the ancestor bone with the same offset as in the part file; without
+        // such an ancestor — under the bone from the `Prn` string, in whose space the file is
+        // written; without that too — under the accumulation root.
         let parent = placed.get(&index).and_then(|p| p.parent);
         let (owner, local) = match (bones.find(source, placed, parent), bones.attachment(source)) {
             (Some((bone, node)), _) => {
@@ -445,10 +448,10 @@ fn convert_shape(
         .collect();
     shape_out.base.base.bound = bound_of(&shape_out.base.base.vertices);
 
-    // Кости формы: только те, у которых есть веса.
+    // The shape's bones: only those that have weights.
     let mut per_bone: BTreeMap<usize, Vec<(u16, f32)>> = BTreeMap::new();
     for (k, weights) in bound.weights.iter().enumerate() {
-        let k = u16::try_from(k).expect("число вершин NiTriStripsData — u16");
+        let k = u16::try_from(k).expect("NiTriStripsData vertex count is u16");
         for &(b, w) in weights {
             per_bone.entry(b).or_default().push((k, w));
         }
@@ -487,7 +490,7 @@ fn convert_shape(
     let link = ctx.stream.insert(NiTriShape {
         base: NiTriBasedGeom {
             base: NiGeometry {
-                // Под корнем накопления: локально — единица, вершины лежат в его пространстве.
+                // Under the accumulation root: identity locally, the vertices lie in its space.
                 base: av(
                     &shape.av.net.name,
                     PLAIN_FLAGS,
@@ -507,11 +510,11 @@ fn convert_shape(
     Ok(())
 }
 
-/// Вершины формы в позе скелета (пространство модели) и веса по костям выхода.
+/// Shape vertices in the skeleton's pose (model space) and weights per output bone.
 struct Bound {
     positions: Vec<Vec3A>,
     normals: Vec<Vec3A>,
-    /// На вершину: (кость выхода, вес), сумма весов 1.
+    /// Per vertex: (output bone, weight), the weights sum to 1.
     weights: Vec<Vec<(usize, f32)>>,
 }
 
@@ -547,8 +550,9 @@ fn bind(
                 bone: bone_ref.index().unwrap_or(usize::MAX),
             })?;
         let own_world = placed.get(&bone_index).map_or(shape_world, |p| p.world);
-        // Кость части → кость скелета: по имени, иначе ближайший предок — тогда к его позе в
-        // скелете добавляется смещение кости части относительно этого предка.
+        // Part bone → skeleton bone: by name, otherwise the nearest ancestor — then the offset of
+        // the part's bone relative to that ancestor is added to the ancestor's pose in the
+        // skeleton.
         let (target, pose) = match bones.find(source, placed, Some(bone_index)) {
             Some((t, node)) if node == bone_index => (t, bones.bones[t].world),
             Some((t, node)) => {
@@ -581,7 +585,8 @@ fn bind(
             }
         }
     }
-    // Вершина без весов остаётся там, где стоит в файле части, и идёт за корнем накопления.
+    // A vertex without weights stays where it stands in the part file and follows the accumulation
+    // root.
     for k in 0..n {
         let total: f32 = weights[k].iter().map(|(_, w)| w).sum();
         if total > 1e-6 {

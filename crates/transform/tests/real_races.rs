@@ -1,11 +1,12 @@
-//! Расы `Oblivion.esm` на тела `Morrowind.esm` (T7.2). Требует `BACK2MW_GAME_DATA` (`Oblivion.esm`
-//! и `Morrowind.esm`).
+//! Races of `Oblivion.esm` onto the bodies of `Morrowind.esm` (T7.2). Needs `BACK2MW_GAME_DATA`
+//! (`Oblivion.esm` and `Morrowind.esm`).
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p transform --test real_races -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/tes3.md`, «Тела рас», и `docs/ru/formats/tes4.md`, «Актёры».
+//! The numbers from here are in `docs/en/formats/tes3.md`, "Race bodies", and
+//! `docs/en/formats/tes4.md`, "Actors".
 
 mod common;
 
@@ -17,7 +18,7 @@ use transform::ids::{DEFAULT_MAX_LEN, IdAllocator};
 use transform::races::convert_races;
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn oblivion_races_on_morrowind_bodies() {
     let ob = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&ob).unwrap();
@@ -30,10 +31,13 @@ fn oblivion_races_on_morrowind_bodies() {
     let mw = std::fs::read(common::game_file("Morrowind.esm")).unwrap();
     let vanilla = body_parts(&mw).unwrap();
     let skin = vanilla.iter().filter(|b| b.skin).count();
-    println!("BODY Morrowind.esm: {}, из них Skin {skin}", vanilla.len());
+    println!(
+        "BODY in Morrowind.esm: {}, of them Skin {skin}",
+        vanilla.len()
+    );
 
-    // Сколько частей тела (без голов и причёсок) у каждой ванильной расы и нет ли двух частей с
-    // одной меткой «пол + часть + 1st».
+    // How many body parts (without heads and hair) each vanilla race has, and whether two parts
+    // share the tag "sex + part + 1st".
     let mut per_race: BTreeMap<String, usize> = BTreeMap::new();
     let mut tags: BTreeSet<(String, bool, u8, bool)> = BTreeSet::new();
     let mut clashes = 0;
@@ -45,10 +49,10 @@ fn oblivion_races_on_morrowind_bodies() {
         let first = b.id.to_ascii_lowercase().ends_with(".1st");
         if !tags.insert((b.race.to_ascii_lowercase(), b.female, b.part, first)) {
             clashes += 1;
-            println!("две части с одной меткой: {}", b.id);
+            println!("two parts with the same tag: {}", b.id);
         }
     }
-    println!("частей тела у рас: {per_race:?}; совпавших меток {clashes}");
+    println!("body parts by race: {per_race:?}; tag clashes {clashes}");
     assert_eq!(clashes, 0);
 
     let out = convert_races(
@@ -62,7 +66,7 @@ fn oblivion_races_on_morrowind_bodies() {
         let bodies = out.bodies.iter().filter(|b| b.race == r.id).count();
         let donor = out.head_donors[&r.id].to_ascii_lowercase();
         println!(
-            "{} «{}»: бонусов {}, заклинаний {}, частей тела {bodies} (у донора {donor} {})",
+            "{} \"{}\": bonuses {}, spells {}, body parts {bodies} (the donor {donor} has {})",
             r.id,
             r.name,
             r.skill_bonuses.len(),
@@ -75,10 +79,10 @@ fn oblivion_races_on_morrowind_bodies() {
     assert_eq!(out.ids.len(), 15);
     assert!(out.unlisted.is_empty());
     let ids: BTreeSet<&str> = out.bodies.iter().map(|b| b.id.as_str()).collect();
-    assert_eq!(ids.len(), out.bodies.len(), "ID частей тела уникальны");
+    assert_eq!(ids.len(), out.bodies.len(), "body part IDs are unique");
     assert!(out.bodies.iter().all(|b| b.id.len() <= DEFAULT_MAX_LEN));
     println!(
-        "своих рас {}, частей тела {}, из них для первого лица {}",
+        "our own races {}, body parts {}, of them first-person {}",
         out.races.len(),
         out.bodies.len(),
         out.bodies.iter().filter(|b| b.id.ends_with(".1st")).count()

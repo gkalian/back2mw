@@ -1,7 +1,7 @@
-//! T1.9 и M1 на реальных данных: `validate` с настоящими `esmtool`/`niftest` и прогон `all`
-//! на 10 мешах среза.
+//! T1.9 and M1 on real data: `validate` with the real `esmtool`/`niftest` and the `all` run on the
+//! 10 meshes of the slice.
 //!
-//! Запуск (PowerShell):
+//! Running (PowerShell):
 //! ```text
 //! $d = 'C:\path\to\back2mw-data'
 //! $env:BACK2MW_GAME_DATA = "$d\tes"
@@ -9,7 +9,7 @@
 //! $env:BACK2MW_NIFTEST = "$d\OpenMW 0.51.0\niftest.exe"
 //! cargo test -p back2mw --test m1_slice -- --ignored --nocapture
 //! ```
-//! `BACK2MW_KEEP_OUTPUT=1` оставляет `work/` и `output/` во временном каталоге для NifSkope.
+//! `BACK2MW_KEEP_OUTPUT=1` keeps `work/` and `output/` in the temporary directory for NifSkope.
 
 mod common;
 
@@ -21,7 +21,7 @@ use back2mw::pipeline::{self, PipelineError};
 use back2mw::validate::{check_meshes, check_plugin};
 use tes3_out::PluginBuilder;
 
-/// `EDID` среза M1 (`docs/ru/formats/nif-oblivion.md`).
+/// `EDID`s of the M1 slice (`docs/en/formats/nif-oblivion.md`).
 const SLICE: [&str; 10] = [
     "VinyardBarrelCartStopper",
     "SkCastleFloor01",
@@ -37,9 +37,9 @@ const SLICE: [&str; 10] = [
 
 fn tool(var: &str) -> PathBuf {
     let path = PathBuf::from(
-        std::env::var_os(var).unwrap_or_else(|| panic!("{var} не задана (см. заголовок файла)")),
+        std::env::var_os(var).unwrap_or_else(|| panic!("{var} is not set (see the file header)")),
     );
-    assert!(path.is_file(), "{var} не файл: {}", path.display());
+    assert!(path.is_file(), "{var} is not a file: {}", path.display());
     path
 }
 
@@ -82,10 +82,10 @@ fn only() -> Vec<String> {
     SLICE.iter().map(|s| (*s).to_owned()).collect()
 }
 
-/// T1.9: заведомо битый файл — провал, отсутствующий — провал, плагин из мусора — провал.
-/// Контрольный опыт: без него «нет брака» ничего бы не значило.
+/// T1.9: a deliberately broken file fails, a missing one fails, a plugin made of junk fails.
+/// Control: without it, "no defects" would mean nothing.
 #[test]
-#[ignore = "реальные инструменты: BACK2MW_ESMTOOL, BACK2MW_NIFTEST"]
+#[ignore = "real tools: BACK2MW_ESMTOOL, BACK2MW_NIFTEST"]
 fn validate_rejects_garbage_and_accepts_a_real_plugin() {
     let (esmtool, niftest) = (tool("BACK2MW_ESMTOOL"), tool("BACK2MW_NIFTEST"));
     let t = Temp::new("t19");
@@ -94,8 +94,8 @@ fn validate_rejects_garbage_and_accepts_a_real_plugin() {
     fs::write(&broken, b"garbage bytes, not a nif").unwrap();
     let missing = t.0.join("missing.nif");
     let failures = check_meshes(&niftest, &[broken.clone(), missing.clone()]).unwrap();
-    println!("провалы niftest: {failures:#?}");
-    assert_eq!(failures.len(), 2, "оба файла должны провалиться");
+    println!("niftest failures: {failures:#?}");
+    assert_eq!(failures.len(), 2, "both files must fail");
     let shown: Vec<&str> = failures.iter().map(|f| f.path.as_str()).collect();
     assert!(shown.iter().any(|p| p.contains("broken.nif")), "{shown:?}");
     assert!(shown.iter().any(|p| p.contains("missing.nif")), "{shown:?}");
@@ -113,10 +113,10 @@ fn validate_rejects_garbage_and_accepts_a_real_plugin() {
     assert_eq!(check.stat_records, 1);
 }
 
-/// Порции по длине командной строки: 3 000 путей не помещаются в один вызов, но провал
-/// в конце списка обязан найтись.
+/// Chunks by command-line length: 3,000 paths do not fit into one call, but a failure at the end of
+/// the list must still be found.
 #[test]
-#[ignore = "реальные инструменты: BACK2MW_NIFTEST"]
+#[ignore = "real tools: BACK2MW_NIFTEST"]
 fn a_failure_in_a_late_chunk_is_found() {
     let niftest = tool("BACK2MW_NIFTEST");
     let t = Temp::new("t19_chunks");
@@ -129,11 +129,11 @@ fn a_failure_in_a_late_chunk_is_found() {
         files.push(f);
     }
     let failures = check_meshes(&niftest, &files).unwrap();
-    assert_eq!(failures.len(), 400, "каждый из 400 битых файлов назван");
+    assert_eq!(failures.len(), 400, "each of the 400 broken files is named");
 }
 
 #[test]
-#[ignore = "реальные данные и инструменты"]
+#[ignore = "real data and tools"]
 fn m1_slice_runs_all_stages_and_validates_and_is_cached() {
     let t = Temp::new("m1");
     let cfg = config(&t.0);
@@ -146,33 +146,33 @@ fn m1_slice_runs_all_stages_and_validates_and_is_cached() {
     let first = pipeline::run_all(&cfg, &only(), &mut log).unwrap_or_else(|e| panic!("{e}"));
     let second = pipeline::run_all(&cfg, &only(), &mut log).unwrap_or_else(|e| panic!("{e}"));
 
-    println!("=== M1: срез из 10 STAT ===");
-    println!("  STAT в плагине:            {}", first.statics_written);
+    println!("=== M1: slice of 10 STAT ===");
+    println!("  STAT in the plugin:         {}", first.statics_written);
     println!(
-        "  мешей / текстур записано:  {} / {}",
+        "  meshes / textures written:  {} / {}",
         first.meshes_written, first.textures_copied
     );
-    println!("  текстур нет в архиве:      {:?}", first.textures_missing);
+    println!("  textures not in archive:    {:?}", first.textures_missing);
     println!(
-        "  первый прогон: меши распаковано {} (кеш {}), текстуры {} (кеш {})",
+        "  first run: meshes unpacked {} (cache {}), textures {} (cache {})",
         first.extract_meshes.extracted,
         first.extract_meshes.skipped,
         first.extract_textures.extracted,
         first.extract_textures.skipped
     );
     println!(
-        "  второй прогон: меши распаковано {} (кеш {}), текстуры {} (кеш {})",
+        "  second run: meshes unpacked {} (cache {}), textures {} (cache {})",
         second.extract_meshes.extracted,
         second.extract_meshes.skipped,
         second.extract_textures.extracted,
         second.extract_textures.skipped
     );
     println!(
-        "  esmtool насчитал STAT: {}, мешей проверено niftest: {}",
+        "  esmtool counted STAT: {}, meshes checked by niftest: {}",
         first.plugin_stat_records, first.meshes_validated
     );
     if std::env::var_os("BACK2MW_KEEP_OUTPUT").is_some() {
-        println!("  результат оставлен в {}", t.0.display());
+        println!("  result kept in {}", t.0.display());
     }
 
     assert_eq!(first.statics_written, 10);
@@ -180,18 +180,18 @@ fn m1_slice_runs_all_stages_and_validates_and_is_cached() {
     assert_eq!(first.meshes_validated, first.meshes_written);
     assert!(first.extract_meshes.extracted > 0);
     assert_eq!(first.extract_meshes.skipped, 0);
-    // второй прогон на неизменных архивах ничего не распаковывает заново
+    // a second run on unchanged archives unpacks nothing again
     assert_eq!(second.extract_meshes.extracted, 0);
     assert_eq!(second.extract_textures.extracted, 0);
     assert!(second.extract_meshes.skipped > 0);
-    // одинаковый вход — одинаковый плагин
-    // плагин называется как источник: Oblivion.esm → Oblivion.esm, и он один
+    // the same input gives the same plugin
+    // the plugin is named like the source: Oblivion.esm → Oblivion.esm, and there is only one
     let names: Vec<&str> = first.plugins.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names, ["Oblivion.esm"]);
     assert!(cfg.output_dir.join("Oblivion.esm").is_file());
     assert!(!cfg.output_dir.join("back2mw.esp").exists());
 
-    // Стадия validate по готовому результату: не пустая проверка.
+    // The validate stage on the finished result: not an empty check.
     let niftest = cfg.niftest.as_ref().unwrap();
     let mut meshes = Vec::new();
     collect(&cfg.output_dir.join("Meshes"), &mut meshes);
@@ -211,28 +211,29 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 #[test]
-#[ignore = "реальные данные и инструменты"]
+#[ignore = "real data and tools"]
 fn an_unknown_editor_id_fails_the_run() {
     let t = Temp::new("m1_unknown");
     let cfg = config(&t.0);
     let err = pipeline::run_all(&cfg, &["NoSuchStatEverExists".to_owned()], &mut |_| {})
-        .expect_err("несуществующий EDID");
+        .expect_err("nonexistent EDID");
     assert!(matches!(err, PipelineError::Unresolved(_)), "{err}");
 }
 
 #[test]
-#[ignore = "реальные данные"]
+#[ignore = "real data"]
 fn a_missing_tool_is_an_error_not_a_skip() {
     let t = Temp::new("m1_no_tool");
     let mut cfg = config(&t.0);
     cfg.esmtool = None;
-    let err = pipeline::run_all(&cfg, &only(), &mut |_| {}).expect_err("нет esmtool");
+    let err = pipeline::run_all(&cfg, &only(), &mut |_| {}).expect_err("no esmtool");
     assert!(err.to_string().contains("esmtool"), "{err}");
 }
 
-/// T1.10 на настоящем результате M1: упаковка, установка в пустую копию `Data Files` и откат.
+/// T1.10 on the real M1 result: packaging, installation into an empty copy of `Data Files`, and
+/// rollback.
 #[test]
-#[ignore = "реальные данные и инструменты"]
+#[ignore = "real data and tools"]
 fn m1_result_packages_installs_and_uninstalls_cleanly() {
     let t = Temp::new("m1_install");
     let cfg = config(&t.0);
@@ -240,7 +241,7 @@ fn m1_result_packages_installs_and_uninstalls_cleanly() {
 
     let pkg = back2mw::package::package(&cfg.output_dir, true).unwrap();
     println!(
-        "package: {} файлов, zip {} байт",
+        "package: {} files, zip {} bytes",
         pkg.files,
         fs::metadata(&pkg.loose_zip).unwrap().len()
     );
@@ -249,9 +250,13 @@ fn m1_result_packages_installs_and_uninstalls_cleanly() {
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names, ["Oblivion.bsa"], "архив назван по плагину");
+    assert_eq!(
+        names,
+        ["Oblivion.bsa"],
+        "the archive is named after the plugin"
+    );
     let bsa = &bsas[0];
-    // BSA читает и наш, и чужой инструмент: bsatool из OpenMW, если он задан.
+    // The BSA is read both by our tool and someone else's: bsatool from OpenMW, if set.
     if let Some(bsatool) = std::env::var_os("BACK2MW_BSATOOL") {
         let out = std::process::Command::new(bsatool)
             .arg("list")
@@ -271,7 +276,7 @@ fn m1_result_packages_installs_and_uninstalls_cleanly() {
     let installed = back2mw::install::install(&cfg.output_dir, &data).unwrap();
     assert_eq!(installed.written, pkg.files);
     assert!(data.join("Oblivion.esm").is_file());
-    // установленный плагин по-прежнему читается esmtool
+    // the installed plugin is still readable by esmtool
     let check = check_plugin(cfg.esmtool.as_ref().unwrap(), &data.join("Oblivion.esm")).unwrap();
     assert!(check.ok && check.stat_records == 10, "{check:?}");
 
@@ -279,7 +284,7 @@ fn m1_result_packages_installs_and_uninstalls_cleanly() {
     assert_eq!(
         listing(&data),
         before,
-        "откат вернул папку к исходному виду"
+        "the rollback restored the folder to its original state"
     );
 }
 

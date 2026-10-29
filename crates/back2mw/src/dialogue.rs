@@ -1,9 +1,9 @@
-//! Диалоги плагина (фаза 10, T10.6): отбор реплик Oblivion (`transform::dialogue::select`) и
-//! темы Morrowind для его NPC (`transform::dialogue::convert`).
+//! Plugin dialogue (phase 10, T10.6): selecting Oblivion responses (`transform::dialogue::select`)
+//! and Morrowind topics for its NPCs (`transform::dialogue::convert`).
 //!
-//! Диалоги пишутся только вместе с NPC — то есть с `--worldspace`: реплики без говорящих в игре
-//! некому сказать. Темы и глобальные переменные `Morrowind.esm` читаются один раз на прогон: в
-//! ванильные темы (`Greeting 0`, совпавшие имена) реплики дописываются в начало.
+//! Dialogue is written only together with NPCs, that is with `--worldspace`: responses without
+//! speakers have nobody to say them in the game. Topics and global variables of `Morrowind.esm` are
+//! read once per run: responses are prepended to vanilla topics (`Greeting 0`, matching names).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
@@ -21,16 +21,15 @@ use transform::globals::Target;
 use transform::interior::unique_names;
 use transform::npcs::ConvertedActors;
 
-/// Worldspace Дрожащих островов: по нему вычисляется `GetPlayerInSEWorld` (решение 7).
+/// The Shivering Isles worldspace: `GetPlayerInSEWorld` is computed from it (decision 7).
 pub const SE_WORLD: &str = "SEWorld";
 
-/// Темы и глобальные переменные мастера, файлы голоса источника — всё, что читается один раз на
-/// прогон.
+/// Master topics and global variables, source voice files — everything read once per run.
 pub(crate) struct VanillaDialogue {
     topics: Vec<VanillaTopic>,
     globals: HashMap<String, (String, VarType)>,
     voices: VoiceIndex,
-    /// Архивы голосов, которые не прочитались: замечание прогона, а не отказ от диалогов.
+    /// Voice archives that failed to read: a run note, not giving up on dialogue.
     pub(crate) voice_problems: Vec<String>,
 }
 
@@ -54,18 +53,20 @@ impl VanillaDialogue {
     }
 }
 
-/// Файлы голоса в архивах Oblivion (T10.8). Путь —
-/// `sound\voice\<плагин>\<раса>\<m|f>\<квест>_<тема>_<FormID>_<N>.mp3` (замер 2026-09-30, все
-/// 48 446 mp3 трёх архивов). Реплику и ответ однозначно дают `FormID` (8 hex, без индекса мастера) и
-/// `N`, поэтому как Oblivion сокращает `<квест>_<тема>`, знать не нужно.
+/// Voice files in Oblivion archives (T10.8). The path is
+/// `sound\voice\<plugin>\<race>\<m|f>\<quest>_<topic>_<FormID>_<N>.mp3` (measured 2026-09-30, all
+/// 48,446 mp3 files of three archives). The response and the reply are uniquely given by `FormID`
+/// (8 hex, without the master index) and `N`, so how Oblivion abbreviates `<quest>_<topic>` does
+/// not matter.
 #[derive(Debug, Default)]
 pub(crate) struct VoiceIndex {
-    /// (плагин, `FormID` без старшего байта, папка голоса `<раса>\<m|f>`) → номер ответа → путь.
+    /// (plugin, `FormID` without the high byte, voice folder `<race>\<m|f>`) → response number →
+    /// path.
     files: HashMap<(String, u32, String), BTreeMap<u8, String>>,
 }
 
 impl VoiceIndex {
-    /// Индекс архивов; архив, который не прочитался, пропускается с замечанием.
+    /// Archive index; an archive that failed to read is skipped with a note.
     pub(crate) fn read(archives: &[PathBuf]) -> (Self, Vec<String>) {
         let mut index = Self::default();
         let mut problems = Vec::new();
@@ -89,7 +90,8 @@ impl VoiceIndex {
         (index, problems)
     }
 
-    /// Путь в архиве (нижний регистр, `\`) — в индекс, если это ответ реплики.
+    /// An archive path (lower case, `\`) goes into the index if it is a response of a dialogue
+    /// line.
     fn insert(&mut self, path: &str) {
         let Some(rest) = path.strip_prefix("sound\\voice\\") else {
             return;
@@ -118,7 +120,7 @@ impl VoiceIndex {
             .insert(n, path.to_owned());
     }
 
-    /// Ответы реплики плагина `plugin` (без учёта регистра) в папке голоса `folder`.
+    /// Responses of plugin `plugin` (case-insensitive) in voice folder `folder`.
     pub(crate) fn files(
         &self,
         plugin: &str,
@@ -133,23 +135,24 @@ impl VoiceIndex {
     }
 }
 
-/// Итог стадии по плагину.
+/// Stage result for a plugin.
 #[derive(Default)]
 pub(crate) struct Dialogue {
     pub(crate) topics: Vec<Topic>,
-    /// Файлы голоса: `SNAM` → mp3 ответов в архивах (T10.8).
+    /// Voice files: `SNAM` → mp3 of the responses in the archives (T10.8).
     pub(crate) voices: BTreeMap<String, Vec<String>>,
-    /// Скрипты-метки NPC с метками фракций: ID NPC → ID скрипта, и сами скрипты (ID,
-    /// переменные `short`). NPC без меток остаются с `ob_npc`.
+    /// NPC marker scripts with faction markers: NPC ID → script ID, and the scripts themselves (ID,
+    /// `short` variables). NPCs without markers keep `ob_npc`.
     pub(crate) npc_scripts: BTreeMap<String, String>,
     pub(crate) scripts: Vec<(String, Vec<String>)>,
     pub(crate) selection: SelectionReport,
     pub(crate) report: WriteReport,
 }
 
-/// Реплики плагина для его NPC. `vanilla_items` — объекты, отображённые на ванильные (камни душ);
-/// `owner` — имя плагина, которому принадлежит абсолютный `FormID` (в его папке голоса реплики).
-#[expect(clippy::too_many_arguments, reason = "одна стадия, всё её окружение")]
+/// Plugin dialogue for its NPCs. `vanilla_items` are objects mapped to vanilla ones (soul gems);
+/// `owner` is the name of the plugin that owns the absolute `FormID` (its voice folder holds the
+/// responses).
+#[expect(clippy::too_many_arguments, reason = "one stage, all of its context")]
 pub(crate) fn convert_plugin(
     source: &Plugin,
     map: &dyn Fn(u32) -> Option<u32>,
@@ -161,7 +164,7 @@ pub(crate) fn convert_plugin(
     vanilla: &VanillaDialogue,
 ) -> Result<Dialogue, String> {
     let tree = topics(source).map_err(|e| e.to_string())?;
-    // Отбор сравнивает с `FormID` как в файле: квесты и говорящие — в них же.
+    // Selection compares against `FormID` as in the file: quests and speakers are in the same form.
     let quests: HashMap<u32, Quest> = source
         .records_of(*b"QUST")
         .map(|r| Ok((r.header.form_id, Quest::from_record(r)?)))
@@ -200,8 +203,9 @@ pub(crate) fn convert_plugin(
         .iter()
         .map(|f| f.id.to_ascii_lowercase())
         .collect();
-    // Куда ведёт `GLOB` условия (T11.1): ванильная переменная — по таблице движковых или по имени,
-    // своя — если записана в этом прогоне (её ID уже выдан стадией глобальных переменных).
+    // Where a condition's `GLOB` points (T11.1): a vanilla variable — by the engine table or by
+    // name; our own — if it is written in this run (its ID has already been issued by the global
+    // variables stage).
     let vanilla_globals: HashMap<String, String> = vanilla
         .globals
         .iter()
@@ -267,7 +271,7 @@ pub(crate) fn convert_plugin(
     })
 }
 
-/// Тип переменной Morrowind для фильтра `Global`: тот же, что у `GLOB` Oblivion (T11.1).
+/// Morrowind variable type for the `Global` filter: the same as Oblivion's `GLOB` (T11.1).
 fn var_type(kind: GlobalKind) -> VarType {
     match kind {
         GlobalKind::Short => VarType::Short,
@@ -279,8 +283,8 @@ fn var_type(kind: GlobalKind) -> VarType {
 mod tests {
     use super::*;
 
-    /// Путь ответа → (плагин, `FormID`, папка голоса) → номер; `_` в имени квеста и темы не мешают,
-    /// `.lip` и чужие пути не попадают.
+    /// Response path → (plugin, `FormID`, voice folder) → number; `_` in quest and topic names does
+    /// not get in the way, `.lip` and foreign paths are not picked up.
     #[test]
     fn voice_index_keys_responses_by_form_id_and_folder() {
         let mut index = VoiceIndex::default();
@@ -300,7 +304,7 @@ mod tests {
         assert_eq!(
             m.keys().copied().collect::<Vec<_>>(),
             [1, 2],
-            "номера по порядку, старший байт FormID не важен"
+            "numbers in order, the high byte of FormID does not matter"
         );
         assert!(m[&1].ends_with("_1.mp3"));
         assert_eq!(

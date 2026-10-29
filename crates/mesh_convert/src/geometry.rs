@@ -1,23 +1,23 @@
-//! Геометрия: `NiTriStrips` (Oblivion) → `NiTriShape` (Morrowind), T1.4.
+//! Geometry: `NiTriStrips` (Oblivion) → `NiTriShape` (Morrowind), T1.4.
 //!
-//! Собирает `tes3::nif::NiStream` с `NiNode`, `NiTriShape` и `NiTriShapeData`. Свойства
-//! (материал, текстуры, альфа, цвета вершин) переносит [`crate::material`] (T1.5);
-//! коллизия (T1.7) сюда не входит, `bhk*`-блоки отбрасываются.
+//! Builds a `tes3::nif::NiStream` with `NiNode`, `NiTriShape` and `NiTriShapeData`. Properties
+//! (material, textures, alpha, vertex colors) are carried over by [`crate::material`] (T1.5);
+//! collision (T1.7) is not part of this, `bhk*` blocks are dropped.
 //!
-//! **Что выбрасывается и почему** (то же — в `docs/ru/formats/nif-oblivion.md`):
+//! **What is dropped and why** (the same is in `docs/en/formats/nif-oblivion.md`):
 //!
-//! * `BSXFlags`, `NiStringExtraData`, `NiBinaryExtraData` — данные движка Oblivion
-//!   (флаги, маркеры, тангенты); Morrowind их не читает. Тангенты и битангенты из самих
-//!   `NiTriStripsData` тоже: ванильный движок нормалмапы не использует.
-//! * Все наборы UV, кроме нужного base-текстуре: у `NiTexturingProperty` Morrowind один слот с
-//!   набором, остальные не адресуются.
-//! * Вырожденные треугольники полос (два равных индекса): полоса склеивается ими
-//!   намеренно, но в списке треугольников они лишние.
-//! * `bhkCollisionObject` не у корня — не переносится (счётчик `Stats::collision_skipped`);
-//!   коллизию корня разворачивает [`crate::collision`] (T1.7).
-//! * Скиннинг: [`convert_with`] запекает форму в позу файла и выбрасывает скин — так
-//!   переносятся мировые объекты (паруса, флаги; T2.3b). Броню и одежду на теле ведёт
-//!   [`crate::skin::convert_skinned`] — ему нужен скелет Morrowind (T9.2b).
+//! * `BSXFlags`, `NiStringExtraData`, `NiBinaryExtraData` — Oblivion engine data (flags, markers,
+//!   tangents); Morrowind does not read them. Tangents and bitangents from `NiTriStripsData` itself
+//!   too: the vanilla engine does not use normal maps.
+//! * All UV sets except the one the base texture needs: Morrowind's `NiTexturingProperty` has one
+//!   slot per set, the others are not addressable.
+//! * Degenerate strip triangles (two equal indices): a strip is stitched with them on purpose, but
+//!   in a triangle list they are superfluous.
+//! * A `bhkCollisionObject` not at the root is not carried over (the `Stats::collision_skipped`
+//!   counter); the root's collision is unrolled by [`crate::collision`] (T1.7).
+//! * Skinning: [`convert_with`] bakes the shape into the file's pose and drops the skin — this is
+//!   how world objects are carried over (sails, flags; T2.3b). Armor and clothing on the body are
+//!   handled by [`crate::skin::convert_skinned`] — it needs the Morrowind skeleton (T9.2b).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -35,84 +35,84 @@ use crate::read::common::AvObject;
 use crate::read::{Block, BlockRef, NiTriStrips, NiTriStripsData, SourceNif, is_particle_system};
 use crate::textures::{TextureCopy, TextureError, TextureRegistry, is_normal_map};
 
-/// Результат: поток `tes3::nif` и счётчики для проверки арифметики полос.
+/// The result: a `tes3::nif` stream and counters for checking the strip arithmetic.
 #[derive(Debug)]
 pub struct Converted {
     pub stream: NiStream,
     pub stats: Stats,
-    /// Текстуры, которые нужно скопировать для этого меша: без повторов, в порядке первой
-    /// встречи. Копирует их не `mesh_convert`, а стадия в `back2mw`.
+    /// Textures to copy for this mesh: without repeats, in order of first appearance. They are
+    /// copied not by `mesh_convert` but by a stage in `back2mw`.
     pub textures: Vec<TextureCopy>,
 }
 
-/// Счётчики по всей конвертации.
+/// Counters over the whole conversion.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Stats {
-    /// `NiTriShape` в выходе.
+    /// `NiTriShape` in the output.
     pub shapes: usize,
-    /// Σ (длина полосы − 2) по полосам длиннее двух точек: сколько треугольников
-    /// дают полосы до отбрасывания вырожденных.
+    /// Σ (strip length − 2) over strips longer than two points: how many triangles the strips give
+    /// before degenerate ones are dropped.
     pub strip_triangles: usize,
-    /// Вырожденные треугольники, выброшенные из полос.
+    /// Degenerate triangles dropped from strips.
     pub degenerate: usize,
-    /// Треугольников в `NiTriShapeData` всех форм.
+    /// Triangles in the `NiTriShapeData` of all shapes.
     pub triangles: usize,
-    /// Свойства в выходе (материал, текстурирование, альфа, цвета вершин).
+    /// Properties in the output (material, texturing, alpha, vertex colors).
     pub properties: usize,
-    /// `NiSourceTexture` в выходе.
+    /// `NiSourceTexture` in the output.
     pub textures: usize,
-    /// Слоты текстур, выброшенные из `NiTexturingProperty` (не base и не glow).
+    /// Texture slots dropped from `NiTexturingProperty` (neither base nor glow).
     pub dropped_slots: usize,
-    /// Слоты base/glow с преобразованием UV, которое у Morrowind не представимо.
+    /// Base/glow slots with a UV transform that Morrowind cannot represent.
     pub dropped_transforms: usize,
-    /// Формы, у которых base-текстура берёт не нулевой набор UV: в выходе остаётся
-    /// именно он, у Morrowind набор один.
+    /// Shapes whose base texture uses a non-zero UV set: that set stays in the output, Morrowind
+    /// has only one.
     pub uv_set_switched: usize,
-    /// Формы, у которых glow берёт другой набор UV, чем base: в выходе координаты у
-    /// glow — те же, что у base.
+    /// Shapes whose glow uses a different UV set than base: in the output glow has the same
+    /// coordinates as base.
     pub glow_uv_mismatch: usize,
-    /// Формы в `RootCollisionNode` (T1.7).
+    /// Shapes in `RootCollisionNode` (T1.7).
     pub collision_shapes: usize,
-    /// Треугольники этих форм.
+    /// Triangles of those shapes.
     pub collision_triangles: usize,
-    /// `bhkCollisionObject` не у корня: не переносятся, см. [`crate::collision`].
+    /// A `bhkCollisionObject` not at the root: not carried over, see [`crate::collision`].
     pub collision_skipped: usize,
-    /// Формы, перенесённые со скиннингом (T9.2b); жёсткие формы на костях входят сюда же.
+    /// Shapes carried over with skinning (T9.2b); rigid shapes on bones are counted here too.
     pub skinned_shapes: usize,
-    /// Кости Oblivion, которых нет в скелете Morrowind: их вес отдан предку.
+    /// Oblivion bones missing from the Morrowind skeleton: their weight goes to an ancestor.
     pub merged_bones: usize,
-    /// Вершины без единого веса: привязаны к корню скелета.
+    /// Vertices without a single weight: bound to the skeleton root.
     pub unweighted_vertices: usize,
-    /// Свойства без аналога (`NiZBufferProperty`, `NiFogProperty`, `NiDitherProperty`),
-    /// выброшенные из списков свойств (T2.3).
+    /// Properties without an equivalent (`NiZBufferProperty`, `NiFogProperty`, `NiDitherProperty`)
+    /// dropped from property lists (T2.3).
     pub dropped_properties: usize,
-    /// Коллизии-фантомы (`bhkSPCollisionObject`, триггеры): не твёрдые, не переносятся (T2.3).
+    /// Phantom collisions (`bhkSPCollisionObject`, triggers): not solid, not carried over (T2.3).
     pub phantom_collisions: usize,
-    /// Источники света среди детей узлов (`NiDirectionalLight` и др.): выброшены (T2.3).
+    /// Light sources among node children (`NiDirectionalLight` and others): dropped (T2.3).
     pub dropped_lights: usize,
-    /// Системы частиц среди детей узлов (`NiParticleSystem`), выброшенные вместе с эмиттерами и
-    /// модификаторами: конвертация без частиц ([`convert_with`]) или система, которую эмиттер
-    /// Morrowind не выражает (T2.3b, T2.7).
+    /// Particle systems among node children (`NiParticleSystem`) dropped together with their
+    /// emitters and modifiers: a conversion without particles ([`convert_with`]) or a system the
+    /// Morrowind emitter cannot express (T2.3b, T2.7).
     pub dropped_particles: usize,
-    /// Системы частиц, ставшие эмиттерами Morrowind (T2.7), и сколько из них — с потерями.
+    /// Particle systems that became Morrowind emitters (T2.7), and how many of them with losses.
     pub converted_particles: usize,
     pub lossy_particles: usize,
-    /// Поддеревья `EditorMarker*`: геометрия только для редактора, выброшены.
+    /// `EditorMarker*` subtrees: editor-only geometry, dropped.
     pub dropped_editor_markers: usize,
-    /// Формы с картой нормалей в base-слоте — эффект искажения (марево у врат Обливиона):
-    /// у Morrowind его нет, выброшены (T2.3b).
+    /// Shapes with a normal map in the base slot — a distortion effect (the shimmer at Oblivion
+    /// gates): Morrowind does not have it, dropped (T2.3b).
     pub dropped_distortion: usize,
-    /// Формы со скиннингом, запечённые в позу файла (мировые объекты: паруса, флаги; T2.3b).
+    /// Skinned shapes baked into the file's pose (world objects: sails, flags; T2.3b).
     pub baked_skins: usize,
-    /// Вершины запечённых форм и сколько из них сдвинулось от записанных больше чем на 1:
-    /// сколько меш отличается от «просто выбросить скин».
+    /// Vertices of the baked shapes and how many of them moved more than 1 from the written ones:
+    /// how much the mesh differs from "just drop the skin".
     pub baked_vertices: usize,
     pub baked_moved_vertices: usize,
 }
 
-/// Узел или форма с таким началом имени — геометрия только для редактора: движок Oblivion её
-/// не рисует (жёлтые коробки у `CollisionBox*`, стрелки у водопадов, `SpellTarget`). Morrowind
-/// нарисовал бы. Найдено 2026-09-25 в 36 мешах, стоящих в `SEWorld`.
+/// A node or shape whose name starts like this is editor-only geometry: the Oblivion engine does
+/// not draw it (yellow boxes at `CollisionBox*`, arrows at waterfalls, `SpellTarget`). Morrowind
+/// would draw it. Found on 2026-09-25 in 36 meshes standing in `SEWorld`.
 const EDITOR_MARKER: &str = "editormarker";
 
 fn is_editor_marker(block: &Block) -> bool {
@@ -124,9 +124,9 @@ fn is_editor_marker(block: &Block) -> bool {
     name.to_ascii_lowercase().starts_with(EDITOR_MARKER)
 }
 
-/// Форма, у которой base-текстура — карта нормалей: шейдер Oblivion искажает ею то, что за
-/// формой (`ObGateMiniWarpy_n.dds` у `obgatemini01.nif`, 2026-09-26). Нарисованная как обычная
-/// текстура, она дала бы сиреневую трубу.
+/// A shape whose base texture is a normal map: the Oblivion shader uses it to distort what is
+/// behind the shape (`ObGateMiniWarpy_n.dds` in `obgatemini01.nif`, 2026-09-26). Drawn as an
+/// ordinary texture, it would give a lilac tube.
 fn is_distortion_shape(source: &SourceNif, block: &Block) -> bool {
     let (Block::TriStrips(shape) | Block::TriShape(shape)) = block else {
         return false;
@@ -143,7 +143,7 @@ fn is_distortion_shape(source: &SourceNif, block: &Block) -> bool {
 }
 
 impl Converted {
-    /// Байты NIF 4.0.0.2.
+    /// NIF 4.0.0.2 bytes.
     pub fn save_bytes(&mut self) -> std::io::Result<Vec<u8>> {
         self.stream.save_bytes()
     }
@@ -151,47 +151,47 @@ impl Converted {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConvertError {
-    /// В футере нет корней.
+    /// The footer has no roots.
     NoRoots,
-    /// Ссылка ведёт за пределы таблицы блоков или в «нет», где блок обязателен.
+    /// A reference points outside the block table or to "none" where a block is required.
     DanglingRef { from: usize, to: Option<u32> },
-    /// Блок — не того типа, что нужен в этом месте (корень или ребёнок не узел и не
-    /// форма, данные формы не `NiTriStripsData`).
+    /// A block of the wrong type for this place (the root or a child is neither a node nor a shape,
+    /// the shape data is not `NiTriStripsData`).
     UnexpectedBlock {
         index: usize,
         expected: &'static str,
     },
-    /// Блок встретился на собственном пути: NIF — дерево, цикл значит битый файл.
+    /// A block appeared on its own path: NIF is a tree, a cycle means a broken file.
     Cycle { index: usize },
-    /// Индекс вершины в полосе за пределами массива вершин.
+    /// A vertex index in a strip is outside the vertex array.
     IndexOutOfRange {
         shape: usize,
         index: u16,
         vertices: usize,
     },
-    /// Треугольников больше, чем помещается в `u16`; разбивать форму мы не умеем,
-    /// пока такая не встретилась.
+    /// More triangles than fit into `u16`; we cannot split a shape, and none such has been
+    /// encountered yet.
     TooManyTriangles { shape: usize, triangles: usize },
-    /// Поле блока приняло значение вне известных (перечисление, у которого нет
-    /// соответствия в 4.0.0.2); подставлять что-то молча нельзя.
+    /// A block field took a value outside the known ones (an enumeration with no equivalent in
+    /// 4.0.0.2); silently substituting something is not acceptable.
     UnknownValue {
         block: usize,
         field: &'static str,
         value: u32,
     },
-    /// `NiSourceTexture` с пикселями внутри NIF: переносить нечем.
+    /// A `NiSourceTexture` with pixels inside the NIF: nothing to carry over with.
     InternalTexture { index: usize },
-    /// Имя текстуры не выдалось (пустой путь, не ASCII, коллизия, карта нормалей).
+    /// No texture name could be issued (empty path, not ASCII, collision, normal map).
     Texture { index: usize, error: TextureError },
-    /// Форма ссылается на набор UV, которого в данных нет.
+    /// A shape references a UV set the data does not have.
     MissingUvSet {
         shape: usize,
         set: usize,
         sets: usize,
     },
-    /// Ошибка переноса скиннинга (T9.2b) или его запекания (T2.3b).
+    /// Error carrying over skinning (T9.2b) or baking it (T2.3b).
     Skin(crate::skin::SkinError),
-    /// Голову NPC не собрать (T8.2): нет формы или кости головы, `.egm` не от этого меша.
+    /// The NPC head cannot be built (T8.2): no shape or head bone, the `.egm` is not for this mesh.
     Head { what: String },
 }
 
@@ -264,11 +264,11 @@ impl fmt::Display for ConvertError {
 
 impl std::error::Error for ConvertError {}
 
-/// Полосы → список треугольников. Треугольник `i` полосы `s` — `(s[i], s[i+1], s[i+2])`;
-/// у нечётных `i` первые два индекса меняются местами, чтобы сохранить обход (в полосе
-/// он чередуется). Вырожденные (два равных индекса) выбрасываются.
+/// Strips → a triangle list. Triangle `i` of strip `s` is `(s[i], s[i+1], s[i+2])`; for odd `i` the
+/// first two indices swap to keep the winding (it alternates in a strip). Degenerate ones (two
+/// equal indices) are dropped.
 ///
-/// Возвращает треугольники и число выброшенных вырожденных.
+/// Returns the triangles and the number of dropped degenerate ones.
 pub fn strips_to_triangles(strips: &[Vec<u16>]) -> (Vec<[u16; 3]>, usize) {
     let mut triangles = Vec::new();
     let mut degenerate = 0;
@@ -285,7 +285,7 @@ pub fn strips_to_triangles(strips: &[Vec<u16>]) -> (Vec<[u16; 3]>, usize) {
     (triangles, degenerate)
 }
 
-/// Σ (длина полосы − 2) по полосам, у которых есть хотя бы один треугольник.
+/// Σ (strip length − 2) over strips that have at least one triangle.
 pub fn strip_triangle_count(strips: &[Vec<u16>]) -> usize {
     strips.iter().map(|s| s.len().saturating_sub(2)).sum()
 }
@@ -293,14 +293,14 @@ pub fn strip_triangle_count(strips: &[Vec<u16>]) -> usize {
 #[cfg(test)]
 mod tests;
 
-/// Конвертирует один NIF со своим реестром имён текстур. Для набора мешей — [`convert_with`]:
-/// коллизию имён между разными мешами найдёт только общий реестр.
+/// Converts one NIF with its own texture name registry. For a set of meshes use [`convert_with`]:
+/// only a shared registry will find name collisions between different meshes.
 pub fn convert(source: &SourceNif) -> Result<Converted, ConvertError> {
     convert_with(source, &mut TextureRegistry::new())
 }
 
-/// Конвертирует NIF Oblivion в поток Morrowind; имена текстур выдаёт общий `registry`. Системы
-/// частиц выбрасываются — с ними [`convert_with_particles`].
+/// Converts an Oblivion NIF into a Morrowind stream; texture names are issued by the shared
+/// `registry`. Particle systems are dropped — use [`convert_with_particles`] to keep them.
 pub fn convert_with(
     source: &SourceNif,
     registry: &mut TextureRegistry,
@@ -308,7 +308,7 @@ pub fn convert_with(
     convert_inner(source, registry, None)
 }
 
-/// То же, но системы частиц из `particles` становятся эмиттерами Morrowind (T2.7).
+/// The same, but the particle systems from `particles` become Morrowind emitters (T2.7).
 pub fn convert_with_particles(
     source: &SourceNif,
     registry: &mut TextureRegistry,
@@ -345,19 +345,19 @@ fn convert_inner(
 pub(crate) struct Context<'a, 'r> {
     pub(crate) source: &'a SourceNif,
     pub(crate) stream: NiStream,
-    /// Уже сконвертированные блоки: общий узел остаётся общим.
+    /// Already converted blocks: a shared node stays shared.
     done: HashMap<usize, NiLink<NiAVObject>>,
-    /// То же для свойств и текстур: их делят несколько форм.
+    /// The same for properties and textures: several shapes share them.
     properties_done: HashMap<usize, NiLink<NiProperty>>,
     textures_done: HashMap<usize, NiLink<NiSourceTexture>>,
-    /// Общий реестр имён текстур и файлы, запрошенные этим мешем.
+    /// The shared texture name registry and the files requested by this mesh.
     registry: &'r mut TextureRegistry,
     pub(crate) copies: Vec<TextureCopy>,
-    /// Текстура слота base вместо текстуры NIF (части головы — T8.7, T8.8).
+    /// The base slot texture instead of the NIF texture (head parts — T8.7, T8.8).
     pub(crate) base_texture: Option<BaseTexture>,
-    /// Блоки на текущем пути от корня — для обнаружения циклов.
+    /// Blocks on the current path from the root — for detecting cycles.
     on_path: Vec<usize>,
-    /// Системы частиц со значениями (T2.7); `None` — частицы выбрасываются.
+    /// Particle systems with values (T2.7); `None` means particles are dropped.
     particles: Option<&'a crate::particles::Systems>,
     pub(crate) stats: Stats,
 }
@@ -381,9 +381,9 @@ impl<'a, 'r> Context<'a, 'r> {
 }
 
 impl<'a> Context<'a, '_> {
-    /// Тот же выходной поток, реестр текстур и счётчики, но другой источник: тело существа
-    /// собирается из нескольких файлов (T11.5c). Соответствия блоков прежнего источника
-    /// забываются — номера блоков у каждого файла свои.
+    /// The same output stream, texture registry and counters, but another source: a creature body
+    /// is assembled from several files (T11.5c). The block mappings of the previous source are
+    /// forgotten — each file has its own block numbers.
     pub(crate) fn switch_source(&mut self, source: &'a SourceNif) {
         self.source = source;
         self.done.clear();
@@ -415,12 +415,13 @@ impl<'a> Context<'a, '_> {
         let link = match source.blocks.get(index) {
             Some(Block::Node(node)) => {
                 let mut children = Vec::with_capacity(node.children.len());
-                // Пустая ссылка (−1) среди детей — не порча: так выглядят узлы анимированных
-                // мешей (204 меша `Oblivion.esm`, T2.3). Ребёнка просто нет.
+                // An empty reference (−1) among the children is not corruption: nodes of animated
+                // meshes look like this (204 meshes of `Oblivion.esm`, T2.3). The child simply does
+                // not exist.
                 for child in node.children.iter().filter(|c| **c != BlockRef::NONE) {
                     let (child_index, child_block) = self.block(index, *child)?;
-                    // Отброшенный ребёнок — система частиц (T2.3b) или источник света в меше
-                    // (T2.3): у Morrowind свет задаёт запись `LIGH`.
+                    // The dropped child is a particle system (T2.3b) or a light source in the mesh
+                    // (T2.3): in Morrowind light is set by a `LIGH` record.
                     if let Block::Ignored(ignored) = child_block {
                         if is_particle_system(ignored.type_name) {
                             match self.convert_particles(child_index)? {
@@ -482,8 +483,9 @@ impl<'a> Context<'a, '_> {
         Ok(link)
     }
 
-    /// Система частиц → узел-эмиттер и узел частиц Morrowind (T2.7). `None` — частицы не
-    /// просили или эмиттер Morrowind эту систему не выражает: она выбрасывается.
+    /// A particle system → a Morrowind emitter node and particle node (T2.7). `None` means
+    /// particles were not requested or the Morrowind emitter cannot express this system: it is
+    /// dropped.
     fn convert_particles(
         &mut self,
         index: usize,
@@ -494,8 +496,8 @@ impl<'a> Context<'a, '_> {
         let Ok(plan) = crate::particles::plan(self.source, system) else {
             return Ok(None);
         };
-        // У ванильных частиц три свойства: текстура, альфа, материал. Прочие (цвета вершин,
-        // блик, трафарет) частицам Morrowind не нужны.
+        // Vanilla particles have three properties: texture, alpha, material. The others (vertex
+        // colors, specular, stencil) are not needed by Morrowind particles.
         let wanted: Vec<BlockRef> = system
             .av
             .properties
@@ -539,8 +541,8 @@ impl<'a> Context<'a, '_> {
         };
         let properties = self.convert_properties(index, &shape.av.properties)?;
 
-        // У Morrowind в геометрии один набор UV, и им пользуются все слоты. Берём тот,
-        // что нужен base-текстуре: он и есть «лицевая» раскраска формы.
+        // In Morrowind the geometry has one UV set, and all slots use it. We take the one the base
+        // texture needs: it is the shape's "front" coloring.
         let (uv_set, glow_mismatch) = self.texture_uv_sets(index, &shape.av.properties)?;
         if uv_set != 0 {
             self.stats.uv_set_switched += 1;
@@ -584,7 +586,7 @@ impl<'a> Context<'a, '_> {
         self.source.roots.iter().any(|r| r.index() == Some(index))
     }
 
-    /// `RootCollisionNode` с формами коллизии корня; `None`, если у корня нет коллизии.
+    /// `RootCollisionNode` with the root's collision shapes; `None` if the root has no collision.
     fn convert_collision(
         &mut self,
         owner: usize,
@@ -635,7 +637,7 @@ impl<'a> Context<'a, '_> {
         Ok(Some(self.stream.insert(RootCollisionNode { base: node })))
     }
 
-    /// Набор UV base-текстуры формы и признак «glow берёт другой набор».
+    /// The shape's base texture UV set and the "glow uses a different set" flag.
     pub(crate) fn texture_uv_sets(
         &self,
         owner: usize,
@@ -655,8 +657,8 @@ impl<'a> Context<'a, '_> {
         Ok((0, false))
     }
 
-    /// Свойства владельца (узла или формы) → ссылки на свойства выхода. Общее свойство
-    /// конвертируется один раз.
+    /// Properties of an owner (node or shape) → references to output properties. A shared property
+    /// is converted once.
     pub(crate) fn convert_properties(
         &mut self,
         owner: usize,
@@ -734,9 +736,10 @@ impl<'a> Context<'a, '_> {
         Ok(link)
     }
 
-    /// Текстура с настройками блока `r`, но файлом из [`Self::base_texture`]. Не кешируется по
-    /// блоку: тот же блок в слоте glow остаётся своим. Сгенерированная — только имя: файл пишет
-    /// вызывающий, в копии и реестр она не идёт.
+    /// A texture with the settings of block `r` but the file from [`Self::base_texture`]. Not
+    /// cached by block: the same block in the glow slot stays its own. A generated one is only a
+    /// name: the caller writes the file, and it goes neither into the copy list nor into the
+    /// registry.
     fn replacement_texture(
         &mut self,
         owner: usize,
@@ -794,11 +797,11 @@ impl<'a> Context<'a, '_> {
     }
 }
 
-/// `NiAVObject` Morrowind из `NiAVObject` Oblivion. Поворот — те же девять `f32` в том
-/// же порядке: сериализация `NiMatrix3` в обеих версиях одна, и `tes3::nif` читает её
-/// как `Mat3` без перестановки (проверено тестом `rotation_bytes_are_copied_verbatim`).
-/// Свойства приходят уже сконвертированными; контроллеры и дополнительные данные не
-/// переносятся. Имя — через [`crate::node_name`]: `Collision…` роняет Construction Set.
+/// A Morrowind `NiAVObject` from an Oblivion `NiAVObject`. The rotation is the same nine `f32` in
+/// the same order: the `NiMatrix3` serialization is the same in both versions, and `tes3::nif`
+/// reads it as `Mat3` without transposing (checked by the `rotation_bytes_are_copied_verbatim`
+/// test). Properties arrive already converted; controllers and extra data are not carried over. The
+/// name goes through [`crate::node_name`]: `Collision…` crashes the Construction Set.
 fn av_object(av: &AvObject, properties: Vec<NiLink<NiProperty>>) -> NiAVObject {
     NiAVObject {
         base: NiObjectNET {
@@ -848,7 +851,7 @@ pub(crate) fn shape_data(
         });
     }
 
-    // `NiTriShapeData` несёт готовые треугольники, `NiTriStripsData` — полосы.
+    // `NiTriShapeData` carries ready triangles, `NiTriStripsData` carries strips.
     let (mut triangles, degenerate) = strips_to_triangles(&data.strips);
     triangles.extend(data.triangles.iter().copied());
     if triangles.len() > usize::from(u16::MAX) {
@@ -866,7 +869,7 @@ pub(crate) fn shape_data(
             radius: data.bound_radius,
         },
         vertex_colors: data.colors.iter().map(|&c| Vec4::from_array(c)).collect(),
-        // Один набор: у Morrowind он один, и на него ссылаются все слоты.
+        // One set: Morrowind has one, and all slots reference it.
         uv_sets: data
             .uv_sets
             .get(uv_set)
@@ -888,11 +891,11 @@ pub(crate) fn shape_data(
     ))
 }
 
-/// Текстура вместо текстуры NIF ([`Context::base_texture`]).
+/// A texture instead of the NIF texture ([`Context::base_texture`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BaseTexture {
-    /// Путь источника: копируется, как текстуры мешей.
+    /// Source path: copied like mesh textures.
     Source(String),
-    /// Имя готового файла в `Textures\`.
+    /// Name of the finished file in `Textures\`.
     Generated(String),
 }

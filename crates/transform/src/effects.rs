@@ -1,16 +1,16 @@
-//! Эффекты Oblivion → эффекты Morrowind (T2.1b): общая таблица для зелий, ингредиентов, а
-//! дальше — зачарований и заклинаний (T9.4).
+//! Oblivion effects → Morrowind effects (T2.1b): a shared table for potions, ingredients, and
+//! further on enchantments and spells (T9.4).
 //!
-//! Таблица — контент, поэтому лежит в `data/effects.tsv`, а не в коде; сюда она встраивается
-//! при сборке. Правила и измерения — `docs/ru/formats/tes4.md`, «Эффекты» (2026-09-25):
+//! The table is content, so it lives in `data/effects.tsv`, not in the code; it is embedded here at
+//! build time. Rules and measurements — `docs/en/formats/tes4.md`, "Effects" (2026-09-25):
 //!
-//! * Новых эффектов Morrowind не принимает: набор эффектов движка закрыт. Эффект Oblivion либо
-//!   ложится на существующий (0…136, эффекты `Morrowind.esm`), либо выбрасывается.
-//! * Дальность у игр совпадает: 0 на себя, 1 касание, 2 цель.
-//! * Атрибуты 0…7 идут в одном порядке; навык — актёрское значение 12…32, это навык Oblivion
-//!   0…20, он переводится той же таблицей, что навык книг (основной навык из `data/skills.tsv`,
-//!   [`crate::skills::SKILLS`]).
-//! * Величина у Oblivion одна — у Morrowind она становится и нижней, и верхней.
+//! * Morrowind accepts no new effects: the engine's effect set is closed. An Oblivion effect either
+//!   maps onto an existing one (0…136, the effects of `Morrowind.esm`) or is dropped.
+//! * The games share range: 0 self, 1 touch, 2 target.
+//! * Attributes 0…7 go in the same order; a skill is the actor value 12…32, that is the Oblivion
+//!   skill 0…20, which is converted by the same table as a book's skill (the major skill from
+//!   `data/skills.tsv`, [`crate::skills::SKILLS`]).
+//! * Oblivion has one magnitude — in Morrowind it becomes both the minimum and the maximum.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -20,18 +20,18 @@ use tes4_read::EffectItem;
 
 use crate::skills::SKILLS;
 
-/// `data/effects.tsv`, встроенный в сборку.
+/// `data/effects.tsv`, built into the binary.
 const TABLE: &str = include_str!("../../../data/effects.tsv");
 
-/// Английские пояснения к строкам таблиц `data/*.tsv` (пишутся для сайта, `docs/gen_tables.py`).
-/// Отсюда — причина, по которой эффект выброшен, когда сообщения идут по-английски: в самой
-/// таблице пояснение русское.
+/// English notes to the rows of the `data/*.tsv` tables (written for the site,
+/// `docs/gen_tables.py`). From here comes the reason an effect was dropped when messages are in
+/// English: in the table itself the note is in Russian.
 const NOTES_EN: &str = include_str!("../../../docs/notes_en.tsv");
 
-/// Последний эффект `Morrowind.esm`.
+/// The last effect of `Morrowind.esm`.
 const LAST_VANILLA_EFFECT: u8 = 136;
 
-/// Что брать из актёрского значения `EFIT`.
+/// What to take from the `EFIT` actor value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Param {
     None,
@@ -39,16 +39,16 @@ pub enum Param {
     Skill,
 }
 
-/// Строка таблицы.
+/// A table row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    /// Эффект Morrowind и его параметр.
+    /// A Morrowind effect and its parameter.
     Effect { id: u8, param: Param },
-    /// Аналога нет; пояснение — из таблицы.
+    /// No equivalent; the note comes from the table.
     Dropped { reason: String },
 }
 
-/// Разбирает таблицу. Ошибка — с номером строки: таблицу правят руками.
+/// Parses the table. An error carries the line number: the table is edited by hand.
 pub fn parse_table(text: &str) -> Result<HashMap<[u8; 4], Target>, String> {
     let mut out = HashMap::new();
     for (n, line) in text.lines().enumerate() {
@@ -121,13 +121,13 @@ fn table() -> &'static HashMap<[u8; 4], Target> {
     static TABLE_CELL: OnceLock<HashMap<[u8; 4], Target>> = OnceLock::new();
     TABLE_CELL.get_or_init(|| {
         parse_table(TABLE).expect(
-            "data/effects.tsv встроен в сборку и проверен тестом embedded_table_parses_and_covers_oblivion",
+            "data/effects.tsv is built into the binary and checked by the embedded_table_parses_and_covers_oblivion test",
         )
     })
 }
 
-/// Английская причина выброшенного эффекта: строки `effects<TAB>код<TAB>пояснение` из
-/// [`NOTES_EN`]. Нет строки — `None`, и в замечание идёт русское пояснение таблицы.
+/// The English reason for a dropped effect: lines `effects<TAB>code<TAB>note` from [`NOTES_EN`]. No
+/// line gives `None`, and the table's Russian note goes into the note.
 fn english_reason(code: &str) -> Option<&'static str> {
     static NOTES_CELL: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
     NOTES_CELL
@@ -141,8 +141,8 @@ fn english_reason(code: &str) -> Option<&'static str> {
         .copied()
 }
 
-/// Эффект Morrowind из эффекта Oblivion. Ошибка — текст замечания: эффекта нет в таблице,
-/// аналога нет, атрибут или навык вне диапазона.
+/// A Morrowind effect from an Oblivion effect. The error is the note text: the effect is not in the
+/// table, there is no equivalent, the attribute or skill is out of range.
 pub fn convert_effect(source: &EffectItem) -> Result<Effect, String> {
     let code = source.code_str();
     let (id, param) = match table().get(&source.code) {
@@ -225,10 +225,10 @@ mod tests {
         }
     }
 
-    /// Все коды эффектов `Oblivion.esm` есть в таблице — либо с эффектом, либо явно выброшены.
-    /// 153 кода (2026-09-25): 145 записей `MGEF` и ещё 8, которые встречаются в `EFIT`
-    /// заклинаний без своей записи (`BA01`…`BA06`, `DUMY`, `RSWD`). Список — из измерения, не из
-    /// таблицы: тест ловит пропущенную строку.
+    /// All effect codes of `Oblivion.esm` are in the table — either with an effect or explicitly
+    /// dropped. 153 codes (2026-09-25): 145 `MGEF` records and 8 more that occur in the `EFIT` of
+    /// spells without a record of their own (`BA01`…`BA06`, `DUMY`, `RSWD`). The list comes from
+    /// the measurement, not from the table: the test catches a missing row.
     #[test]
     fn embedded_table_parses_and_covers_oblivion() {
         let t = parse_table(TABLE).unwrap();
@@ -246,9 +246,9 @@ mod tests {
         assert_eq!(codes.len(), 153);
         for code in &codes {
             let key: [u8; 4] = code.as_bytes().try_into().unwrap();
-            assert!(t.contains_key(&key), "{code} нет в таблице");
+            assert!(t.contains_key(&key), "{code} is not in the table");
         }
-        assert_eq!(t.len(), 153, "в таблице нет лишних кодов");
+        assert_eq!(t.len(), 153, "the table has no extra codes");
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
         let e = convert_effect(&item(b"FOAT", 4)).unwrap();
         assert_eq!((e.id, e.attribute, e.skill), (79, Some(4), None));
         assert_eq!(e.magnitude, [7, 7]);
-        // Навык Oblivion 2 (Blade, актёрское значение 14) → Long Blade (5).
+        // Oblivion skill 2 (Blade, actor value 14) → Long Blade (5).
         let e = convert_effect(&item(b"FOSK", 14)).unwrap();
         assert_eq!((e.id, e.attribute, e.skill), (83, None, Some(5)));
         let e = convert_effect(&item(b"REHE", 8)).unwrap();
@@ -271,22 +271,22 @@ mod tests {
         );
         assert_eq!(
             lang::with(lang::Lang::Ru, || convert_effect(&item(b"SEFF", 8))).unwrap_err(),
-            "SEFF: Script Effect: скрипты Oblivion не переносятся"
+            "SEFF: Script Effect: Oblivion scripts are not carried over"
         );
         assert!(
             convert_effect(&item(b"QQQQ", 8))
                 .unwrap_err()
                 .contains("missing from data/effects.tsv")
         );
-        assert!(convert_effect(&item(b"FOAT", 12)).is_err(), "атрибут 12");
-        assert!(convert_effect(&item(b"FOSK", 40)).is_err(), "навык 40");
+        assert!(convert_effect(&item(b"FOAT", 12)).is_err(), "attribute 12");
+        assert!(convert_effect(&item(b"FOSK", 40)).is_err(), "skill 40");
         let mut far = item(b"REHE", 8);
         far.range = 3;
         assert!(convert_effect(&far).is_err());
     }
 
-    /// У каждого выброшенного эффекта есть английская причина: иначе в английском журнале
-    /// осталось бы русское пояснение таблицы.
+    /// Every dropped effect has an English reason: otherwise the English log would contain the
+    /// table's Russian note.
     #[test]
     fn every_dropped_effect_has_an_english_reason() {
         for (code, target) in parse_table(TABLE).unwrap() {
@@ -295,7 +295,7 @@ mod tests {
                 let reason = english_reason(&code);
                 assert!(
                     reason.is_some_and(str::is_ascii),
-                    "{code}: {reason:?} — нужна строка в docs/notes_en.tsv"
+                    "{code}: {reason:?} — a line in docs/notes_en.tsv is needed"
                 );
             }
         }

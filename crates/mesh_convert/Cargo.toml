@@ -1,25 +1,25 @@
 [package]
 name = "mesh_convert"
-description = "NIF 20.0.0.4/5 → 4.0.0.2: геометрия, материалы, текстуры, коллизия."
+description = "NIF 20.0.0.4/5 → 4.0.0.2: geometry, materials, textures, collision."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-# Язык сообщений: общий для всех крейтов, сам без зависимостей.
+# Message language: shared by all crates, has no dependencies itself.
 lang = { path = "../lang" }
-# Нужен для записи NIF 4.0.0.2 (T1.4). Пин через workspace (решение Р4).
+# Needed to write NIF 4.0.0.2 (T1.4). Pinned through the workspace (decision D4).
 tes3 = { workspace = true, features = ["nif"] }
 
 [dev-dependencies]
-# Нужен для T1.13: чтение TES3 BSA и ESP в тестах на реальных данных.
+# Needed for T1.13: reading TES3 BSA and ESP in tests on real data.
 tes3 = { workspace = true, features = ["bsa", "esp"] }
-# T1.3a: плагин и BSA Oblivion в тесте на реальных данных. Тест границ смотрит
-# только обычные зависимости, dev-зависимость его не нарушает.
+# T1.3a: an Oblivion plugin and BSA in a test on real data. The boundary test looks
+# only at normal dependencies, a dev dependency does not break it.
 tes4_read = { path = "../tes4_read" }
-# T2.4: дизассемблер для сверки фактов о SpeedTree с кодом Oblivion.exe (тест-инструмент
-# `tests/disasm_speedtree.rs`, в поставку не попадает).
+# T2.4: a disassembler for checking facts about SpeedTree against the code of Oblivion.exe (a test tool,
+# `tests/disasm_speedtree.rs`, not shipped).
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "intel"] }
 
 [lints]

@@ -1,10 +1,9 @@
-//! FaceGen Oblivion (фаза 8): морфы геометрии `.egm`, текстуры `.egt` и выражения `.tri`.
+//! Oblivion FaceGen (phase 8): `.egm` geometry morphs, `.egt` textures and `.tri` expressions.
 //!
-//! Раскладки сверены на `Oblivion - Meshes.bsa` 2026-09-27:
-//! размеры файлов сходятся с формулой до байта, и ридер требует того же — файл обязан
-//! кончиться ровно на последнем байте разобранного. Непонятные части `.tri` (помеченные вершины и
-//! поверхности, четырёхугольники) — ошибка, если их число не ноль: пропускать их, не зная
-//! раскладки, нельзя.
+//! The layouts were checked on `Oblivion - Meshes.bsa` on 2026-09-27: file sizes match the formula
+//! to the byte, and the reader requires the same — a file must end exactly at the last parsed byte.
+//! Unclear parts of `.tri` (labelled vertices and surfaces, quads) are an error if their count is
+//! not zero: skipping them without knowing the layout is not possible.
 
 use std::fmt;
 
@@ -12,19 +11,19 @@ pub const EGM_MAGIC: &[u8; 8] = b"FREGM002";
 pub const EGT_MAGIC: &[u8; 8] = b"FREGT003";
 pub const TRI_MAGIC: &[u8; 8] = b"FRTRI003";
 
-/// Заголовок всех трёх форматов — 64 байта.
+/// The header of all three formats is 64 bytes.
 const HEADER_LEN: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FaceGenError {
-    /// Данные кончились раньше, чем требует раскладка.
+    /// The data ended earlier than the layout requires.
     Truncated { at: usize, need: usize },
-    /// Не та сигнатура.
+    /// Wrong signature.
     BadMagic {
         expected: &'static str,
         found: String,
     },
-    /// Раскладка не сходится: лишние байты, неизвестный вариант, числа вне смысла.
+    /// The layout does not add up: extra bytes, an unknown variant, numbers out of range.
     Structure { at: usize, what: String },
 }
 
@@ -81,23 +80,23 @@ impl<'a> Cursor<'a> {
 
     fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(
-            self.take(4)?.try_into().expect("4 байта"),
+            self.take(4)?.try_into().expect("4 bytes"),
         ))
     }
 
     fn i32(&mut self) -> Result<i32> {
         Ok(i32::from_le_bytes(
-            self.take(4)?.try_into().expect("4 байта"),
+            self.take(4)?.try_into().expect("4 bytes"),
         ))
     }
 
     fn f32(&mut self) -> Result<f32> {
         Ok(f32::from_le_bytes(
-            self.take(4)?.try_into().expect("4 байта"),
+            self.take(4)?.try_into().expect("4 bytes"),
         ))
     }
 
-    /// Число из файла как `usize` — для счётчиков.
+    /// A number from the file as `usize` — for counts.
     fn count(&mut self) -> Result<usize> {
         let at = self.at;
         usize::try_from(self.u32()?).map_err(|_| FaceGenError::Structure {
@@ -134,7 +133,7 @@ impl<'a> Cursor<'a> {
         Ok(raw
             .chunks_exact(12)
             .map(|c| {
-                [0, 4, 8].map(|k| f32::from_le_bytes(c[k..k + 4].try_into().expect("4 байта")))
+                [0, 4, 8].map(|k| f32::from_le_bytes(c[k..k + 4].try_into().expect("4 bytes")))
             })
             .collect())
     }
@@ -150,7 +149,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Файл обязан кончиться здесь.
+    /// The file must end here.
     fn end(&self) -> Result<()> {
         if self.at != self.data.len() {
             return Err(FaceGenError::Structure {
@@ -166,21 +165,22 @@ impl<'a> Cursor<'a> {
     }
 }
 
-/// Морф геометрии: смещение вершины `i` — `scale · deltas[i]`.
+/// A geometry morph: vertex `i` is offset by `scale · deltas[i]`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Morph {
     pub scale: f32,
     pub deltas: Vec<[i16; 3]>,
 }
 
-/// `.egm`: заголовок (сигнатура, число вершин, симметричных и асимметричных морфов, версия базиса,
-/// 40 байт нулей) и морфы — сначала симметричные, по порядку `FGGS`, затем асимметричные (`FGGA`).
+/// `.egm`: the header (signature, vertex count, counts of symmetric and asymmetric morphs, basis
+/// version, 40 zero bytes) and the morphs — first the symmetric ones, in `FGGS` order, then the
+/// asymmetric ones (`FGGA`).
 ///
-/// Вершины — это вершины `.tri` того же меша: сначала вершины меша (порядок NIF и `.tri` совпадает у
-/// всех 85 пар архива), затем, если у меша есть статические морфы `.tri`, — их вершины. Замер
-/// 2026-09-27 (`mesh_convert/tests/real_faces.rs`): у 131 `.egm` вершин столько же, сколько в NIF,
-/// у 9 — NIF плюс статические (`HeadHuman`: 1 275 + 461 = 1 736), иначе — у одного
-/// (`earswoodelf_50`: 125 против 150, статических морфов нет).
+/// The vertices are the `.tri` vertices of the same mesh: first the mesh vertices (the NIF and
+/// `.tri` order matches in all 85 pairs of the archive), then, if the mesh has static `.tri`
+/// morphs, their vertices. Measured 2026-09-27 (`mesh_convert/tests/real_faces.rs`): 131 `.egm`
+/// files have as many vertices as the NIF, 9 have the NIF plus the static ones (`HeadHuman`: 1,275 +
+/// 461 = 1,736), one differs (`earswoodelf_50`: 125 versus 150, no static morphs).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Egm {
     pub vertices: usize,
@@ -219,10 +219,11 @@ impl Egm {
         })
     }
 
-    /// Вершины лица: `base[i] + Σ coef · scale · delta[i]` по симметричным (`FGGS`) и
-    /// асимметричным (`FGGA`) морфам. Коэффициентов меньше, чем морфов, — недостающие 0. `base` —
-    /// первые вершины файла (вершины меша или меш вместе с вершинами статических морфов); вершин
-    /// в `base` больше, чем в файле, — ошибка (файл не от этого меша).
+    /// Face vertices: `base[i] + Σ coef · scale · delta[i]` over the symmetric (`FGGS`) and
+    /// asymmetric (`FGGA`) morphs. If there are fewer coefficients than morphs, the missing ones
+    /// are 0. `base` is the first vertices of the file (the mesh vertices or the mesh together with
+    /// the static morph vertices); more vertices in `base` than in the file is an error (the file
+    /// is not for this mesh).
     pub fn apply(&self, base: &[[f32; 3]], sym: &[f32], asym: &[f32]) -> Result<Vec<[f32; 3]>> {
         if base.len() > self.vertices {
             return Err(FaceGenError::Structure {
@@ -253,19 +254,20 @@ impl Egm {
     }
 }
 
-/// Морф текстуры: `scale` и 3 канала × строки × столбцы байтов со знаком, **плоскостями**: сначала
-/// весь первый канал, затем второй, третий. Замер на `HeadHuman.egt` (2026-09-28): соседние байты
-/// различаются в среднем на 0.5–0.6, байты через 3 — на 1.4–1.7 (вперемешку было бы наоборот), и
-/// средние по плоскостям разные (63, 81, 101), а по «перемешанным» каналам — равны. Что первая
-/// плоскость — красный, а не синий, — не проверено (проверка оттенка в игре).
+/// A texture morph: `scale` and 3 channels × rows × columns of signed bytes, **in planes**: first
+/// the whole first channel, then the second, the third. Measured on `HeadHuman.egt` (2026-09-28):
+/// neighboring bytes differ by 0.5–0.6 on average, bytes 3 apart by 1.4–1.7 (interleaved it would
+/// be the other way round), and the plane means differ (63, 81, 101), while the "interleaved"
+/// channel means are equal. That the first plane is red rather than blue is not verified (a hue
+/// check in the game).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextureMorph {
     pub scale: f32,
     pub data: Vec<i8>,
 }
 
-/// `.egt`: сигнатура, строки, столбцы, симметричных и асимметричных морфов, версия, нули до 64
-/// байт; морфы по порядку `FGTS`.
+/// `.egt`: signature, rows, columns, counts of symmetric and asymmetric morphs, version, zeros up
+/// to 64 bytes; the morphs in `FGTS` order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Egt {
     pub rows: usize,
@@ -315,16 +317,17 @@ impl Egt {
         })
     }
 
-    /// Карта детализации лица (T8.8): `128 + ½ · Σ coef · scale · морф` по каналам RGB, строки
-    /// сверху вниз (в файле — снизу вверх), `columns × rows`. `coefs` — `FGTS` NPC **плюс** `FGTS`
-    /// расы: у NPC хранится добавка к лицу расы.
+    /// Face detail map (T8.8): `128 + ½ · Σ coef · scale · morph` per RGB channel, rows top to
+    /// bottom (bottom to top in the file), `columns × rows`. `coefs` is the NPC's `FGTS` **plus**
+    /// the race's `FGTS`: an NPC stores an addition to the race face.
     ///
-    /// Сверено 2026-09-30 с готовыми картами `textures\faces\oblivion.esm\<FormID>_0.dds` архива
-    /// текстур на всех 1 977 NPC, у которых они есть (разовый тест по архивам): наклон через 128 —
-    /// 0.503, корреляция по NPC — медиана 0.961 (10 % хуже 0.914), средняя ошибка при ½ — 2.2
-    /// уровня (шум сжатия DXT). С абсолютными коэффициентами NPC (без расы) корреляция 0.56, с
-    /// разностью — 0.17, без переворота строк — 0.35. Лицо в игре — текстура расы, умноженная на
-    /// карту (`face_texture::compose`).
+    /// Checked 2026-09-30 against the ready-made maps `textures\faces\oblivion.esm\<FormID>_0.dds`
+    /// of the texture archive on all 1,977 NPCs that have them (a one-off test over the archives):
+    /// the slope through 128 is 0.503, the per-NPC correlation median is 0.961 (10% are worse than
+    /// 0.914), the mean error with ½ is 2.2 levels (DXT compression noise). With the NPC's absolute
+    /// coefficients (without the race) the correlation is 0.56, with the difference 0.17, without
+    /// flipping rows 0.35. The face in the game is the race texture multiplied by the map
+    /// (`face_texture::compose`).
     pub fn detail(&self, coefs: &[f32]) -> Vec<[u8; 3]> {
         let plane = self.rows * self.columns;
         let mut sum = vec![[0.0f32; 3]; plane];
@@ -344,7 +347,7 @@ impl Egt {
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
-                        reason = "зажато в 0…255 и округлено"
+                        reason = "clamped to 0…255 and rounded"
                     )]
                     let level = (128.0 + 0.5 * s).round().clamp(0.0, 255.0) as u8;
                     level
@@ -355,7 +358,7 @@ impl Egt {
     }
 }
 
-/// Разностный морф `.tri` (эмоции, фонемы): смещение каждой вершины — `scale · deltas[i]`.
+/// A `.tri` difference morph (emotions, phonemes): each vertex is offset by `scale · deltas[i]`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TriDiffMorph {
     pub name: String,
@@ -363,7 +366,7 @@ pub struct TriDiffMorph {
     pub deltas: Vec<[i16; 3]>,
 }
 
-/// Статический морф `.tri` (моргание, взгляд): новые позиции вершин `indices`.
+/// A `.tri` static morph (blinking, gaze): new positions of the vertices `indices`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TriStatMorph {
     pub name: String,
@@ -371,12 +374,12 @@ pub struct TriStatMorph {
     pub positions: Vec<[f32; 3]>,
 }
 
-/// `.tri`: заголовок (сигнатура; вершин, треугольников, четырёхугольников, помеченных вершин и
-/// поверхностей, текстурных координат, флаг расширения, разностных и статических морфов, вершин
-/// статических морфов; 16 байт нулей), вершины (свои и статических морфов подряд), треугольники,
-/// текстурные координаты и их треугольники, морфы. Вершины `.tri` — без дублей на швах UV, их
-/// столько же и в том же порядке, что у NIF (все 85 пар архива, 2026-09-27); у `.egm` к ним
-/// добавлены вершины статических морфов (см. [`Egm`]).
+/// `.tri`: the header (signature; counts of vertices, triangles, quads, labelled vertices and
+/// surfaces, texture coordinates, the extension flag, counts of difference and static morphs,
+/// static morph vertices; 16 zero bytes), the vertices (its own and the static morphs' in a row),
+/// triangles, texture coordinates and their triangles, morphs. `.tri` vertices have no duplicates
+/// on UV seams, there are as many of them and in the same order as in the NIF (all 85 pairs of the
+/// archive, 2026-09-27); in `.egm` the static morph vertices are added to them (see [`Egm`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tri {
     pub vertices: Vec<[f32; 3]>,

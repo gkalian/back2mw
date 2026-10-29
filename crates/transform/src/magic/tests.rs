@@ -78,7 +78,7 @@ fn constant_and_scroll_ignore_the_item_charge() {
             Some(999),
         )
         .unwrap();
-        assert_eq!(e.enchantment.charge, 36, "тип {kind}");
+        assert_eq!(e.enchantment.charge, 36, "type {kind}");
     }
 }
 

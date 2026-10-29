@@ -78,7 +78,7 @@ fn the_user_may_point_at_the_game_root_or_at_its_data_folder() {
     );
     assert_eq!(oblivion_data(&ob), Some(ob.join("Data")));
     assert_eq!(oblivion_data(&ob.join("Data")), Some(ob.join("Data")));
-    assert_eq!(morrowind_data(&ob), None, "Oblivion — не Morrowind");
+    assert_eq!(morrowind_data(&ob), None, "Oblivion is not Morrowind");
     assert_eq!(oblivion_data(&mw), None);
 
     assert_eq!(

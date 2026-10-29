@@ -43,7 +43,7 @@ fn bone_skin(world_z: f32, weights: Vec<(u16, f32)>) -> BoneSkin {
     }
 }
 
-/// Скелет цели: `Bip01` (z 50) → `Spine` (z 60) → `Neck` (z 80). Позвонок длиной 20.
+/// Target skeleton: `Bip01` (z 50) → `Spine` (z 60) → `Neck` (z 80). A spine bone of length 20.
 fn target() -> TargetSkeleton {
     let bone = |name: &str, parent, z| TargetBone {
         name: name.to_owned(),
@@ -59,9 +59,9 @@ fn target() -> TargetSkeleton {
     }
 }
 
-/// Источник: тот же скелет, но позвонок короче (10), `Bip01` ниже (40), и у позвонка есть
-/// лишняя кость-скрутка, которой в Morrowind нет. Три вершины: на позвонке, на скрутке и
-/// пополам.
+/// Source: the same skeleton, but the spine is shorter (10), `Bip01` is lower (40), and the spine
+/// has an extra twist bone that Morrowind lacks. Three vertices: on the spine, on the twist, and
+/// half-and-half.
 fn source() -> SourceNif {
     let blocks = vec![
         node("Scene Root", [0.0, 0.0, 0.0], &[1, 5]),
@@ -139,10 +139,10 @@ fn only_shape(stream: &NiStream) -> (&NiTriShape, &NiGeometryData) {
     let shape = stream
         .objects_of_type::<NiTriShape>()
         .next()
-        .expect("форма");
+        .expect("shape");
     let data = stream
         .get(shape.base.base.geometry_data)
-        .expect("данные формы");
+        .expect("shape data");
     (shape, data)
 }
 
@@ -151,12 +151,16 @@ fn side_is_read_from_the_biped_name() {
     assert_eq!(side("Bip01 L UpperArm"), Some('L'));
     assert_eq!(side("Bip01 R Finger01"), Some('R'));
     assert_eq!(side("Bip01 Spine"), None);
-    assert_eq!(side("Bip01 Lumbar"), None, "L без пробела — не сторона");
+    assert_eq!(
+        side("Bip01 Lumbar"),
+        None,
+        "L without a space is not a side"
+    );
     assert_eq!(side("Bip01"), None);
 }
 
-/// Позвонок источника (z 50, длина 10) ложится на позвонок цели (z 60, длина 20): вершина на
-/// середине позвонка — на середину, и растяжение вдоль кости, но не поперёк.
+/// The source spine (z 50, length 10) lands on the target spine (z 60, length 20): a vertex in the
+/// middle of the spine goes to the middle, with stretching along the bone but not across.
 #[test]
 fn vertices_follow_the_retargeted_bones() {
     let c = converted();
@@ -171,7 +175,7 @@ fn vertices_follow_the_retargeted_bones() {
     assert!(close(world[0], Vec3::new(0.0, 0.0, 70.0)), "{:?}", world[0]);
     assert!(
         close(world[1], Vec3::new(1.0, 0.0, 62.0)),
-        "поперёк не тянем: {:?}",
+        "no stretching across: {:?}",
         world[1]
     );
     assert!(close(world[2], Vec3::new(0.0, 0.0, 90.0)), "{:?}", world[2]);
@@ -184,11 +188,11 @@ fn vertices_follow_the_retargeted_bones() {
     let transforms = c.stream.world_transforms();
     assert!(
         transforms[&link.key].translation.distance(root.translation) < 1e-4,
-        "форма стоит там же, где Bip01"
+        "the shape stands where Bip01 does"
     );
 }
 
-/// Как у всей ванили: скиннинговая форма — ребёнок `Bip01`, а не его сосед.
+/// As in all of vanilla: a skinned shape is a child of `Bip01`, not its sibling.
 #[test]
 fn shapes_are_children_of_bip01() {
     let c = converted();
@@ -209,10 +213,10 @@ fn shapes_are_children_of_bip01() {
         .objects_of_type::<NiNode>()
         .find(|n| n.base.base.name == root.base.name)
         .unwrap();
-    assert_eq!(root.children.len(), 1, "у корня только Bip01");
+    assert_eq!(root.children.len(), 1, "the root has only Bip01");
 }
 
-/// Скрутки в Morrowind нет: её вес уходит позвонку, у формы одна кость.
+/// Morrowind has no twist: its weight goes to the spine, the shape has one bone.
 #[test]
 fn a_bone_missing_in_morrowind_gives_its_weight_to_the_parent() {
     let c = converted();
@@ -230,20 +234,20 @@ fn a_bone_missing_in_morrowind_gives_its_weight_to_the_parent() {
     assert_eq!(
         weights,
         [(0, 1.0), (1, 1.0), (2, 1.0)],
-        "веса сложены и нормированы"
+        "weights are summed and normalized"
     );
 }
 
-/// Независимая проверка соглашения: деформация `tes3::nif` (та же формула, что у движка) в
-/// позе привязки возвращает вершины без изменений.
+/// An independent check of the convention: `tes3::nif` deformation (the same formula as the
+/// engine's) in the bind pose returns the vertices unchanged.
 #[test]
 fn the_bind_pose_deforms_to_itself() {
     let c = converted();
     let (shape, data) = only_shape(&c.stream);
     let skin = c.stream.get(shape.base.base.skin_instance).unwrap();
-    let (deformed, _) = skin.deform(&c.stream, data).expect("деформация");
+    let (deformed, _) = skin.deform(&c.stream, data).expect("deformation");
     for (a, b) in deformed.iter().zip(&data.vertices) {
-        assert!(a.distance(*b) < 1e-4, "{a:?} против {b:?}");
+        assert!(a.distance(*b) < 1e-4, "{a:?} versus {b:?}");
     }
 }
 
@@ -256,7 +260,7 @@ fn the_skeleton_is_written_in_bind_pose() {
             .stream
             .objects_of_type_with_link::<NiNode>()
             .find(|(_, n)| n.base.base.name == bone.name)
-            .expect("кость в выходе");
+            .expect("bone in the output");
         assert!(
             world[&link.key]
                 .translation
@@ -300,10 +304,13 @@ fn from_nifs_takes_hierarchy_from_one_file_and_poses_from_the_first_that_has_the
     let skeleton = TargetSkeleton::from_nifs(&hierarchy, &[&body, &full]).unwrap();
     assert_eq!(skeleton.bones.len(), 2);
     assert_eq!(skeleton.bones[1].parent, Some(0));
-    assert_eq!(skeleton.bones[0].world.translation.z, 1.0, "тело раньше");
+    assert_eq!(
+        skeleton.bones[0].world.translation.z, 1.0,
+        "the body comes first"
+    );
     assert_eq!(
         skeleton.bones[1].world.translation.z, 2.0,
-        "недостающее — из второго"
+        "what is missing comes from the second"
     );
 
     let err = TargetSkeleton::from_nifs(&hierarchy, &[&body]).unwrap_err();
@@ -315,7 +322,7 @@ fn from_nifs_takes_hierarchy_from_one_file_and_poses_from_the_first_that_has_the
     );
 }
 
-/// Меш на двух руках: треугольник на левой кисти и треугольник на правой.
+/// A mesh on two hands: a triangle on the left hand and a triangle on the right.
 fn two_hands() -> Converted {
     let target = TargetSkeleton {
         bones: vec![
@@ -392,7 +399,7 @@ fn triangles(s: &NiStream) -> Vec<[u16; 3]> {
         .clone()
 }
 
-/// Меш на двух руках: левые треугольники уходят в левую половину, правые — в правую.
+/// A mesh on two hands: left triangles go to the left half, right ones to the right.
 #[test]
 fn keep_side_splits_a_two_handed_mesh() {
     let c = two_hands();
@@ -404,7 +411,8 @@ fn keep_side_splits_a_two_handed_mesh() {
     assert_eq!(triangles(&right), [[3, 4, 5]]);
 }
 
-/// Скелет цели с рукой: `Bip01` → `L Clavicle` → `L UpperArm` → `L Forearm`, и `L Foot`.
+/// A target skeleton with an arm: `Bip01` → `L Clavicle` → `L UpperArm` → `L Forearm`, and
+/// `L Foot`.
 fn arm_target() -> TargetSkeleton {
     let bone = |name: &str, parent, x: f32, z: f32| TargetBone {
         name: name.to_owned(),
@@ -422,9 +430,9 @@ fn arm_target() -> TargetSkeleton {
     }
 }
 
-/// Кости плоским списком под корнем, как пишет Blender: у скрутки и пальца ноги предка нет.
-/// Скрутка должна уйти на плечо по имени, палец ноги — на ближайший сустав той же стороны, а не
-/// на `Bip01`.
+/// Bones as a flat list under the root, as Blender writes them: the twist and the toe have no
+/// ancestor. The twist must go to the upper arm by name, the toe to the nearest joint of the same
+/// side, not to `Bip01`.
 #[test]
 fn flat_bones_without_an_ancestor_map_by_name_then_by_nearest_joint() {
     let blocks = vec![
@@ -438,7 +446,8 @@ fn flat_bones_without_an_ancestor_map_by_name_then_by_nearest_joint() {
     ];
     let mut src = source();
     let mut all = blocks;
-    // Форма, её данные, скин и данные скина — из `source()`, со сдвигом ссылок.
+    // The shape, its data, the skin and the skin data come from `source()`, with shifted
+    // references.
     let shift = u32::try_from(all.len()).unwrap() - 5;
     for b in source().blocks.into_iter().skip(5) {
         all.push(match b {
@@ -497,9 +506,9 @@ fn name_shapes_gives_every_shape_the_slot_prefix() {
 
 #[test]
 fn plain_conversion_bakes_a_skinned_mesh_into_the_file_pose() {
-    // Позвонок в файле поднят на 10 относительно позы привязки, общее преобразование скина
-    // опускает на 5: вершины уходят за костями и возвращаются в пространство формы им, а не
-    // обратной позой формы (её сдвиг вершин не трогает).
+    // The spine in the file is raised by 10 relative to the bind pose, the overall skin transform
+    // lowers by 5: the vertices follow the bones and are brought back into shape space by it, not
+    // by the shape's inverse pose (whose translation does not touch the vertices).
     let mut src = source();
     let Block::Node(spine) = &mut src.blocks[2] else {
         unreachable!()
@@ -520,12 +529,13 @@ fn plain_conversion_bakes_a_skinned_mesh_into_the_file_pose() {
     assert_eq!(back.objects_of_type::<NiSkinInstance>().count(), 0);
     let (_, data) = only_shape(&back);
     let z: Vec<f32> = data.vertices.iter().map(|v| v.z).collect();
-    // позвонок 60 · (−50) · 55 = 65; скрутка 61 · (−51) · 51 = 61; пополам — 75; минус 5 скина
+    // spine 60 · (−50) · 55 = 65; twist 61 · (−51) · 51 = 61; half-and-half — 75; minus 5 for the
+    // skin
     assert_eq!(z, [60.0, 56.0, 70.0]);
     assert_eq!(data.vertices[1].x, 1.0);
 }
 
-/// Даёт единственной форме базовую текстуру `file`.
+/// Gives the only shape the base texture `file`.
 fn with_texture(mut stream: NiStream, file: &str) -> NiStream {
     use tes3::nif::{
         Map, NiProperty, NiSourceTexture, NiTexturingProperty, TextureMap, TextureSource,
@@ -551,22 +561,26 @@ fn with_texture(mut stream: NiStream, file: &str) -> NiStream {
     stream
 }
 
-/// Кожа на чужом слоте уходит, на своём остаётся, и видно, какая кость открылась
-/// (решение владельца 2026-09-30: тело расы вместо имперской кожи Oblivion).
+/// Skin on another slot goes away, on its own slot it stays, and it shows which bone became exposed
+/// (owner's decision 2026-09-30: the race body instead of Oblivion's Imperial skin).
 #[test]
 fn drop_skin_removes_skin_off_the_own_slot_and_reports_the_bone() {
     let skin: BTreeSet<String> = ["ob_skin_handmale.dds".to_owned()].into();
     let mut stream = with_texture(two_hands().stream, "ob_Skin_HandMale.dds");
     let dropped = drop_skin(&mut stream, &skin, |bone| bone == "Bip01 R Hand");
-    assert_eq!(triangles(&stream), [[3, 4, 5]], "правая кисть — свой слот");
+    assert_eq!(
+        triangles(&stream),
+        [[3, 4, 5]],
+        "the right hand is its own slot"
+    );
     assert_eq!(
         dropped,
         BTreeSet::from(["Bip01 L Hand".to_owned()]),
-        "левая кисть открылась"
+        "the left hand became exposed"
     );
 }
 
-/// Контрольный опыт: форма с другой текстурой (ткань) не трогается, как бы ни лежали кости.
+/// Control: a shape with another texture (cloth) is not touched, however the bones lie.
 #[test]
 fn drop_skin_leaves_cloth_alone() {
     let skin: BTreeSet<String> = ["ob_skin_handmale.dds".to_owned()].into();
@@ -575,25 +589,25 @@ fn drop_skin_leaves_cloth_alone() {
     assert_eq!(triangles(&stream).len(), 2);
 }
 
-/// Форма, с которой ушла вся кожа, уходит из меша совсем: иначе `name_shapes` дала бы ей
-/// номер 0, а движок без `Tri <узел> 0` не находит ни одной части (игра, 2026-09-30).
+/// A shape that lost all its skin leaves the mesh entirely: otherwise `name_shapes` would give it
+/// number 0, and without `Tri <node> 0` the engine finds no part at all (game, 2026-09-30).
 #[test]
 fn a_shape_left_without_triangles_is_removed_and_numbering_starts_at_zero() {
     let skin: BTreeSet<String> = ["ob_skin_handmale.dds".to_owned()].into();
     let mut stream = with_texture(two_hands().stream, "ob_skin_handmale.dds");
     let dropped = drop_skin(&mut stream, &skin, |_| false);
-    assert_eq!(dropped.len(), 2, "обе кисти открылись");
+    assert_eq!(dropped.len(), 2, "both hands became exposed");
     assert_eq!(stream.objects_of_type::<NiTriShape>().count(), 0);
     assert_eq!(
         stream
             .objects_of_type::<tes3::nif::NiTriShapeData>()
             .count(),
         0,
-        "и её данные"
+        "and its data"
     );
 }
 
-/// Контрольный опыт: форма, в которой что-то осталось, в потоке остаётся под номером 0.
+/// Control: a shape with something left in it stays in the stream under number 0.
 #[test]
 fn a_shape_with_triangles_left_keeps_number_zero() {
     let skin: BTreeSet<String> = ["ob_skin_handmale.dds".to_owned()].into();

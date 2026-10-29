@@ -1,13 +1,15 @@
-//! Фракции (T7.4): `FACT` Oblivion → `FACT` Morrowind.
+//! Factions (T7.4): Oblivion `FACT` → Morrowind `FACT`.
 //!
-//! * **Какие.** Только те, в которых состоит переносимый NPC ([`FactionRegistry::use_faction`]);
-//!   отношения — только к другим перенесённым.
-//! * **Имя** — `FULL`, без него — `EDID`, и тогда фракция скрыта (как и с флагом скрытости 0x1).
-//! * **Ранги** по номеру `RNAM`: мужской титул, без него — женский, без обоих — имя фракции; не
-//!   больше 10 (у Oblivion тоже не больше 10 — `docs/ru/formats/tes4.md`, «Актёры»). Фракции без
-//!   рангов (392 из 476) получают один ранг с именем фракции; если NPC стоит в ранге выше последнего
-//!   известного, недостающие ранги дописываются тем же именем — номер ранга должен куда-то вести.
-//! * **Отношения** — [`reaction`]. Требования рангов и любимые навыки — по умолчанию (T7.4).
+//! * **Which.** Only those a carried-over NPC belongs to ([`FactionRegistry::use_faction`]);
+//!   reactions only toward other carried-over ones.
+//! * **Name** — `FULL`, without it `EDID`, and then the faction is hidden (as with the hidden flag
+//!   0x1).
+//! * **Ranks** by `RNAM` number: the male title, without it the female one, without both the
+//!   faction name; no more than 10 (Oblivion also has no more than 10 — `docs/en/formats/tes4.md`,
+//!   "Actors"). Factions without ranks (392 of 476) get one rank with the faction name; if an NPC
+//!   stands in a rank above the last known one, the missing ranks are filled in with the same name
+//!   — the rank number has to point somewhere.
+//! * **Reactions** — [`reaction`]. Rank requirements and favored skills are the defaults (T7.4).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -17,36 +19,37 @@ use tes4_read::{FACTION_HIDDEN, Faction};
 use crate::ids::{IdAllocator, IdError};
 use crate::weapons::display_name;
 
-/// Рангов у фракции Morrowind (`FADT`: 10 требований).
+/// Ranks of a Morrowind faction (`FADT`: 10 requirements).
 pub const MAX_RANKS: usize = 10;
 
-/// Длина имени ранга: `RNAM` — 32 байта с нулём.
+/// Rank name length: `RNAM` is 32 bytes with the zero.
 pub const MAX_RANK_NAME: usize = 31;
 
-/// Предел отношения на выходе: у ванили −3…3 почти везде (одно −8 и одно −4 из 255, `Morrowind.esm`
-/// 2026-09-27), у Oblivion −200…100 (100 у 214 из 698, −100 у 131).
+/// The output reaction limit: in vanilla it is −3…3 almost everywhere (one −8 and one −4 out of
+/// 255, `Morrowind.esm` 2026-09-27), in Oblivion −200…100 (100 in 214 of 698, −100 in 131).
 pub const MAX_REACTION: i32 = 3;
 
-/// Отношение Morrowind: ±100 Oblivion → ±3 линейно, с округлением и зажимом. Отношение влияет
-/// только на расположение к игроку-члену фракции; вступать в перенесённые фракции можно будет с
-/// диалогами (фаза 10), поэтому шкала — простейшая, в диапазоне ванили.
+/// Morrowind reaction: Oblivion ±100 → ±3 linearly, with rounding and clamping. The reaction only
+/// affects the disposition toward a player who is a faction member; joining the carried-over
+/// factions will be possible with dialogue (phase 10), so the scale is the simplest one, within the
+/// vanilla range.
 pub fn reaction(oblivion: i32) -> i32 {
     let scaled = (f64::from(oblivion) * f64::from(MAX_REACTION) / 100.0).round();
-    #[expect(clippy::cast_possible_truncation, reason = "±200 · 0.03 — единицы")]
+    #[expect(clippy::cast_possible_truncation, reason = "±200 · 0.03 is a handful")]
     let scaled = scaled as i32;
     scaled.clamp(-MAX_REACTION, MAX_REACTION)
 }
 
-/// Фракции, которые понадобились NPC.
+/// Factions the NPCs needed.
 #[derive(Debug, Default)]
 pub struct FactionRegistry {
     sources: HashMap<u32, Faction>,
-    /// Фракция → наибольший ранг, в котором стоит NPC.
+    /// Faction → the highest rank any NPC holds in it.
     used: BTreeMap<u32, usize>,
 }
 
 impl FactionRegistry {
-    /// `sources` — фракции плагина по абсолютному `FormID`.
+    /// `sources` are the plugin's factions by absolute `FormID`.
     pub fn new(sources: HashMap<u32, Faction>) -> Self {
         Self {
             sources,
@@ -54,8 +57,8 @@ impl FactionRegistry {
         }
     }
 
-    /// ID фракции Morrowind для NPC в ранге `rank` (зажимается в 0…9); `None` — фракции нет в
-    /// плагине.
+    /// The Morrowind faction ID for an NPC of rank `rank` (clamped to 0…9); `None` means the
+    /// faction is not in the plugin.
     pub fn use_faction(
         &mut self,
         form_id: u32,
@@ -70,12 +73,12 @@ impl FactionRegistry {
         ids.allocate(form_id, Some(&source.editor_id)).map(Some)
     }
 
-    /// Фракция из плагина (для выбора фракции NPC).
+    /// A faction from the plugin (for choosing an NPC's faction).
     pub fn source(&self, form_id: u32) -> Option<&Faction> {
         self.sources.get(&form_id)
     }
 
-    /// Использованные фракции в порядке `FormID`.
+    /// Used factions in `FormID` order.
     pub fn into_factions(self, ids: &mut IdAllocator) -> Result<Vec<OutFaction>, IdError> {
         let mut id_of: BTreeMap<u32, String> = BTreeMap::new();
         for &f in self.used.keys() {
@@ -108,7 +111,7 @@ impl FactionRegistry {
     }
 }
 
-/// Имена рангов 0…наибольший номер — известный или занятый NPC (`top`), не больше [`MAX_RANKS`].
+/// Rank names 0…the highest number — known or held by an NPC (`top`), no more than [`MAX_RANKS`].
 fn ranks(source: &Faction, faction_name: &str, top: usize) -> Vec<String> {
     let by_number: BTreeMap<usize, &tes4_read::FactionRank> = source
         .ranks
@@ -188,21 +191,21 @@ mod tests {
         let fg = reg.use_faction(1, 0, &mut ids).unwrap().unwrap();
         reg.use_faction(2, 0, &mut ids).unwrap();
         reg.use_faction(4, 0, &mut ids).unwrap();
-        // Ранг выше известных — дописывается именем фракции.
+        // A rank above the known ones is filled in with the faction name.
         reg.use_faction(4, 2, &mut ids).unwrap();
         assert_eq!(reg.use_faction(99, 0, &mut ids).unwrap(), None);
         let out = reg.into_factions(&mut ids).unwrap();
         assert_eq!(out.len(), 3);
         let f = out.iter().find(|f| f.id == fg).unwrap();
         assert_eq!(f.ranks, ["Associate", "Apprentice"]);
-        assert_eq!(f.reactions.len(), 1, "к неиспользованной — нет");
+        assert_eq!(f.reactions.len(), 1, "none toward an unused one");
         assert_eq!(f.reactions[0].1, -3);
         assert!(!f.hidden);
         let quest = out.iter().find(|f| f.name == "SEQuestFaction").unwrap();
-        assert!(quest.hidden, "без FULL — скрыта");
+        assert!(quest.hidden, "without FULL — hidden");
         assert_eq!(
             quest.ranks, ["SEQuestFaction"; 3],
-            "без рангов — с именем, до ранга NPC"
+            "without ranks — with the name, up to the NPC's rank"
         );
     }
 }

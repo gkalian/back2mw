@@ -6,7 +6,8 @@ fn parse<T: FromFields>(fields: &[Vec<u8>]) -> Result<T> {
     T::from_fields(&Fields::parse(&data, T::NAME)?)
 }
 
-/// Условие: `op` — номер операции (старшие 3 бита), `long` — `CTDA` (24) или `CTDT` (20).
+/// A condition: `op` is the operator number (the high 3 bits), `long` chooses `CTDA` (24) or `CTDT`
+/// (20).
 fn ctda(op: u8, flags: u8, value: u32, function: u32, p1: u32, long: bool) -> Vec<u8> {
     let mut d = vec![(op << 5) | flags, 0, 0, 0];
     for v in [value, function, p1, 7] {
@@ -41,7 +42,7 @@ fn topic_reads_type_quests_and_tolerates_missing_names() {
     assert_eq!(t.editor_id.as_deref(), Some("GREETING"));
     assert_eq!(t.name.as_deref(), Some("Greeting"));
     assert_eq!(t.quests, [0x10, 0x20]);
-    // У трёх `DIAL` `Oblivion.esm` нет `EDID`, у четырёх — `FULL`.
+    // Three `DIAL` of `Oblivion.esm` have no `EDID`, four have no `FULL`.
     let bare: Topic = parse(&[synth::field(b"DATA", &[TOPIC_COMBAT])]).unwrap();
     assert_eq!(
         (bare.editor_id, bare.name, bare.kind),
@@ -130,14 +131,14 @@ fn malformed_info_is_an_error() {
             synth::field(b"QSTI", &1u32.to_le_bytes()),
         ]
     };
-    // Операции 6 и 7 не бывает.
+    // Operators 6 and 7 do not exist.
     let mut bad_op = base();
     bad_op.push(ctda(6, 0, 0, 72, 0, true));
     assert!(matches!(
         parse::<Info>(&bad_op).unwrap_err(),
         Error::BadValue { field, .. } if &field == b"CTDA"
     ));
-    // `CTDA` не 24 байта.
+    // `CTDA` is not 24 bytes.
     let mut short = base();
     short.push(synth::field(b"CTDA", &[0; 20]));
     assert!(matches!(
@@ -148,7 +149,7 @@ fn malformed_info_is_an_error() {
             ..
         }
     ));
-    // Текст ответа без `TRDT` — не к чему привязать.
+    // A response text without `TRDT` — nothing to attach it to.
     let mut orphan = base();
     orphan.push(synth::field(b"NAM1", b"lost\0"));
     assert!(matches!(
@@ -171,9 +172,13 @@ fn quest_conditions_stop_at_the_first_stage() {
     .unwrap();
     assert!(q.starts_with_game());
     assert_eq!((q.priority, q.script), (60, Some(0x42)));
-    assert_eq!(q.conditions.len(), 1, "условие стадии — не условие квеста");
+    assert_eq!(
+        q.conditions.len(),
+        1,
+        "a stage condition is not a quest condition"
+    );
     assert_eq!(q.conditions[0].function, 69);
-    // Контроль: без флага старта квест не стартует.
+    // Control: without the start flag the quest does not start.
     let off: Quest = parse(&[
         synth::field(b"EDID", b"MQ01\0"),
         synth::field(b"DATA", &[0x04, 60]),

@@ -1,4 +1,4 @@
-//! Список worldspace для окна на реальном `Oblivion.esm`. Требует `BACK2MW_GAME_DATA`.
+//! The worldspace list for the window on the real `Oblivion.esm`. Needs `BACK2MW_GAME_DATA`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p back2mw --test real_worlds -- --ignored --nocapture
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn oblivion_worlds_are_listed_without_parsing_cells() {
     let dir = PathBuf::from(std::env::var_os("BACK2MW_GAME_DATA").expect("BACK2MW_GAME_DATA"));
     let start = Instant::now();
@@ -17,7 +17,10 @@ fn oblivion_worlds_are_listed_without_parsing_cells() {
     for w in &worlds {
         println!("{}", w.label());
     }
-    println!("worldspace без родителя: {}, за {took:?}", worlds.len());
+    println!(
+        "worldspaces without a parent: {}, in {took:?}",
+        worlds.len()
+    );
     let se = worlds.iter().find(|w| w.editor_id == "SEWorld").unwrap();
     assert_eq!(se.cities.len(), 5);
     let tamriel = worlds.iter().find(|w| w.editor_id == "Tamriel").unwrap();

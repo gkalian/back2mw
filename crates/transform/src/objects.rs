@@ -1,6 +1,6 @@
-//! Объекты с мешем: `STAT` Oblivion → `STAT` Morrowind (T1.8), `WEAP` → `WEAP` (T9.1),
-//! `ARMO`/`CLOT` → `ARMO`/`CLOT` + `BODY` (T9.2c), предметы инвентаря (T2.1), объекты мира
-//! (T2.2), уровневые списки (T2.5), зачарования и заклинания (T9.4).
+//! Objects with a mesh: Oblivion `STAT` → Morrowind `STAT` (T1.8), `WEAP` → `WEAP` (T9.1),
+//! `ARMO`/`CLOT` → `ARMO`/`CLOT` + `BODY` (T9.2c), inventory items (T2.1), world objects (T2.2),
+//! leveled lists (T2.5), enchantments and spells (T9.4).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -23,16 +23,16 @@ use crate::weapons::{display_name, weapon_kind, weapon_stats};
 use crate::world::convert_world;
 use crate::worn::{BodyMesh, convert_worn};
 
-/// Сколько примеров пропущенных записей хранит отчёт.
+/// How many examples of skipped records the report keeps.
 const EXAMPLES: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObjectsError {
-    /// Запись не разобралась (нет `EDID` и т.п.).
+    /// The record did not parse (no `EDID` and so on).
     Record { form_id: u32, message: String },
-    /// Не удалось выдать ID.
+    /// Could not issue an ID.
     Id { editor_id: String, source: IdError },
-    /// Путь меша не представим в выходной кодировке.
+    /// The mesh path cannot be represented in the output encoding.
     Unrepresentable { editor_id: String, model: String },
 }
 
@@ -54,158 +54,160 @@ impl fmt::Display for ObjectsError {
 
 impl std::error::Error for ObjectsError {}
 
-/// Записи и отчёт по ним.
+/// The records and the report on them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConvertedObjects {
     pub objects: Vec<Object>,
-    /// Уровневые списки (`LVLI` → `LEVI`, T2.5). Отдельно от `objects`: меша у них нет.
+    /// Leveled lists (`LVLI` → `LEVI`, T2.5). Separate from `objects`: they have no mesh.
     pub leveled: Vec<LeveledItem>,
-    /// Зачарования (T9.4): только те, на которые ссылается вещь плагина; вариант на каждый заряд.
+    /// Enchantments (T9.4): only those referenced by an item of the plugin; a variant per charge.
     pub enchantments: Vec<Enchantment>,
-    /// Заклинания (T9.4). Пока на них никто не ссылается (NPC — фаза 7).
+    /// Spells (T9.4). Nobody references them yet (NPCs are phase 7).
     pub spells: Vec<Spell>,
-    /// Звуки (T10.1): только те, на которые ссылается объект плагина, по возрастанию `FormID`.
+    /// Sounds (T10.1): only those referenced by an object of the plugin, by ascending `FormID`.
     pub sounds: Vec<Sound>,
-    /// Откуда брать файл каждого звука `sounds` (тот же порядок).
+    /// Where to take the file of each sound in `sounds` from (the same order).
     pub sound_origins: Vec<SoundOrigin>,
-    /// Скрипты петель звука активаторов (T10.3): по одному на звук, в порядке `sounds`.
+    /// Sound loop scripts of activators (T10.3): one per sound, in `sounds` order.
     pub scripts: Vec<Script>,
-    /// Все `SOUN` плагина по абсолютному `FormID`: ID и источник. Нужны звукам регионов (T10.2),
-    /// которые разбираются позже, со своими вариантами.
+    /// All `SOUN` of the plugin by absolute `FormID`: ID and source. Needed for region sounds
+    /// (T10.2), which are parsed later, with their own variants.
     pub sound_sources: BTreeMap<u32, (String, SourceSound)>,
-    /// Откуда взята каждая запись `objects` (тот же порядок): по `MODL` стадия мешей ищет файл.
+    /// Where each `objects` record came from (the same order): the meshes stage looks up the file
+    /// by `MODL`.
     pub origins: Vec<ObjectOrigin>,
-    /// Записи источника, которые не пишутся, а ложатся на ванильную запись Morrowind (камни душ,
-    /// T2.1a). Ссылки на их `FormID` (размещения, контейнеры) должны вести на этот ID.
+    /// Source records that are not written but map onto a vanilla Morrowind record (soul gems,
+    /// T2.1a). References to their `FormID` (placements, containers) must lead to that ID.
     pub vanilla: Vec<VanillaTarget>,
     pub report: StaticsReport,
 }
 
-/// Запись источника → ванильный ID Morrowind.
+/// Source record → vanilla Morrowind ID.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VanillaTarget {
-    /// Абсолютный `FormID`.
+    /// Absolute `FormID`.
     pub form_id: u32,
     pub editor_id: String,
     pub id: &'static str,
 }
 
-/// Исходные `EDID`, `MODL` и `ICON` записи.
+/// The record's original `EDID`, `MODL` and `ICON`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectOrigin {
-    /// Абсолютный `FormID` (после отображения через порядок загрузки).
+    /// Absolute `FormID` (after mapping through the load order).
     pub form_id: u32,
     pub editor_id: String,
-    /// `MODL` как в источнике, относительно `Meshes`.
+    /// `MODL` as in the source, relative to `Meshes`.
     pub model: String,
-    /// `ICON` как в источнике, относительно `Textures\Menus\Icons`; есть только у предметов,
-    /// которые переносятся как предметы.
+    /// `ICON` as in the source, relative to `Textures\Menus\Icons`; only items carried over as
+    /// items have it.
     pub icon: Option<String>,
-    /// Картинки из текста книги: `src` как в источнике, относительно `Textures\Menus\` (T2.1a).
+    /// Images from the book text: `src` as in the source, relative to `Textures\Menus\` (T2.1a).
     pub book_art: Vec<String>,
-    /// У записи `BODY`: меш на теле, который стадия мешей собирает на скелете Morrowind;
-    /// `model` тогда — та же модель источника.
+    /// For a `BODY` record: the body mesh the meshes stage builds on the Morrowind skeleton;
+    /// `model` is then the same source model.
     pub body: Option<BodyMesh>,
-    /// У дерева (`TREE`, T2.4g): меш не конвертируется, а строится по `.spt`; `model` тогда —
-    /// путь `.spt` в архиве (`trees\…`, не относительно `Meshes`).
+    /// For a tree (`TREE`, T2.4g): the mesh is not converted but built from the `.spt`; `model` is
+    /// then the `.spt` path in the archive (`trees\…`, not relative to `Meshes`).
     pub tree: Option<TreeSource>,
-    /// У двери (`DOOR`, T2.6b): путь её меша в плагине (относительно `Meshes\`). Меш двери
-    /// собирается отдельно от меша той же модели у других записей: начало координат переносится
-    /// в петлю створки.
+    /// For a door (`DOOR`, T2.6b): the path of its mesh in the plugin (relative to `Meshes\`). A
+    /// door's mesh is built separately from the mesh of the same model used by other records: its
+    /// origin is moved to the leaf's hinge.
     pub door: Option<String>,
 }
 
-/// Что нужно стадии мешей, чтобы построить дерево.
+/// What the meshes stage needs to build a tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeSource {
-    /// Путь меша в плагине (относительно `Meshes\`), тот же, что у записи `STAT`.
+    /// Mesh path in the plugin (relative to `Meshes\`), the same as the `STAT` record's.
     pub mesh: String,
-    /// Семя варианта из `SNAM` записи. `None` — семя самой `.spt` (`SNAM` пуст или там 0 / 1:
-    /// движок их не принимает).
+    /// The variant's seed from the record's `SNAM`. `None` means the `.spt`'s own seed (`SNAM` is
+    /// empty or holds 0 / 1: the engine does not accept those).
     pub seed: Option<i32>,
-    /// `ICON` записи — текстура листвы, относительно `Textures\Trees\Leaves\`.
+    /// The record's `ICON` — the foliage texture, relative to `Textures\Trees\Leaves\`.
     pub leaves: Option<String>,
-    /// Номер семени в `SNAM`: по нему ссылка с `XSED` находит свой вариант.
+    /// The seed number in `SNAM`: a reference with `XSED` finds its variant by it.
     pub variant: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StaticsReport {
-    /// Записи, чей мастер не установлен (`FormID` не отобразился): пропущены.
+    /// Records whose master is not installed (the `FormID` did not map): skipped.
     pub unresolved_master: usize,
-    /// Записи, пропущенные в мягком режиме, с причиной (не ASCII в пути, конфликт ID), и потери
-    /// при переносе оружия (урон упёрся в предел, имя обрезано).
+    /// Records skipped in lenient mode, with the reason (non-ASCII in a path, an ID conflict), and
+    /// losses in carrying over weapons (damage hit the limit, the name was truncated).
     pub problems: Vec<String>,
-    /// Записи, отброшенные фильтром `EDID` (см. [`convert_statics_filtered`]).
+    /// Records dropped by the `EDID` filter (see [`convert_statics_filtered`]).
     pub filtered_out: usize,
-    /// Все записи источника выбранных типов, включая пустые и без меша.
+    /// All source records of the chosen types, including empty ones and those without a mesh.
     pub seen: usize,
-    /// Записи без данных (удалённые): пропущены.
+    /// Records without data (deleted): skipped.
     pub empty: usize,
-    /// Записи без `MODL`: пропущены, не ошибка.
+    /// Records without `MODL`: skipped, not an error.
     pub without_model: usize,
-    /// Первые `EDID` пропущенных без `MODL`.
+    /// The first `EDID`s of those skipped for lack of `MODL`.
     pub without_model_examples: Vec<String>,
-    /// `WEAP`, перенесённые как оружие.
+    /// `WEAP` carried over as weapons.
     pub weapons: usize,
-    /// `ARMO`/`CLOT`, перенесённые как броня или одежда (вещей может быть больше: перчатки —
-    /// пара).
+    /// `ARMO`/`CLOT` carried over as armor or clothing (there can be more items: gauntlets are a
+    /// pair).
     pub worn: usize,
-    /// Предметы (`MISC`, `KEYM`, `SGST`, `SLGM`, `BOOK`, `ALCH`, `INGR`, `APPA`, `AMMO`),
-    /// перенесённые как предметы.
+    /// Items (`MISC`, `KEYM`, `SGST`, `SLGM`, `BOOK`, `ALCH`, `INGR`, `APPA`, `AMMO`) carried over
+    /// as items.
     pub items: usize,
-    /// Камни душ (`SLGM`), отображённые на ванильные камни Morrowind (см. `vanilla`).
+    /// Soul gems (`SLGM`) mapped onto vanilla Morrowind soul gems (see `vanilla`).
     pub soul_gems: usize,
-    /// Объекты мира (`ACTI`, `DOOR`, `CONT`, `LIGH`, `FLOR`, `FURN`), перенесённые своими
-    /// записями (T2.2).
+    /// World objects (`ACTI`, `DOOR`, `CONT`, `LIGH`, `FLOR`, `FURN`) carried over as records of
+    /// their own (T2.2).
     pub world: usize,
-    /// Деревья (`TREE`), перенесённые как `STAT` с мешем по `.spt` (T2.4g).
+    /// Trees (`TREE`) carried over as `STAT` with a mesh from the `.spt` (T2.4g).
     pub trees: usize,
-    /// Их варианты по семенам `SNAM` — столько `STAT` деревьев.
+    /// Their variants by `SNAM` seeds — that many tree `STAT`s.
     pub tree_variants: usize,
-    /// Свет без модели (невидимый источник): переносится без меша, в `without_model` не входит.
+    /// Lights without a model (an invisible source): carried over without a mesh, not counted in
+    /// `without_model`.
     pub lights_without_model: usize,
-    /// Предметы в контейнерах и растениях, получившие ID.
+    /// Items in containers and plants that got an ID.
     pub contents_resolved: usize,
-    /// Предметы в контейнерах, которым ID не нашёлся: запись без модели, отброшенная фильтром,
-    /// из не выбранного плагина или опустевший уровневый список.
+    /// Items in containers for which no ID was found: a record without a model, dropped by the
+    /// filter, from an unselected plugin, or an emptied leveled list.
     pub contents_unresolved: usize,
-    /// `LVLI` источника, включая отброшенные фильтром.
+    /// Source `LVLI`, including those dropped by the filter.
     pub leveled_seen: usize,
-    /// Строки списков, чей предмет не нашёлся или не стал записью (в том числе опустевший
-    /// список): выброшены.
+    /// List rows whose item was not found or did not become a record (including an emptied list):
+    /// dropped.
     pub leveled_entries_unresolved: usize,
-    /// Списки, оставшиеся пустыми: не пишутся, ссылки на них убраны.
+    /// Lists left empty: not written, references to them removed.
     pub leveled_empty: usize,
-    /// Золото (`Gold001`), отображённое на ванильное `Gold_001`.
+    /// Gold (`Gold001`) mapped onto the vanilla `Gold_001`.
     pub gold: usize,
-    /// Записи со скриптом (`SCRI`): скрипты не переносятся, записи — да.
+    /// Records with a script (`SCRI`): the scripts are not carried over, the records are.
     pub dropped_scripts: usize,
-    /// Вещи с зачарованием (`ENAM`), которое не перенеслось: зачарования нет в плагине или ни
-    /// один его эффект не ложится на Morrowind.
+    /// Items with an enchantment (`ENAM`) that did not carry over: the enchantment is not in the
+    /// plugin or none of its effects maps onto Morrowind.
     pub dropped_enchantments: usize,
-    /// Записанные `ENCH` (с вариантами по заряду).
+    /// Written `ENCH` (with variants by charge).
     pub enchantments: usize,
-    /// `SPEL` источника, включая отброшенные фильтром.
+    /// Source `SPEL`, including those dropped by the filter.
     pub spells_seen: usize,
-    /// Записанные `SPEL`.
+    /// Written `SPEL`.
     pub spells: usize,
-    /// `SPEL` без аналога или без единого переносимого эффекта: не пишутся.
+    /// `SPEL` without an equivalent or without a single convertible effect: not written.
     pub spells_dropped: usize,
-    /// `SOUN` источника (T10.1).
+    /// Source `SOUN` (T10.1).
     pub sounds_seen: usize,
-    /// Записанные `SOUN`.
+    /// Written `SOUN`.
     pub sounds: usize,
-    /// Ссылки на звук, которые не нашли `SOUN` в этом плагине: объект без звука.
+    /// Sound references that found no `SOUN` in this plugin: the object is left without a sound.
     pub sounds_unresolved: usize,
-    /// Звуки, которым у Morrowind нет поля: открытие и закрытие контейнеров.
+    /// Sounds for which Morrowind has no field: container opening and closing.
     pub sounds_dropped: usize,
-    /// Активаторы, получившие скрипт петли своего звука (T10.3).
+    /// Activators that got a loop script for their sound (T10.3).
     pub activator_loops: usize,
 }
 
-/// Все `STAT` плагина → записи цели. Порядок — как в файле; ID — функция от FormID, а не
-/// от порядка (`IdAllocator`).
+/// All `STAT` of the plugin → target records. In file order; the ID is a function of the FormID,
+/// not of the order (`IdAllocator`).
 pub fn convert_statics(
     plugin: &Plugin,
     ids: &mut IdAllocator,
@@ -213,8 +215,8 @@ pub fn convert_statics(
     convert_statics_filtered(plugin, ids, |_| true)
 }
 
-/// То же, но берёт только записи, чей `EDID` одобрил `keep` (срез M1, `--only`). Строгий режим,
-/// `FormID` как в файле — см. [`convert_statics_mapped`].
+/// The same, but takes only records whose `EDID` `keep` approved (the M1 slice, `--only`). Strict
+/// mode, `FormID` as in the file — see [`convert_statics_mapped`].
 pub fn convert_statics_filtered(
     plugin: &Plugin,
     ids: &mut IdAllocator,
@@ -223,11 +225,11 @@ pub fn convert_statics_filtered(
     convert_statics_mapped(plugin, ids, keep, Some, true)
 }
 
-/// Общий вариант для нескольких плагинов. `map_form_id` переводит `FormID` файла в абсолютный
-/// (`None` — мастер не установлен, запись пропускается). `strict = false` (мягкий режим) не
-/// обрывает прогон на записи, которую нельзя представить (путь не ASCII) или чей ID конфликтует
-/// с уже выданным (другой `EDID` у переопределения): запись пропускается и попадает в
-/// `report.problems`.
+/// The shared variant for several plugins. `map_form_id` turns a file `FormID` into an absolute one
+/// (`None` means the master is not installed, the record is skipped). `strict = false` (lenient
+/// mode) does not abort the run on a record that cannot be represented (a non-ASCII path) or whose
+/// ID conflicts with an already issued one (another `EDID` on an override): the record is skipped
+/// and goes into `report.problems`.
 pub fn convert_statics_mapped(
     plugin: &Plugin,
     ids: &mut IdAllocator,
@@ -238,20 +240,20 @@ pub fn convert_statics_mapped(
     convert_models_mapped(plugin, ids, keep, map_form_id, strict, RecordKinds::Statics)
 }
 
-/// Какие записи плагина дают объекты Morrowind.
+/// Which plugin records give Morrowind objects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordKinds {
-    /// Только `STAT`.
+    /// Only `STAT`.
     Statics,
-    /// Любая запись с моделью из [`MODEL_RECORDS`] (и свет без модели). Оружие, броня, одежда,
-    /// предметы инвентаря и объекты мира становятся своими записями Morrowind; `STAT` и `GRAS` —
-    /// `STAT`.
+    /// Any record with a model from [`MODEL_RECORDS`] (and lights without a model). Weapons, armor,
+    /// clothing, inventory items and world objects become Morrowind records of their own; `STAT`
+    /// and `GRAS` become `STAT`.
     AllWithModels,
 }
 
-/// Типы записей Oblivion, у которых есть модель и которые мы берём в режиме
-/// [`RecordKinds::AllWithModels`]. Существа и NPC не входят (модели со скелетом и скиннингом).
-/// Дерево (`TREE`) — `STAT` с мешем, построенным по `.spt` (T2.4g).
+/// Oblivion record types that have a model and that we take in [`RecordKinds::AllWithModels`] mode.
+/// Creatures and NPCs are not included (models with a skeleton and skinning). A tree (`TREE`)
+/// becomes a `STAT` with a mesh built from the `.spt` (T2.4g).
 pub const MODEL_RECORDS: [(&[u8; 4], &str); 21] = [
     (b"STAT", "STAT"),
     (b"ACTI", "ACTI"),
@@ -285,9 +287,9 @@ impl RecordKinds {
     }
 }
 
-/// `EDID` и мировая модель записи. У `ARMO` и `CLOT` `MODL` — модель на теле (со скиннингом),
-/// а мировая (лежащая на земле) — `MOD2` мужская, `MOD4` женская: берётся она, при её
-/// отсутствии — `MODL`.
+/// The record's `EDID` and world model. For `ARMO` and `CLOT` `MODL` is the body model (skinned),
+/// and the world one (lying on the ground) is `MOD2` male, `MOD4` female: that one is taken,
+/// falling back to `MODL` when absent.
 fn editor_id_and_model(
     record: &tes4_read::Record,
     name: &'static str,
@@ -304,7 +306,7 @@ fn editor_id_and_model(
         .iter()
         .filter_map(|t| fields.opt_zstring(*t))
         .find(|m| !m.is_empty());
-    // `MODL` дерева записан относительно `Trees\` и начинается с `\` (`\Dbush16.spt`).
+    // A tree's `MODL` is written relative to `Trees\` and starts with `\` (`\Dbush16.spt`).
     let model = if record.header.tag == *b"TREE" {
         model.map(|m| format!("trees\\{}", m.trim_start_matches(['\\', '/'])))
     } else {
@@ -313,7 +315,8 @@ fn editor_id_and_model(
     Ok((editor_id, model))
 }
 
-/// Оружие Morrowind из `WEAP` Oblivion; ID и путь меша уже выданы. Ошибка — текст для отчёта.
+/// A Morrowind weapon from an Oblivion `WEAP`; the ID and mesh path are already issued. The error
+/// is text for the report.
 fn weapon(
     record: &tes4_read::Record,
     id: String,
@@ -358,8 +361,8 @@ fn weapon(
     ))
 }
 
-/// Путь иконки в плагине и путь источника (для стадии иконок). Непредставимая — без иконки,
-/// с замечанием.
+/// The icon path in the plugin and the source path (for the icons stage). One that cannot be
+/// represented gives no icon, with a note.
 fn icon(
     raw: Option<String>,
     tag: &str,
@@ -381,7 +384,7 @@ fn icon(
     }
 }
 
-/// Броня или одежда: вещи и части тела с их происхождением.
+/// Armor or clothing: the items and body parts with their origin.
 fn worn(
     record: &tes4_read::Record,
     form_id: u32,
@@ -433,7 +436,7 @@ fn worn(
     Ok(out)
 }
 
-/// Предмет инвентаря (T2.1): объект, источник иконки, картинки книги.
+/// An inventory item (T2.1): the object, the icon source, the book images.
 fn item(
     record: &tes4_read::Record,
     name: &str,
@@ -455,9 +458,9 @@ fn item(
     Ok((converted.object, icon_source, converted.book_art))
 }
 
-/// Звуки объекта мира (T10.1), `FormID` `SOUN` как в файле: у двери — открытие и закрытие, у
-/// света — петля в `SNAM`, у активатора — петля скриптом (T10.3). Звуки, которым у Morrowind нет
-/// поля, считаются в `sounds_dropped`.
+/// Sounds of a world object (T10.1), `SOUN` `FormID`s as in the file: for a door — opening and
+/// closing, for a light — a loop in `SNAM`, for an activator — a loop by script (T10.3). Sounds for
+/// which Morrowind has no field are counted in `sounds_dropped`.
 #[derive(Debug, Clone, Copy, Default)]
 struct WorldSounds {
     open: Option<u32>,
@@ -465,8 +468,8 @@ struct WorldSounds {
     looped: Option<u32>,
 }
 
-/// Объект мира (T2.2): объект, источник иконки (у переносного света), содержимое контейнера,
-/// звуки.
+/// A world object (T2.2): the object, the icon source (for a carriable light), the container
+/// contents, the sounds.
 fn world(
     record: &tes4_read::Record,
     name: &str,
@@ -485,7 +488,7 @@ fn world(
             open: source.sound,
             ..WorldSounds::default()
         },
-        // У `ACTI` поля закрытия нет: `close_sound` у него всегда пуст.
+        // `ACTI` has no closing field: its `close_sound` is always empty.
         "ACTI" => WorldSounds {
             looped: source.sound,
             ..WorldSounds::default()
@@ -509,8 +512,8 @@ fn world(
     Ok((converted.object, icon_source, converted.contents, sounds))
 }
 
-/// `SOUN` → ожидающий звук: пишется, только если на него сошлётся объект плагина. Фильтр `EDID`
-/// не применяется — звук нужен, если нужен объект с ним.
+/// `SOUN` → a pending sound: written only if an object of the plugin references it. The `EDID`
+/// filter does not apply — the sound is needed if an object with it is needed.
 fn sound_record(
     record: &tes4_read::Record,
     ids: &mut IdAllocator,
@@ -555,18 +558,18 @@ fn sound_record(
     Ok(())
 }
 
-/// Какое поле объекта получает звук.
+/// Which object field gets the sound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SoundSlot {
     Open,
     Close,
-    /// Петля активатора: не поле звука, а скрипт `SCRI` (T10.3).
+    /// An activator's loop: not a sound field but an `SCRI` script (T10.3).
     Loop,
 }
 
-/// Ссылки на звуки → ID, когда весь плагин прочитан (`SOUN` может стоять в файле после двери).
-/// `refs` — номер объекта в `out.objects`, поле и `FormID` звука как в файле. Пишутся только
-/// звуки, на которые сослались, по возрастанию `FormID`.
+/// Sound references → IDs once the whole plugin is read (a `SOUN` can come after the door in the
+/// file). `refs` holds the object's number in `out.objects`, the field and the sound's `FormID` as
+/// in the file. Only referenced sounds are written, by ascending `FormID`.
 fn resolve_sounds(
     out: &mut ConvertedObjects,
     pending: &BTreeMap<u32, (String, SourceSound)>,
@@ -582,8 +585,8 @@ fn resolve_sounds(
         }
     }
     for (file_form_id, count) in missing {
-        // Звук из другого плагина: здесь его не собрать (как у зачарований, для модов не
-        // проверено).
+        // A sound from another plugin: it cannot be assembled here (as with enchantments; not
+        // verified for mods).
         out.report.sounds_unresolved += count;
         out.report.problems.push(lang::tr!(
             "SOUN {file_form_id:08X}: не в этом плагине — {count} объектов без звука",
@@ -625,19 +628,20 @@ fn resolve_sounds(
     out.report.sounds = out.sounds.len();
 }
 
-/// Дерево (T2.4g): варианты по семенам `SNAM` — у каждого семя, текстура листвы и путь меша.
-/// `model` — путь `.spt` в архиве.
+/// A tree (T2.4g): variants by the `SNAM` seeds — each with a seed, a foliage texture and a mesh
+/// path. `model` is the `.spt` path in the archive.
 ///
-/// Каждое семя — своё дерево, а значит, свой `STAT`: у движка экземпляр берёт
-/// `SNAM[XSED mod n]` (`0x4ba060`), у 57 из 142 записей `Oblivion.esm` семян 4–7. Семя 0 или 1
-/// движок не принимает и берёт семя `.spt`; `SNAM` пуст — один вариант с семенем `.spt`.
+/// Each seed is its own tree, and so its own `STAT`: in the engine an instance takes
+/// `SNAM[XSED mod n]` (`0x4ba060`); 57 of 142 records of `Oblivion.esm` have 4–7 seeds. The engine
+/// does not accept seed 0 or 1 and takes the `.spt` seed; an empty `SNAM` gives one variant with
+/// the `.spt` seed.
 fn tree(record: &tes4_read::Record, model: &str) -> Result<Vec<TreeSource>, String> {
     let fields = tes4_read::Fields::parse(&record.data, "TREE").map_err(|e| e.to_string())?;
     let seeds: Vec<Option<i32>> = fields
         .first(*b"SNAM")
         .unwrap_or_default()
         .chunks_exact(4)
-        .map(|b| Some(i32::from_le_bytes(b.try_into().expect("4 байта"))))
+        .map(|b| Some(i32::from_le_bytes(b.try_into().expect("4 bytes"))))
         .map(|s| s.filter(|&s| s != 0 && s != 1))
         .collect();
     let seeds = if seeds.is_empty() { vec![None] } else { seeds };
@@ -663,22 +667,24 @@ fn tree(record: &tes4_read::Record, model: &str) -> Result<Vec<TreeSource>, Stri
         .collect()
 }
 
-/// Зачарование источника, ждущее вещей: пишется, только если на него сошлётся вещь плагина, и в
-/// стольких вариантах, сколько у этих вещей разных зарядов.
+/// A source enchantment waiting for items: written only if an item of the plugin references it, and
+/// in as many variants as those items have different charges.
 struct PendingEnchantment {
     id: String,
     source: SourceEnchantment,
 }
 
-/// Что читается из `ENCH` и `SPEL` по ходу обхода.
+/// What is read from `ENCH` and `SPEL` during the traversal.
 struct Magic {
-    /// По абсолютному `FormID`.
+    /// By absolute `FormID`.
     enchantments: HashMap<u32, PendingEnchantment>,
-    /// Вещи с зачарованием: номер в `out.objects`, `FormID` `ENCH` как в файле, заряд `ANAM`.
+    /// Items with an enchantment: the number in `out.objects`, the `ENCH` `FormID` as in the file,
+    /// the `ANAM` charge.
     enchanted: Vec<(usize, u32, Option<u16>)>,
 }
 
-/// `ENCH` или `SPEL`. Зачарование не проходит фильтр `EDID`: оно нужно, если нужна вещь с ним.
+/// `ENCH` or `SPEL`. An enchantment does not go through the `EDID` filter: it is needed if an item
+/// with it is needed.
 fn magic_record(
     record: &tes4_read::Record,
     ids: &mut IdAllocator,
@@ -753,7 +759,8 @@ fn magic_record(
     Ok(())
 }
 
-/// `ENAM` и `ANAM` записи: `FormID` зачарования (как в файле) и заряд вещи.
+/// The record's `ENAM` and `ANAM`: the enchantment's `FormID` (as in the file) and the item's
+/// charge.
 fn enchant_ref(record: &tes4_read::Record) -> Option<(u32, Option<u16>)> {
     let fields = tes4_read::Fields::parse(&record.data, "ENAM").ok()?;
     let ench = fields
@@ -769,7 +776,8 @@ fn enchant_ref(record: &tes4_read::Record) -> Option<(u32, Option<u16>)> {
     Some((ench, charge))
 }
 
-/// Вещь, у которой может быть зачарование в Morrowind: оружие (и стрелы), броня, одежда, книга.
+/// An item that can have an enchantment in Morrowind: a weapon (and arrows), armor, clothing, a
+/// book.
 fn set_enchantment(object: &mut Object, id: &str) -> bool {
     let slot = match object {
         Object::Weapon(w) => &mut w.enchantment,
@@ -785,9 +793,10 @@ fn set_enchantment(object: &mut Object, id: &str) -> bool {
     true
 }
 
-/// Зачарования → ID у вещей, когда весь плагин прочитан. Одно `ENCH` на вещах с разными
-/// зарядами (`ANAM`) даёт вариант на каждый заряд: у Morrowind заряд — свойство зачарования.
-/// Порядок вариантов — по возрастанию заряда, первый получает ID записи, прочие — `obc1_…`.
+/// Enchantments → IDs on items once the whole plugin is read. One `ENCH` on items with different
+/// charges (`ANAM`) gives a variant per charge: in Morrowind the charge is a property of the
+/// enchantment. Variants are ordered by ascending charge, the first gets the record's ID, the rest
+/// `obc1_…`.
 fn resolve_enchantments(
     out: &mut ConvertedObjects,
     magic: Magic,
@@ -805,7 +814,8 @@ fn resolve_enchantments(
     }
     for (form_id, items) in by_enchantment {
         let Some(pending) = magic.enchantments.get(&form_id) else {
-            // Зачарование из другого плагина: здесь его не собрать (не проверено для модов).
+            // An enchantment from another plugin: it cannot be assembled here (not verified for
+            // mods).
             out.report.dropped_enchantments += items.len();
             out.report.problems.push(lang::tr!(
                 "ENCH {form_id:08X}: не в этом плагине — {} вещей без зачарования",
@@ -861,8 +871,8 @@ fn resolve_enchantments(
     out.report.enchantments = out.enchantments.len();
 }
 
-/// `LVLI` → ID и отложенный список: строки переводятся в ID, когда весь плагин прочитан
-/// (предмет может стоять в файле после списка).
+/// `LVLI` → an ID and a pending list: the rows are turned into IDs once the whole plugin is read
+/// (an item can come after the list in the file).
 fn leveled_list(
     record: &tes4_read::Record,
     ids: &mut IdAllocator,
@@ -899,7 +909,7 @@ fn leveled_list(
         report.filtered_out += 1;
         return Ok(());
     }
-    // Переопределение списка в моде получает ID мастера — как у объектов.
+    // An override of a list in a mod gets the master's ID — as for objects.
     let reused = ids.id_for(form_id).map(str::to_owned);
     match reused.map_or_else(|| ids.allocate(form_id, Some(&source.editor_id)), Ok) {
         Ok(id) => pending.push((id, source)),
@@ -911,12 +921,13 @@ fn leveled_list(
     Ok(())
 }
 
-/// Списки и содержимое контейнеров → ID, когда весь плагин прочитан. `pending` — номер объекта
-/// в `out.objects` и содержимое с `FormID` файла, `lists` — ID списка и его источник,
-/// `assigned` — ID, выданные записям этого плагина.
+/// Lists and container contents → IDs once the whole plugin is read. `pending` is the object's
+/// number in `out.objects` and the contents with file `FormID`s, `lists` the list ID and its
+/// source, `assigned` the IDs issued to this plugin's records.
 ///
-/// Золото узнаётся по `FormID` (движок Oblivion знает его так же), а не через `vanilla`: оно
-/// живёт в `Oblivion.esm`, и мод, который кладёт золото в сундук, свой `vanilla` не имеет.
+/// Gold is recognized by `FormID` (the Oblivion engine knows it the same way), not through
+/// `vanilla`: it lives in `Oblivion.esm`, and a mod that puts gold into a chest has no `vanilla` of
+/// its own.
 fn resolve_contents(
     out: &mut ConvertedObjects,
     pending: Vec<(usize, Vec<ContainerItem>)>,
@@ -969,10 +980,10 @@ fn resolve_contents(
         }
     }
 
-    // ID выдаётся до конвертации записи, и запись, которая потом не сконвертировалась (мягкий
-    // режим), оставляет ID без записи: ссылка на него битая. Такие ссылки и пустые списки (все
-    // строки не нашлись) уходят каскадом. Записи других плагинов прогона здесь не проверить —
-    // это делает прогон целиком.
+    // An ID is issued before the record is converted, and a record that then fails to convert
+    // (lenient mode) leaves an ID without a record: a reference to it is broken. Such references
+    // and empty lists (all rows not found) go away in a cascade. Records of other plugins of the
+    // run cannot be checked here — the whole run does that.
     let produced: HashSet<String> = out
         .objects
         .iter()
@@ -994,8 +1005,8 @@ fn resolve_contents(
     out.report.contents_unresolved += pruned.container_items;
 }
 
-/// Камень душ, который ложится на ванильный (T2.1a): запись не пишется. `Ok(None)` — не
-/// ложится, переносится как обычный предмет.
+/// A soul gem that maps onto a vanilla one (T2.1a): the record is not written. `Ok(None)` means it
+/// does not map and is carried over as an ordinary item.
 fn vanilla_soul_gem(
     record: &tes4_read::Record,
     form_id: u32,
@@ -1027,7 +1038,7 @@ fn vanilla_soul_gem(
     }))
 }
 
-/// Общее ядро: `kinds` выбирает типы записей.
+/// The shared core: `kinds` chooses the record types.
 pub fn convert_models_mapped(
     plugin: &Plugin,
     ids: &mut IdAllocator,
@@ -1112,8 +1123,8 @@ pub fn convert_models_mapped(
             out.report.filtered_out += 1;
             continue;
         }
-        // Золото — не предмет, а деньги: у Morrowind это ванильное `Gold_001`, своя запись
-        // подобралась бы безделушкой.
+        // Gold is not an item but money: in Morrowind it is the vanilla `Gold_001`, a record of our
+        // own would be picked up as a trinket.
         if name == "MISC" && form_id == GOLD_FORM_ID && kinds == RecordKinds::AllWithModels {
             out.report.gold += 1;
             out.vanilla.push(VanillaTarget {
@@ -1137,8 +1148,8 @@ pub fn convert_models_mapped(
                 }
             }
         }
-        // Свет без модели — невидимый источник (1 328 из 1 625 `LIGH` в `Oblivion.esm`): у
-        // Morrowind такие тоже есть (144 из 574), запись без `MODL` законна.
+        // A light without a model is an invisible source (1,328 of 1,625 `LIGH` in `Oblivion.esm`):
+        // Morrowind has them too (144 of 574), a record without `MODL` is legitimate.
         let light = name == "LIGH" && kinds == RecordKinds::AllWithModels;
         let (model, mesh) = match model.filter(|m| !m.is_empty()) {
             Some(model) => {
@@ -1164,9 +1175,9 @@ pub fn convert_models_mapped(
                 continue;
             }
         };
-        // Переопределение (тот же абсолютный FormID, уже выданный мастеру в этом прогоне)
-        // получает ID мастера, даже если `EDID` в моде другой: Morrowind сливает записи по ID,
-        // и только так запись мода заменит запись мастера, а не встанет рядом.
+        // An override (the same absolute FormID, already issued to the master in this run) gets the
+        // master's ID even if the mod's `EDID` differs: Morrowind merges records by ID, and only
+        // this way will the mod's record replace the master's instead of standing next to it.
         let reused = ids.id_for(form_id).map(str::to_owned);
         let id = match reused.map_or_else(|| ids.allocate(form_id, Some(&editor_id)), Ok) {
             Ok(id) => id,
@@ -1198,7 +1209,7 @@ pub fn convert_models_mapped(
                 variants
                     .into_iter()
                     .map(|source| {
-                        // Первое семя — ID записи, прочие — производные (`obt1_…`).
+                        // The first seed is the record's ID, the others are derived (`obt1_…`).
                         let id = match source.variant {
                             0 => id.clone(),
                             k => crate::ids::variant_id(
@@ -1239,7 +1250,7 @@ pub fn convert_models_mapped(
             "ACTI" | "DOOR" | "CONT" | "LIGH" | "FLOR" | "FURN"
                 if kinds == RecordKinds::AllWithModels =>
             {
-                // У двери свой меш (T2.6b): его начало координат переносится в петлю створки.
+                // A door has its own mesh (T2.6b): its origin is moved to the leaf's hinge.
                 let door = (name == "DOOR")
                     .then(|| crate::paths::door_mesh_path(&model))
                     .flatten();
@@ -1281,7 +1292,7 @@ pub fn convert_models_mapped(
                     None
                 };
                 for (object, origin) in list {
-                    // Пара перчаток — обе вещи с одним зачарованием; части тела — без.
+                    // A pair of gauntlets — both items with one enchantment; body parts — without.
                     if let Some((ench, charge)) = enchanted
                         && matches!(
                             object,

@@ -1,14 +1,14 @@
-//! T2.6a: перепись дверей `Oblivion.esm` — что двигает последовательность `Open` их мешей, где
-//! у створки петля относительно начала координат меша, стоит ли в том же меше рама, сколько
-//! дверей служат телепортом; T2.6b — куда сдвигаются ссылки на двери с перенесённой петлёй.
-//! Требует `BACK2MW_GAME_DATA` с `Oblivion.esm` и архивами мешей.
+//! T2.6a: a census of `Oblivion.esm` doors — what the `Open` sequence of their meshes moves, where
+//! the leaf's hinge is relative to the mesh origin, whether the same mesh has a frame, how many
+//! doors are teleports; T2.6b — where references to doors with a moved hinge shift. Needs
+//! `BACK2MW_GAME_DATA` with `Oblivion.esm` and the mesh archives.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
 //!   cargo test -p back2mw --test real_doors -- --ignored --nocapture
 //! ```
 //!
-//! Числа отсюда — в `docs/ru/formats/nif-oblivion.md`, «Двери: что двигает `Open`».
+//! The numbers from here are in `docs/en/formats/nif-oblivion.md`, "Doors: what `Open` moves".
 
 mod common;
 
@@ -22,22 +22,22 @@ use mesh_convert::read::parse_with_offsets;
 use tes4_read::{BsaIndex, Fields, FromFields, Placement, Plugin};
 use transform::exterior::{ExteriorSource, reference_offset};
 
-/// Вид двери для отчёта.
+/// Door kind for the report.
 fn class(motion: Option<&DoorMotion>) -> &'static str {
     match fate(motion) {
-        DoorFate::NoOpen => "без Open",
-        DoorFate::Still => "Open ничего не двигает",
-        DoorFate::Rehinged => "петля смещена, рамы нет",
-        DoorFate::Framed => "петля + рама в меше",
-        DoorFate::AtOrigin => "петля в начале координат",
-        DoorFate::Leaves => "несколько створок",
-        DoorFate::Sliding => "сдвиг (решётка)",
-        DoorFate::Tilting => "наклон (люк)",
+        DoorFate::NoOpen => "no Open",
+        DoorFate::Still => "Open moves nothing",
+        DoorFate::Rehinged => "hinge offset, no frame",
+        DoorFate::Framed => "hinge + frame in the mesh",
+        DoorFate::AtOrigin => "hinge at the origin",
+        DoorFate::Leaves => "several leaves",
+        DoorFate::Sliding => "slide (grate)",
+        DoorFate::Tilting => "tilt (hatch)",
     }
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn census_of_door_motion() {
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).expect("Oblivion.esm");
     let plugin = Plugin::parse(&bytes).expect("Plugin::parse");
@@ -48,7 +48,7 @@ fn census_of_door_motion() {
         archives.push((r, idx));
     }
 
-    // Двери: FormID → (EDID, модель).
+    // Doors: FormID → (EDID, model).
     let mut doors: BTreeMap<u32, (String, String)> = BTreeMap::new();
     let mut without_model = 0usize;
     for r in plugin.records_of(*b"DOOR") {
@@ -62,7 +62,7 @@ fn census_of_door_motion() {
         }
     }
 
-    // Меш → движение. Ошибка разбора и отсутствие в архиве — отдельно.
+    // Mesh → motion. A parse error and absence from the archive are counted separately.
     let models: BTreeSet<&str> = doors.values().map(|(_, m)| m.as_str()).collect();
     let mut motions: BTreeMap<&str, Option<DoorMotion>> = BTreeMap::new();
     let (mut missing, mut unreadable) = (Vec::new(), Vec::new());
@@ -81,14 +81,14 @@ fn census_of_door_motion() {
             Ok((source, offsets)) => {
                 *versions.entry(source.header.version).or_default() += 1;
                 let seq = sequences(&data, &source, &offsets)
-                    .unwrap_or_else(|e| panic!("{model}: анимация не читается: {e}"));
+                    .unwrap_or_else(|e| panic!("{model}: animation cannot be read: {e}"));
                 motions.insert(model, door_motion(&source, &seq));
             }
             Err(e) => unreadable.push(format!("{model}: {e}")),
         }
     }
 
-    // Ссылки на двери во всём плагине: телепорт или нет.
+    // References to doors in the whole plugin: teleport or not.
     let mut refs: BTreeMap<u32, (usize, usize)> = BTreeMap::new();
     for r in plugin.records_of(*b"REFR") {
         let p = Placement::from_record(r).expect("REFR");
@@ -101,10 +101,10 @@ fn census_of_door_motion() {
             }
         }
     }
-    // То же в `SEWorld` с интерьерами, достижимыми дверями, — то, что переносится сейчас.
+    // The same in `SEWorld` with interiors reachable through doors — what is carried over now.
     let world = ExteriorSource::read(&plugin, "SEWorld", Some)
         .expect("SEWorld")
-        .expect("SEWorld есть в Oblivion.esm");
+        .expect("SEWorld is in Oblivion.esm");
     let mut world_refs: BTreeMap<u32, (usize, usize)> = BTreeMap::new();
     for p in world
         .placements
@@ -122,7 +122,7 @@ fn census_of_door_motion() {
     }
 
     println!(
-        "DOOR {}: без модели {without_model}, мешей {}, нет в архивах {}, не читаются {}; версии {:?}",
+        "DOOR {}: without model {without_model}, meshes {}, missing from archives {}, unreadable {}; versions {:?}",
         doors.len() + without_model,
         models.len(),
         missing.len(),
@@ -133,14 +133,14 @@ fn census_of_door_motion() {
             .collect::<Vec<_>>()
     );
     for line in &unreadable {
-        println!("  не читается: {line}");
+        println!("  unreadable: {line}");
     }
 
     #[derive(Default)]
     struct Row {
         meshes: usize,
         records: usize,
-        /// Ссылок во всём плагине: телепортов, обычных.
+        /// References in the whole plugin: teleports, ordinary.
         refs: (usize, usize),
         world: (usize, usize),
         examples: Vec<String>,
@@ -165,7 +165,7 @@ fn census_of_door_motion() {
         row.world = (row.world.0 + t, row.world.1 + n);
     }
     println!(
-        "вид | мешей | записей DOOR | ссылок: телепорт / обычные | в SEWorld: телепорт / обычные | примеры"
+        "kind | meshes | DOOR records | references: teleport / ordinary | in SEWorld: teleport / ordinary | examples"
     );
     for (name, row) in &rows {
         println!(
@@ -180,7 +180,7 @@ fn census_of_door_motion() {
         );
     }
 
-    // Створки на петле: направление, угол, смещение петли, поза файла.
+    // Leaves on a hinge: direction, angle, hinge offset, file pose.
     let hinged: Vec<(&str, &DoorMotion)> = motions
         .iter()
         .filter_map(|(m, d)| Some((*m, d.as_ref()?)))
@@ -213,8 +213,8 @@ fn census_of_door_motion() {
         .filter(|l| l.pose_gap > 0.02)
         .count();
     println!(
-        "на петле {}: по часовой (−Z, как Morrowind) {clockwise}, против {}; угол {:?}°; смещение петли {:?}; \
-         длительность Open {:?} с; створок, чья поза файла не равна первому ключу Open: {ajar}",
+        "on a hinge {}: clockwise (−Z, as in Morrowind) {clockwise}, counterclockwise {}; angle {:?}°; hinge offset {:?}; \
+         Open duration {:?} s; leaves whose file pose differs from the first Open key: {ajar}",
         hinged.len(),
         hinged.len() - clockwise,
         fold(&turns),
@@ -224,7 +224,7 @@ fn census_of_door_motion() {
     for (model, d) in hinged.iter().take(12) {
         let l = &d.leaves[0];
         println!(
-            "  {model}: узел {:?}, петля ({:.1}, {:.1}, {:.1}), поворот {:.1}°, форм {} + {} вне",
+            "  {model}: node {:?}, hinge ({:.1}, {:.1}, {:.1}), rotation {:.1}°, shapes {} + {} outside",
             l.node,
             l.pivot.x,
             l.pivot.y,
@@ -244,7 +244,7 @@ fn census_of_door_motion() {
                 .iter()
                 .map(|l| {
                     format!(
-                        "{} ось ({:.1},{:.1},{:.1}) {:.0}° сдвиг ({:.0},{:.0},{:.0})",
+                        "{} axis ({:.1},{:.1},{:.1}) {:.0}° shift ({:.0},{:.0},{:.0})",
                         l.node,
                         l.axis.x,
                         l.axis.y,
@@ -260,8 +260,9 @@ fn census_of_door_motion() {
         }
     }
 
-    // T2.6b: ссылки `SEWorld` на двери с перенесённой петлёй — куда уезжает ссылка. И сколько
-    // ссылок на двери вообще наклонено (углы X, Y не нулевые): для них порядок осей важен.
+    // T2.6b: `SEWorld` references to doors with a moved hinge — where the reference goes. And how
+    // many door references are tilted at all (X, Y angles not zero): for them the axis order
+    // matters.
     let (mut tilted, mut door_refs) = (0usize, 0usize);
     for p in world
         .placements
@@ -281,13 +282,13 @@ fn census_of_door_motion() {
         };
         let shift = reference_offset(p.rotation, p.scale.unwrap_or(1.0), hinge.to_array());
         println!(
-            "  петля перенесена: ссылка {:08X} на {edid} ({model}): позиция {:?}, углы {:?}, масштаб {:?}; \
-             петля в меше {:?} → сдвиг ссылки {:?}",
+            "  hinge moved: reference {:08X} to {edid} ({model}): position {:?}, angles {:?}, scale {:?}; \
+             hinge in the mesh {:?} → reference shift {:?}",
             p.form_id, p.position, p.rotation, p.scale, hinge, shift
         );
     }
     println!(
-        "ссылок на двери в SEWorld {door_refs}, из них наклонённых (углы X или Y ≠ 0) {tilted}"
+        "door references in SEWorld {door_refs}, tilted among them (X or Y angle ≠ 0) {tilted}"
     );
 
     assert_eq!(doors.len() + without_model, 501, "DOOR Oblivion.esm");
@@ -304,15 +305,16 @@ fn census_of_door_motion() {
             count(DoorFate::Still),
         ],
         [158, 30, 13, 9, 22, 12, 10, 0],
-        "мешей по видам"
+        "meshes by kind"
     );
     let _ = <Placement as FromFields>::NAME;
 }
 
-/// Дерево узлов одного меша двери и ключи его `Open` — посмотреть глазами, откуда взялась петля.
-/// Меш — в `BACK2MW_DOOR` (путь относительно `Meshes\`), по умолчанию дверь Деменции.
+/// The node tree of one door mesh and the keys of its `Open` — to see with your own eyes where the
+/// hinge came from. The mesh is in `BACK2MW_DOOR` (path relative to `Meshes\`), by default the
+/// Dementia door.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn dump_one_door() {
     use mesh_convert::read::Block;
     let model = std::env::var("BACK2MW_DOOR").unwrap_or_else(|_| {
@@ -328,7 +330,7 @@ fn dump_one_door() {
             break;
         }
     }
-    let data = data.unwrap_or_else(|| panic!("{path}: нет в архивах"));
+    let data = data.unwrap_or_else(|| panic!("{path}: missing from archives"));
     let (source, offsets) = parse_with_offsets(&data).expect("parse");
     let mut stack: Vec<(usize, usize)> = source
         .roots
@@ -338,12 +340,12 @@ fn dump_one_door() {
         .collect();
     while let Some((index, depth)) = stack.pop() {
         let (kind, av, children) = match &source.blocks[index] {
-            Block::Node(n) => ("узел", &n.av, n.children.as_slice()),
-            Block::TriStrips(s) | Block::TriShape(s) => ("форма", &s.av, [].as_slice()),
+            Block::Node(n) => ("node", &n.av, n.children.as_slice()),
+            Block::TriStrips(s) | Block::TriShape(s) => ("shape", &s.av, [].as_slice()),
             _ => continue,
         };
         println!(
-            "{}{kind} {index} {:?}: сдвиг {:?}, масштаб {}, поворот {:?}",
+            "{}{kind} {index} {:?}: shift {:?}, scale {}, rotation {:?}",
             "  ".repeat(depth),
             av.net.name,
             av.translation,
@@ -356,15 +358,12 @@ fn dump_one_door() {
     }
     let seq = sequences(&data, &source, &offsets).expect("sequences");
     for s in &seq {
-        println!(
-            "последовательность {:?}: {} … {} с",
-            s.name, s.start, s.stop
-        );
+        println!("sequence {:?}: {} … {} s", s.name, s.start, s.stop);
         for t in &s.tracks {
             println!("  {:?}: {:?}", t.node, t.keys);
         }
     }
     let motion = door_motion(&source, &seq);
-    println!("движение: {motion:#?}");
-    println!("участь: {:?}", fate(motion.as_ref()));
+    println!("motion: {motion:#?}");
+    println!("fate: {:?}", fate(motion.as_ref()));
 }

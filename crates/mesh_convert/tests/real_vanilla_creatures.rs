@@ -1,10 +1,10 @@
-//! T11.5a: перепись ванильных существ Morrowind — как устроены меш и анимация существа в
-//! `Morrowind.bsa` (`meshes\r\`): файл с лентой, пара `x<имя>.nif` + `x<имя>.kf`, метки групп,
-//! дорожка движения на `Bip01`. По ней пишется своя модель существа Oblivion: наш файл должен
-//! быть устроен так же, как ванильный.
+//! T11.5a: a census of vanilla Morrowind creatures — how a creature's mesh and animation are built
+//! in `Morrowind.bsa` (`meshes\r\`): a file with a tape, the pair `x<name>.nif` + `x<name>.kf`,
+//! group text keys, the motion track on `Bip01`. Our own model of an Oblivion creature is written
+//! after it: our file must be built the same way as the vanilla one.
 //!
-//! Это измерение, синтетики нет; числа переносятся в `docs/ru/formats/tes3.md`, «Модель и
-//! анимация существа».
+//! This is a measurement, there is no synthetic test; the numbers go to `docs/en/formats/tes3.md`,
+//! "Creature model and animation".
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='C:\path\to\gamedata' \
@@ -46,7 +46,7 @@ fn print_map(title: &str, map: &BTreeMap<String, usize>, limit: usize) {
     }
 }
 
-/// Дети узла сцены — у любого наследника `NiNode`.
+/// Children of a scene node — for any descendant of `NiNode`.
 fn children_of(object: &NiType) -> Option<&Vec<NiLink<NiAVObject>>> {
     match object {
         NiType::NiNode(n) => Some(&n.children),
@@ -67,24 +67,24 @@ fn av(stream: &NiStream, key: NiKey) -> Option<&NiAVObject> {
     stream.get_as::<NiObject, NiAVObject>(NiLink::new(key))
 }
 
-/// Вид ключей: тип интерполяции и число.
+/// Key kind: interpolation type and count.
 fn rot_kind(keys: &NiRotKey) -> (&'static str, usize) {
     match keys {
-        NiRotKey::LinKey(k) => ("лин", k.len()),
-        NiRotKey::BezKey(k) => ("безье", k.len()),
+        NiRotKey::LinKey(k) => ("lin", k.len()),
+        NiRotKey::BezKey(k) => ("bezier", k.len()),
         NiRotKey::TCBKey(k) => ("TCB", k.len()),
-        NiRotKey::EulerKey(_) => ("эйлер", 1),
+        NiRotKey::EulerKey(_) => ("euler", 1),
     }
 }
 
 fn pos_points(keys: &NiPosKey) -> (&'static str, Vec<(f32, [f32; 3])>) {
     match keys {
         NiPosKey::LinKey(k) => (
-            "лин",
+            "lin",
             k.iter().map(|k| (k.time, k.value.to_array())).collect(),
         ),
         NiPosKey::BezKey(k) => (
-            "безье",
+            "bezier",
             k.iter().map(|k| (k.time, k.value.to_array())).collect(),
         ),
         NiPosKey::TCBKey(k) => (
@@ -96,13 +96,13 @@ fn pos_points(keys: &NiPosKey) -> (&'static str, Vec<(f32, [f32; 3])>) {
 
 fn float_kind(keys: &NiFloatKey) -> (&'static str, usize) {
     match keys {
-        NiFloatKey::LinKey(k) => ("лин", k.len()),
-        NiFloatKey::BezKey(k) => ("безье", k.len()),
+        NiFloatKey::LinKey(k) => ("lin", k.len()),
+        NiFloatKey::BezKey(k) => ("bezier", k.len()),
         NiFloatKey::TCBKey(k) => ("TCB", k.len()),
     }
 }
 
-/// Сдвиг в момент `t`: линейно между соседними ключами (для оценки скорости этого хватает).
+/// Translation at time `t`: linear between neighboring keys (enough for estimating speed).
 fn pos_at(points: &[(f32, [f32; 3])], t: f32) -> Option<[f32; 3]> {
     let first = points.first()?;
     if t <= first.0 {
@@ -119,41 +119,41 @@ fn pos_at(points: &[(f32, [f32; 3])], t: f32) -> Option<[f32; 3]> {
     points.last().map(|p| p.1)
 }
 
-/// Всё, что перепись берёт из одного файла.
+/// Everything the census takes from one file.
 #[derive(Default)]
 struct Scan {
-    /// Тип и имя корней.
+    /// Type and name of the roots.
     roots: Vec<String>,
     nodes: usize,
     shapes_skinned: usize,
     shapes_rigid: usize,
-    /// Имена корней скиннинга.
+    /// Names of the skinning roots.
     skin_roots: BTreeSet<String>,
-    /// Контроллеры ключей: имя цели → данные.
+    /// Keyframe controllers: target name → data.
     tracks: Vec<(String, NiKeyframeData)>,
-    /// Флаги, частота, фаза, начало, конец каждого контроллера ключей.
+    /// Flags, frequency, phase, start, stop of each keyframe controller.
     controller_fields: Vec<(u16, f32, f32, f32, f32)>,
-    /// Цель контроллера пуста (у `.kf` — так и должно быть).
+    /// The controller's target is empty (as it should be in a `.kf`).
     targets_null: usize,
-    /// Текстовые ключи и имя объекта, на котором они висят.
+    /// Text keys and the name of the object they hang on.
     text_keys: Vec<(String, Vec<NiTextKey>)>,
-    /// Прочие контроллеры (не ключевые) по типам.
+    /// Other (non-keyframe) controllers by type.
     other_controllers: BTreeMap<String, usize>,
-    /// Типы узлов сцены.
+    /// Scene node types.
     node_types: BTreeMap<String, usize>,
     has_bip01: bool,
-    /// Родитель `Bip01`: «корень» или имя.
+    /// Parent of `Bip01`: "root" or a name.
     bip01_parent: String,
-    /// Поза `Bip01` в файле: сдвиг и единичен ли поворот.
+    /// The pose of `Bip01` in the file: translation and whether the rotation is identity.
     bip01_pose: Option<([f32; 3], bool)>,
     has_bounding_box: bool,
-    /// Узел `Bounding Box`: флаги, сдвиг узла и его объём, как есть.
+    /// The `Bounding Box` node: flags, the node's translation and its volume, as is.
     bounding_box: Option<String>,
-    /// Строки `NiStringExtraData` в цепочке корня (у `.kf` — имена целей контроллеров).
+    /// `NiStringExtraData` strings in the root's chain (in a `.kf` — the controller target names).
     root_strings: Vec<String>,
-    /// Порядок цепочки extra data корня по типам.
+    /// Order of the root's extra data chain by type.
     root_extra_chain: Vec<String>,
-    /// Длина цепочки контроллеров корня.
+    /// Length of the root's controller chain.
     root_controllers: usize,
 }
 
@@ -194,7 +194,7 @@ fn scan(stream: &NiStream) -> Scan {
             }
         }
     }
-    // Контроллеры корня `.kf` идут в том же порядке, что строки с именами целей.
+    // The `.kf` root's controllers come in the same order as the strings with the target names.
     let kf_names: Vec<String> = s.root_strings.clone();
     let mut kf_order: Vec<NiKey> = Vec::new();
     if let Some(root) = stream.roots.first()
@@ -223,8 +223,8 @@ fn scan(stream: &NiStream) -> Scan {
             if a.base.name.eq_ignore_ascii_case("Bip01") {
                 s.has_bip01 = true;
                 s.bip01_parent = match parent_of.get(&key) {
-                    None => "нет (сам корень)".to_owned(),
-                    Some(p) if stream.roots.iter().any(|r| r.key == *p) => "корень".to_owned(),
+                    None => "none (the root itself)".to_owned(),
+                    Some(p) if stream.roots.iter().any(|r| r.key == *p) => "root".to_owned(),
                     Some(p) => net(stream, *p).map_or_else(String::new, |n| n.name.clone()),
                 };
                 let identity = a
@@ -235,18 +235,18 @@ fn scan(stream: &NiStream) -> Scan {
             if a.base.name.eq_ignore_ascii_case("Bounding Box") {
                 s.has_bounding_box = true;
                 s.bounding_box = Some(format!(
-                    "флаги {:#06x}, T={:?}, {}",
+                    "flags {:#06x}, T={:?}, {}",
                     a.flags,
                     a.translation.to_array(),
                     match a.bounding_volume.as_ref().map(|v| &v.bound_data) {
                         Some(tes3::nif::BoundData::NiBoxBV(b)) => format!(
-                            "коробка: центр {:?}, оси единичные {}, размеры {:?}",
+                            "box: center {:?}, unit axes {}, sizes {:?}",
                             b.center.to_array(),
                             b.axis.abs_diff_eq(tes3::nif::glam::Mat3::IDENTITY, 1e-3),
                             b.extents.to_array()
                         ),
                         Some(other) => format!("{other:?}").chars().take(60).collect(),
-                        None => "объёма нет".to_owned(),
+                        None => "no volume".to_owned(),
                     }
                 ));
             }
@@ -276,8 +276,8 @@ fn scan(stream: &NiStream) -> Scan {
                     kf_order
                         .iter()
                         .position(|k| *k == key)
-                        // Первая строка цепочки `.kf` — текстовые ключи, а не имя: имена — только
-                        // `NiStringExtraData`, по порядку.
+                        // The first string of a `.kf` chain is the text keys, not a name: the names
+                        // are only `NiStringExtraData`, in order.
                         .and_then(|i| kf_names.get(i).cloned())
                         .unwrap_or_default()
                 } else {
@@ -288,7 +288,7 @@ fn scan(stream: &NiStream) -> Scan {
                 }
             }
             NiType::NiTextKeyExtraData(t) => {
-                // Хозяин — объект, в чьей цепочке extra data стоит блок.
+                // The owner is the object in whose extra data chain the block stands.
                 let mut holder = String::new();
                 for (other, _) in &stream.objects {
                     let Some(n) = net(stream, other) else {
@@ -320,8 +320,8 @@ fn scan(stream: &NiStream) -> Scan {
     s
 }
 
-/// Группа и метка текстового ключа: `"Idle: Loop Start"` → (`idle`, `loop start`). В одном ключе
-/// бывает несколько строк.
+/// Group and mark of a text key: `"Idle: Loop Start"` → (`idle`, `loop start`). One key can hold
+/// several lines.
 fn split_text_key(value: &str) -> Vec<(String, String)> {
     value
         .split(['\r', '\n'])
@@ -337,7 +337,7 @@ fn split_text_key(value: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Время метки `group: mark` на ленте.
+/// Time of the text key `group: mark` on the tape.
 fn mark_time(keys: &[NiTextKey], group: &str, mark: &str) -> Option<f32> {
     keys.iter().find_map(|k| {
         split_text_key(&k.value)
@@ -348,14 +348,14 @@ fn mark_time(keys: &[NiTextKey], group: &str, mark: &str) -> Option<f32> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 #[expect(
     clippy::too_many_lines,
-    reason = "перепись: одна длинная печать, делить её на части — только мешать чтению"
+    reason = "a census: one long printout, splitting it would only hurt readability"
 )]
 fn census_of_vanilla_creatures() {
     let archive = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
-    // Файлы `meshes\r\` и общая анимация гуманоида.
+    // The files of `meshes\r\` and the shared humanoid animation.
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for entry in archive.entries() {
         let Some(name) = entry.name() else { continue };
@@ -378,8 +378,8 @@ fn census_of_vanilla_creatures() {
             .map(|p| p.strip_prefix('x').unwrap_or(p).to_owned())
             .collect()
     };
-    // Имя без `x` у файлов-пар; у обычных — как есть. `xbase…` в `r\` нет, так что первая буква
-    // `x` — признак пары (проверяется ниже: у каждого `x<имя>.nif` должен быть `<имя>.nif`).
+    // The name without `x` for pair files; as is for ordinary ones. There is no `xbase…` in `r\`,
+    // so a leading `x` marks a pair (checked below: every `x<name>.nif` must have a `<name>.nif`).
     let x_nif = stems(".nif", true);
     let x_kf = stems(".kf", true);
     let plain_all: BTreeSet<String> = in_r
@@ -394,13 +394,13 @@ fn census_of_vanilla_creatures() {
         .cloned()
         .collect();
     println!(
-        "meshes\\r\\: файлов {}, .nif {}, .kf {}",
+        "meshes\\r\\: files {}, .nif {}, .kf {}",
         in_r.len(),
         in_r.iter().filter(|p| p.ends_with(".nif")).count(),
         in_r.iter().filter(|p| p.ends_with(".kf")).count(),
     );
     println!(
-        "обычных <имя>.nif {}, x<имя>.nif {}, x<имя>.kf {}; пар nif+kf {}; пар без обычного файла {:?}; kf без x-nif {:?}",
+        "ordinary <name>.nif {}, x<name>.nif {}, x<name>.kf {}; nif+kf pairs {}; pairs without an ordinary file {:?}; kf without x-nif {:?}",
         plain.len(),
         x_nif.iter().filter(|n| plain.contains(*n)).count(),
         x_kf.len(),
@@ -413,7 +413,7 @@ fn census_of_vanilla_creatures() {
             .collect::<Vec<_>>(),
     );
 
-    // Записи существ: какие модели и есть ли у них пара.
+    // Creature records: which models, and whether they have a pair.
     let mut plugin = Plugin::new();
     plugin
         .load_path_filtered(common::game_file("Morrowind.esm"), |tag| {
@@ -440,7 +440,7 @@ fn census_of_vanilla_creatures() {
         })
         .count();
     println!(
-        "Morrowind.esm: CREA {creatures}, моделей {}, с парой x-nif + x-kf {with_pair}, двуногих записей {}",
+        "Morrowind.esm: CREA {creatures}, models {}, with an x-nif + x-kf pair {with_pair}, biped records {}",
         models.len(),
         models.values().map(|r| r.1).sum::<usize>(),
     );
@@ -451,7 +451,7 @@ fn census_of_vanilla_creatures() {
             .unwrap_or("");
         if !x_kf.contains(stem) || *biped > 0 {
             println!(
-                "  {model}: записей {n}, двуногих {biped}, пара {}",
+                "  {model}: records {n}, biped {biped}, pair {}",
                 x_kf.contains(stem)
             );
         }
@@ -477,31 +477,34 @@ fn census_of_vanilla_creatures() {
             Some(stream)
         };
         let Some(base_stream) = load(format!("meshes\\r\\{stem}.nif")) else {
-            bump(&mut facts, "обычный файл не читается");
+            bump(&mut facts, "the ordinary file cannot be read");
             continue;
         };
         let base = scan(&base_stream);
         let x = load(format!("meshes\\r\\x{stem}.nif")).map(|s| scan(&s));
         let kf = load(format!("meshes\\r\\x{stem}.kf")).map(|s| scan(&s));
 
-        // Обычный файл: что в нём.
+        // The ordinary file: what is in it.
         for (what, yes) in [
-            ("обычный: есть контроллеры ключей", !base.tracks.is_empty()),
-            ("обычный: есть текстовые ключи", !base.text_keys.is_empty()),
-            ("обычный: есть Bip01", base.has_bip01),
-            ("обычный: есть Bounding Box", base.has_bounding_box),
-            ("обычный: есть кожа", base.shapes_skinned > 0),
-            ("обычный: есть жёсткие формы", base.shapes_rigid > 0),
             (
-                "обычный: есть пара x-nif + x-kf",
+                "ordinary: has keyframe controllers",
+                !base.tracks.is_empty(),
+            ),
+            ("ordinary: has text keys", !base.text_keys.is_empty()),
+            ("ordinary: has Bip01", base.has_bip01),
+            ("ordinary: has Bounding Box", base.has_bounding_box),
+            ("ordinary: has skin", base.shapes_skinned > 0),
+            ("ordinary: has rigid shapes", base.shapes_rigid > 0),
+            (
+                "ordinary: has an x-nif + x-kf pair",
                 x.is_some() && kf.is_some(),
             ),
             (
-                "обычный: анимирован, пары нет",
+                "ordinary: animated, no pair",
                 !base.tracks.is_empty() && kf.is_none(),
             ),
             (
-                "обычный: без анимации и без пары",
+                "ordinary: no animation and no pair",
                 base.tracks.is_empty() && kf.is_none(),
             ),
         ] {
@@ -514,19 +517,16 @@ fn census_of_vanilla_creatures() {
                 &mut facts,
                 format!(
                     "Bounding Box: {}",
-                    if b.contains("коробка") {
-                        "коробка"
+                    if b.contains("box") {
+                        "box"
                     } else {
-                        "не коробка"
+                        "not a box"
                     }
                 ),
             );
             bump(
                 &mut facts,
-                format!(
-                    "Bounding Box: оси единичные {}",
-                    b.contains("оси единичные true")
-                ),
+                format!("Bounding Box: unit axes {}", b.contains("unit axes true")),
             );
             bump(
                 &mut facts,
@@ -537,25 +537,22 @@ fn census_of_vanilla_creatures() {
         for r in &base.roots {
             bump(
                 &mut facts,
-                format!(
-                    "обычный: корень {}",
-                    r.split(' ').next().unwrap_or_default()
-                ),
+                format!("ordinary: root {}", r.split(' ').next().unwrap_or_default()),
             );
         }
         if base.has_bip01 {
             bump(
                 &mut facts,
-                format!("обычный: родитель Bip01 — {}", base.bip01_parent),
+                format!("ordinary: parent of Bip01 — {}", base.bip01_parent),
             );
         }
         for root in &base.skin_roots {
-            bump(&mut facts, format!("обычный: корень кожи «{root}»"));
+            bump(&mut facts, format!("ordinary: skin root \"{root}\""));
         }
         for (holder, _) in &base.text_keys {
             bump(
                 &mut facts,
-                format!("обычный: текстовые ключи висят на «{holder}»"),
+                format!("ordinary: text keys hang on \"{holder}\""),
             );
         }
         for (k, n) in &base.other_controllers {
@@ -567,55 +564,55 @@ fn census_of_vanilla_creatures() {
 
         if let (Some(x), Some(kf)) = (&x, &kf) {
             for (what, yes) in [
-                ("x-nif: есть контроллеры ключей", !x.tracks.is_empty()),
-                ("x-nif: есть текстовые ключи", !x.text_keys.is_empty()),
-                ("x-nif: есть кожа", x.shapes_skinned > 0),
-                ("x-nif: есть жёсткие формы", x.shapes_rigid > 0),
+                ("x-nif: has keyframe controllers", !x.tracks.is_empty()),
+                ("x-nif: has text keys", !x.text_keys.is_empty()),
+                ("x-nif: has skin", x.shapes_skinned > 0),
+                ("x-nif: has rigid shapes", x.shapes_rigid > 0),
                 (
-                    "x-nif: узлов столько же, сколько в обычном",
+                    "x-nif: as many nodes as in the ordinary one",
                     x.nodes == base.nodes,
                 ),
                 (
-                    "x-nif: форм столько же, сколько в обычном",
+                    "x-nif: as many shapes as in the ordinary one",
                     x.shapes_skinned + x.shapes_rigid == base.shapes_skinned + base.shapes_rigid,
                 ),
                 (
-                    "kf: корень — NiSequenceStreamHelper",
+                    "kf: the root is a NiSequenceStreamHelper",
                     kf.roots.len() == 1 && kf.roots[0].starts_with("NiSequenceStreamHelper"),
                 ),
                 (
-                    "kf: первая в цепочке extra data — NiTextKeyExtraData",
+                    "kf: the first in the extra data chain is NiTextKeyExtraData",
                     kf.root_extra_chain.first().map(String::as_str) == Some("NiTextKeyExtraData"),
                 ),
                 (
-                    "kf: остальные в цепочке — только NiStringExtraData",
+                    "kf: the rest of the chain is only NiStringExtraData",
                     kf.root_extra_chain
                         .iter()
                         .skip(1)
                         .all(|t| t == "NiStringExtraData"),
                 ),
                 (
-                    "kf: строк столько же, сколько контроллеров",
+                    "kf: as many strings as controllers",
                     kf.root_strings.len() == kf.root_controllers,
                 ),
                 (
-                    "kf: все контроллеры — в цепочке корня",
+                    "kf: all controllers are in the root's chain",
                     kf.tracks.len() == kf.root_controllers,
                 ),
                 (
-                    "kf: цель у всех контроллеров пуста",
+                    "kf: all controllers have an empty target",
                     kf.targets_null == kf.tracks.len(),
                 ),
                 (
-                    "kf: дорожек столько же, сколько в обычном файле",
+                    "kf: as many tracks as in the ordinary file",
                     kf.tracks.len() == base.tracks.len(),
                 ),
                 (
-                    "kf: текстовые ключи те же, что в обычном файле",
+                    "kf: the same text keys as in the ordinary file",
                     kf.text_keys.first().map(|t| &t.1) == base.text_keys.first().map(|t| &t.1),
                 ),
                 (
-                    "kf: есть дорожка Bip01",
+                    "kf: has a Bip01 track",
                     kf.tracks
                         .iter()
                         .any(|(n, _)| n.eq_ignore_ascii_case("Bip01")),
@@ -631,13 +628,13 @@ fn census_of_vanilla_creatures() {
             }
         }
 
-        // Лента: из пары, если она есть, иначе из обычного файла.
+        // The tape: from the pair if there is one, otherwise from the ordinary file.
         let tape = kf.as_ref().unwrap_or(&base);
         for (flags, frequency, phase, start, stop) in &tape.controller_fields {
             bump(
                 &mut controller_flags,
                 format!(
-                    "флаги {flags:#06x}, частота {frequency}, фаза {phase}, начало {}",
+                    "flags {flags:#06x}, frequency {frequency}, phase {phase}, start {}",
                     if *start == 0.0 { "0" } else { "≠ 0" }
                 ),
             );
@@ -670,20 +667,20 @@ fn census_of_vanilla_creatures() {
             let (pk, points) = pos_points(&data.translations.keys);
             let (sk, sn) = float_kind(&data.scales.keys);
             if rn > 0 {
-                bump(&mut key_kinds, format!("поворот: {rk}"));
+                bump(&mut key_kinds, format!("rotation: {rk}"));
             }
             if !points.is_empty() {
-                bump(&mut key_kinds, format!("сдвиг: {pk}"));
+                bump(&mut key_kinds, format!("translation: {pk}"));
             }
             if sn > 0 {
-                bump(&mut key_kinds, format!("масштаб: {sk}"));
+                bump(&mut key_kinds, format!("scale: {sk}"));
             }
             rot_keys += rn;
             pos_keys += points.len();
             scale_keys += sn;
         }
 
-        // Дорожка движения: сдвиг `Bip01` за петлю ходьбы и бега.
+        // Motion track: the translation of `Bip01` over the walk and run loops.
         let bip = tape
             .tracks
             .iter()
@@ -704,7 +701,7 @@ fn census_of_vanilla_creatures() {
             let d = [0, 1, 2].map(|i| pb[i] - pa[i]);
             let duration = b - a;
             speeds.push(format!(
-                "{group}: Δ=({:.1}, {:.1}, {:.1}) за {duration:.2} с → {:.0} ед/с",
+                "{group}: Δ=({:.1}, {:.1}, {:.1}) over {duration:.2} s → {:.0} u/s",
                 d[0],
                 d[1],
                 d[2],
@@ -716,7 +713,10 @@ fn census_of_vanilla_creatures() {
             } else {
                 "−"
             };
-            bump(&mut facts, format!("{group}: Bip01 уходит по {sign}{axis}"));
+            bump(
+                &mut facts,
+                format!("{group}: Bip01 moves along {sign}{axis}"),
+            );
         }
         let bip_turn = tape
             .tracks
@@ -752,7 +752,7 @@ fn census_of_vanilla_creatures() {
                 bump(
                     &mut facts,
                     format!(
-                        "{group}: Bip01 за петлю поворачивается на {}",
+                        "{group}: Bip01 rotates over the loop by {}",
                         if degrees < 5.0 {
                             "< 5°".to_owned()
                         } else {
@@ -766,21 +766,21 @@ fn census_of_vanilla_creatures() {
             bump(
                 &mut facts,
                 format!(
-                    "лента: у Bip01 есть ключи сдвига: {}",
+                    "tape: Bip01 has translation keys: {}",
                     bip.as_ref().is_some_and(|p| p.len() > 1)
                 ),
             );
             bump(
                 &mut facts,
                 format!(
-                    "лента: конец ключей = последняя метка (±0.05): {}",
+                    "tape: end of keys = last text key (±0.05): {}",
                     (tape_end - stop_max).abs() < 0.05
                 ),
             );
         }
         table.push(format!(
-            "{stem}: пара {}, узлов {}, кожа {} / жёстких {}, дорожек {}, ключей пов/сдв/масш {rot_keys}/{pos_keys}/{scale_keys}, \
-             лента {tape_end:.2} с (stop {stop_max:.2}), меток {}, групп {}; Bip01: родитель «{}», поза {:?}; {}",
+            "{stem}: pair {}, nodes {}, skin {} / rigid {}, tracks {}, rot/pos/scale keys {rot_keys}/{pos_keys}/{scale_keys}, \
+             tape {tape_end:.2} s (stop {stop_max:.2}), text keys {}, groups {}; Bip01: parent \"{}\", pose {:?}; {}",
             kf.is_some(),
             base.nodes,
             base.shapes_skinned,
@@ -794,7 +794,7 @@ fn census_of_vanilla_creatures() {
         ));
     }
 
-    println!("существа ({}):", table.len());
+    println!("creatures ({}):", table.len());
     for row in &table {
         println!("  {row}");
     }
@@ -802,23 +802,23 @@ fn census_of_vanilla_creatures() {
     for row in &boxes {
         println!("  {row}");
     }
-    print_map("факты", &facts, 200);
-    print_map("поля контроллеров ключей", &controller_flags, 40);
-    print_map("виды ключей (дорожек)", &key_kinds, 40);
+    print_map("facts", &facts, 200);
+    print_map("keyframe controller fields", &controller_flags, 40);
+    print_map("key kinds (tracks)", &key_kinds, 40);
     print_map(
-        "прочие контроллеры в обычных файлах",
+        "other controllers in ordinary files",
         &other_controllers,
         40,
     );
-    print_map("типы узлов в обычных файлах", &node_types, 40);
-    print_map("группы (в скольких существах)", &groups, 200);
-    print_map("метки (всего)", &marks, 200);
+    print_map("node types in ordinary files", &node_types, 40);
+    print_map("groups (in how many creatures)", &groups, 200);
+    print_map("text keys (total)", &marks, 200);
     print_map(
-        "дорожки, которые есть в kf, но не в обычном файле",
+        "tracks present in the kf but not in the ordinary file",
         &tracked_only_in_kf,
         40,
     );
-    println!("метки по группам:");
+    println!("text keys by group:");
     for (group, set) in &group_marks {
         println!(
             "  {group}: {}",
@@ -826,16 +826,16 @@ fn census_of_vanilla_creatures() {
         );
     }
 
-    // Общая анимация гуманоида: чем она отличается от пары существа.
+    // The shared humanoid animation: how it differs from a creature's pair.
     for path in files.keys().filter(|p| p.starts_with("meshes\\xbase_anim")) {
         let mut stream = NiStream::new();
         if stream.load_bytes(&files[path]).is_err() {
-            println!("{path}: не читается");
+            println!("{path}: cannot be read");
             continue;
         }
         let s = scan(&stream);
         println!(
-            "{path}: корни {:?}, узлов {}, форм {}, дорожек {}, строк {}, меток {}",
+            "{path}: roots {:?}, nodes {}, shapes {}, tracks {}, strings {}, text keys {}",
             s.roots,
             s.nodes,
             s.shapes_skinned + s.shapes_rigid,
@@ -844,13 +844,13 @@ fn census_of_vanilla_creatures() {
             s.text_keys.first().map_or(0, |t| t.1.len()),
         );
     }
-    assert!(!table.is_empty(), "в Morrowind.bsa есть существа");
+    assert!(!table.is_empty(), "Morrowind.bsa has creatures");
 }
 
-/// Текстовые ключи и дорожка `Bip01` одного существа — посмотреть глазами. Существо — в
-/// `BACK2MW_CREATURE` (имя без `x` и расширения), по умолчанию `guar`.
+/// Text keys and the `Bip01` track of one creature — to look at with your own eyes. The creature is
+/// in `BACK2MW_CREATURE` (the name without `x` and extension), by default `guar`.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn dump_one_vanilla_creature() {
     let stem = std::env::var("BACK2MW_CREATURE")
         .unwrap_or_else(|_| "guar".to_owned())
@@ -871,18 +871,18 @@ fn dump_one_vanilla_creature() {
         format!("meshes\\r\\x{stem}.kf"),
     ] {
         let Some(stream) = find(path.clone()) else {
-            println!("==== {path}: нет");
+            println!("==== {path}: missing");
             continue;
         };
         let s = scan(&stream);
         println!(
-            "==== {path}: блоков {}, корни {:?}, цепочка extra корня {:?} …, контроллеров корня {}",
+            "==== {path}: blocks {}, roots {:?}, root extra chain {:?} …, root controllers {}",
             stream.objects.len(),
             s.roots,
             &s.root_extra_chain[..s.root_extra_chain.len().min(4)],
             s.root_controllers,
         );
-        // Дерево узлов с позой.
+        // The node tree with poses.
         fn walk(stream: &NiStream, key: NiKey, depth: usize) {
             let Some(a) = av(stream, key) else { return };
             let object = &stream.objects[key];
@@ -899,11 +899,11 @@ fn dump_one_vanilla_creature() {
                 out
             };
             let skin = match object {
-                NiType::NiTriShape(shape) if !shape.base.base.skin_instance.is_null() => " кожа",
+                NiType::NiTriShape(shape) if !shape.base.base.skin_instance.is_null() => " skin",
                 _ => "",
             };
             println!(
-                "{}{} «{}» флаги {:#06x} T=({:.2}, {:.2}, {:.2}) R-единичный {} S={} {}{skin}",
+                "{}{} \"{}\" flags {:#06x} T=({:.2}, {:.2}, {:.2}) R-identity {} S={} {}{skin}",
                 "  ".repeat(depth),
                 name_of(object),
                 a.base.name,
@@ -923,15 +923,15 @@ fn dump_one_vanilla_creature() {
         for root in &stream.roots {
             walk(&stream, root.key, 1);
         }
-        // Служебные поля, которые надо повторить при записи: счётчики байт у extra data и поля
-        // контроллера ключей.
+        // Housekeeping fields that must be repeated when writing: the byte counters of extra data
+        // and the keyframe controller fields.
         let mut shown = [false; 3];
         for (_, object) in &stream.objects {
             match object {
                 NiType::NiTextKeyExtraData(t) if !shown[0] => {
                     shown[0] = true;
                     println!(
-                        "-- NiTextKeyExtraData: bytes_remaining {}, ключей {}",
+                        "-- NiTextKeyExtraData: bytes_remaining {}, keys {}",
                         t.base.bytes_remaining,
                         t.keys.len()
                     );
@@ -939,14 +939,14 @@ fn dump_one_vanilla_creature() {
                 NiType::NiStringExtraData(t) if !shown[1] => {
                     shown[1] = true;
                     println!(
-                        "-- NiStringExtraData: bytes_remaining {}, значение {:?}",
+                        "-- NiStringExtraData: bytes_remaining {}, value {:?}",
                         t.base.bytes_remaining, t.value
                     );
                 }
                 NiType::NiKeyframeController(c) if !shown[2] => {
                     shown[2] = true;
                     println!(
-                        "-- NiKeyframeController: флаги {:#06x}, частота {}, фаза {}, начало {}, конец {}, цель пуста {}",
+                        "-- NiKeyframeController: flags {:#06x}, frequency {}, phase {}, start {}, stop {}, target empty {}",
                         c.base.flags,
                         c.base.frequency,
                         c.base.phase,
@@ -959,7 +959,7 @@ fn dump_one_vanilla_creature() {
             }
         }
         if let Some((holder, keys)) = s.text_keys.first() {
-            println!("-- текстовые ключи на «{holder}» ({}):", keys.len());
+            println!("-- text keys on \"{holder}\" ({}):", keys.len());
             for k in keys {
                 println!("  {:8.4}  {:?}", k.time, k.value);
             }
@@ -971,7 +971,7 @@ fn dump_one_vanilla_creature() {
         {
             let (kind, points) = pos_points(&data.translations.keys);
             println!(
-                "-- Bip01: поворот {:?}, сдвиг {kind} × {}, масштаб {:?}",
+                "-- Bip01: rotation {:?}, translation {kind} × {}, scale {:?}",
                 rot_kind(&data.rotations.keys),
                 points.len(),
                 float_kind(&data.scales.keys),
@@ -981,7 +981,7 @@ fn dump_one_vanilla_creature() {
             }
         }
         println!(
-            "-- дорожки ({}): {}",
+            "-- tracks ({}): {}",
             s.tracks.len(),
             s.tracks
                 .iter()

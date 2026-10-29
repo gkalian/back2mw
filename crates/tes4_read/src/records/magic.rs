@@ -3,34 +3,34 @@ use crate::error::Result;
 use crate::records::effects::{EffectItem, read_effects};
 use crate::schema::{Fields, FromFields};
 
-/// `ENIT` тип: свиток (`BOOK`).
+/// `ENIT` type: scroll (`BOOK`).
 pub const ENCHANT_SCROLL: u32 = 0;
-/// `ENIT` тип: посох — применяется по команде.
+/// `ENIT` type: staff — cast on use.
 pub const ENCHANT_STAFF: u32 = 1;
-/// `ENIT` тип: оружие и стрелы — при ударе.
+/// `ENIT` type: weapons and arrows — on strike.
 pub const ENCHANT_WEAPON: u32 = 2;
-/// `ENIT` тип: одежда и броня — постоянный эффект.
+/// `ENIT` type: clothing and armor — constant effect.
 pub const ENCHANT_APPAREL: u32 = 3;
 
-/// `SPIT` тип: заклинание.
+/// `SPIT` type: spell.
 pub const SPELL_SPELL: u32 = 0;
-/// `SPIT` тип: болезнь.
+/// `SPIT` type: disease.
 pub const SPELL_DISEASE: u32 = 1;
-/// `SPIT` тип: сила (раз в день).
+/// `SPIT` type: power (once a day).
 pub const SPELL_POWER: u32 = 2;
-/// `SPIT` тип: малая сила (без ограничения).
+/// `SPIT` type: lesser power (unlimited).
 pub const SPELL_LESSER_POWER: u32 = 3;
-/// `SPIT` тип: способность (постоянно).
+/// `SPIT` type: ability (constant).
 pub const SPELL_ABILITY: u32 = 4;
-/// `SPIT` тип: яд (в `Oblivion.esm` не встречается).
+/// `SPIT` type: poison (does not occur in `Oblivion.esm`).
 pub const SPELL_POISON: u32 = 5;
 
-/// Зачарование `ENCH` (T9.4).
+/// An `ENCH` enchantment (T9.4).
 ///
-/// Измерено на `Oblivion.esm` 2026-09-27 (`docs/ru/formats/tes4.md`, «Зачарования и заклинания»):
-/// 1 542 записи, `ENIT` — 16 байт у всех: `u32` тип, `u32` заряд, `u32` стоимость, `u8` флаги
-/// (0x01 — стоимость вручную), 3 байта мусора. Заряд в `ENCH` равен стоимости (у свитков и
-/// посохов — у всех); настоящий заряд оружия и посоха — `ANAM` самой вещи.
+/// Measured on `Oblivion.esm` on 2026-09-27 (`docs/en/formats/tes4.md`, "Enchantments and spells"):
+/// 1,542 records, `ENIT` is 16 bytes in all: `u32` type, `u32` charge, `u32` cost, `u8` flags (0x01
+/// — manual cost), 3 junk bytes. The charge in `ENCH` equals the cost (for scrolls and staves — in
+/// all of them); the real charge of a weapon or staff is the item's own `ANAM`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Enchantment {
     pub editor_id: String,
@@ -42,11 +42,11 @@ pub struct Enchantment {
     pub effects: Vec<EffectItem>,
 }
 
-/// Заклинание `SPEL` (T9.4).
+/// A `SPEL` spell (T9.4).
 ///
-/// Измерено на `Oblivion.esm` 2026-09-27: 1 137 записей, `SPIT` — 16 байт у всех: `u32` тип,
-/// `u32` стоимость, `u32` уровень (0 новичок … 4 мастер), `u8` флаги (0x01 — стоимость вручную,
-/// 0x04 — стартовое у игрока …), 3 байта мусора.
+/// Measured on `Oblivion.esm` on 2026-09-27: 1,137 records, `SPIT` is 16 bytes in all: `u32` type,
+/// `u32` cost, `u32` level (0 novice … 4 master), `u8` flags (0x01 — manual cost, 0x04 — the
+/// player's starting spell …), 3 junk bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Spell {
     pub editor_id: String,
@@ -60,7 +60,11 @@ pub struct Spell {
 }
 
 fn u32_at(raw: &[u8; 16], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
 impl FromFields for Enchantment {
@@ -120,7 +124,7 @@ mod tests {
     }
 
     fn header(a: u32, b: u32, c: u32, flags: u8) -> Vec<u8> {
-        // Хвост — мусор 0xCD, как в `Oblivion.esm`.
+        // The tail is 0xCD junk, as in `Oblivion.esm`.
         [
             a.to_le_bytes().as_slice(),
             &b.to_le_bytes(),

@@ -3,12 +3,12 @@ use crate::error::{Error, Result};
 use crate::records::effects::{EffectItem, read_effects};
 use crate::schema::Fields;
 
-/// Предмет инвентаря Oblivion (T2.1): `MISC`, `KEYM`, `SGST`, `SLGM`, `BOOK`, `ALCH`, `INGR`,
-/// `APPA`, `AMMO`. Общая часть у всех одна (имя, модель, иконка, скрипт, цена, вес), различается
-/// `DATA`.
+/// An Oblivion inventory item (T2.1): `MISC`, `KEYM`, `SGST`, `SLGM`, `BOOK`, `ALCH`, `INGR`,
+/// `APPA`, `AMMO`. The common part is the same for all (name, model, icon, script, value, weight);
+/// `DATA` differs.
 ///
-/// Раскладки `DATA` измерены на `Oblivion.esm` (2026-09-24, `docs/ru/formats/tes4.md`, «Предметы»):
-/// у каждого типа один размер у всех записей.
+/// The `DATA` layouts were measured on `Oblivion.esm` (2026-09-24, `docs/en/formats/tes4.md`,
+/// "Items"): each type has one size across all records.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
     pub editor_id: String,
@@ -17,50 +17,51 @@ pub struct Item {
     pub icon: Option<String>,
     pub script: Option<u32>,
     pub enchantment: Option<u32>,
-    /// `ANAM` — заряд зачарования (u16): у стрел и оружия он в вещи, а не в `ENCH` (там заряд
-    /// равен стоимости; 2026-09-27, `docs/ru/formats/tes4.md`, «Зачарования и заклинания»).
+    /// `ANAM` — the enchantment charge (u16): for arrows and weapons it is in the item, not in
+    /// `ENCH` (there the charge equals the cost; 2026-09-27, `docs/en/formats/tes4.md`,
+    /// "Enchantments and spells").
     pub charge: Option<u16>,
     pub value: u32,
     pub weight: f32,
-    /// Эффекты (`EFIT`) у зелий, ингредиентов и сигильских камней (T2.1b).
+    /// Effects (`EFIT`) on potions, ingredients and sigil stones (T2.1b).
     pub effects: Vec<EffectItem>,
     pub data: ItemData,
 }
 
-/// Что есть только у своего типа.
+/// What only its own type has.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ItemData {
     Misc,
     Key,
-    /// `SGST`: сколько раз можно применить.
+    /// `SGST`: how many times it can be used.
     SigilStone {
         uses: u8,
     },
-    /// `SLGM`: душа внутри (`SOUL`) и вместимость (`SLCP`), 0…5.
+    /// `SLGM`: the soul inside (`SOUL`) and the capacity (`SLCP`), 0…5.
     SoulGem {
         soul: u8,
         capacity: u8,
     },
-    /// `BOOK`: флаги (`0x01` — свиток), навык (−1 или 0…20 в порядке навыков Oblivion), текст.
+    /// `BOOK`: flags (`0x01` — scroll), skill (−1 or 0…20 in Oblivion skill order), text.
     Book {
         flags: u8,
         teaches: i8,
         text: String,
     },
-    /// `ALCH`: флаги `ENIT` (`0x01` — без автоподсчёта, `0x02` — еда).
+    /// `ALCH`: `ENIT` flags (`0x01` — no auto-calculation, `0x02` — food).
     Potion {
         flags: u8,
     },
     Ingredient {
         flags: u8,
     },
-    /// `APPA`: тип (0 ступка, 1 перегонный куб, 2 реторта-кальцинатор, 3 реторта) и качество в
-    /// процентах (10…100).
+    /// `APPA`: type (0 mortar and pestle, 1 alembic, 2 calcinator, 3 retort) and quality in percent
+    /// (10…100).
     Apparatus {
         kind: u8,
         quality: f32,
     },
-    /// `AMMO`: скорость, флаги (`0x01` — игнорирует обычную сопротивляемость), урон.
+    /// `AMMO`: speed, flags (`0x01` — ignores normal resistance), damage.
     Ammo {
         speed: f32,
         flags: u8,
@@ -69,14 +70,18 @@ pub enum ItemData {
 }
 
 fn u32_at(raw: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(raw[at..at + 4].try_into().expect("срез ровно 4 байта"))
+    u32::from_le_bytes(
+        raw[at..at + 4]
+            .try_into()
+            .expect("the slice is exactly 4 bytes"),
+    )
 }
 
 fn f32_at(raw: &[u8], at: usize) -> f32 {
     f32::from_bits(u32_at(raw, at))
 }
 
-/// Типы записей, которые читает [`Item::from_record`].
+/// Record types read by [`Item::from_record`].
 pub const ITEM_TAGS: [Tag; 9] = [
     *b"MISC", *b"KEYM", *b"SGST", *b"SLGM", *b"BOOK", *b"ALCH", *b"INGR", *b"APPA", *b"AMMO",
 ];

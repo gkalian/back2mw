@@ -5,7 +5,7 @@ use crate::read::common::{AvObject, BlockRef, ObjectNet};
 use crate::read::motion::Track;
 use crate::read::{NiNode, NiTriStrips, header::NifHeader};
 
-/// Поворот на +90° вокруг Z, девять чисел в порядке файла (по строкам).
+/// A +90° rotation around Z, nine numbers in file order (by rows).
 const TURN_Z: [f32; 9] = [0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
 const IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
@@ -61,7 +61,7 @@ fn nif(blocks: Vec<Block>) -> SourceNif {
     }
 }
 
-/// Кватернион NIF (`w, x, y, z`) поворота на `angle` вокруг Z.
+/// NIF quaternion (`w, x, y, z`) of a rotation by `angle` around Z.
 fn about_z(angle: f32) -> [f32; 4] {
     [(angle / 2.0).cos(), 0.0, 0.0, (angle / 2.0).sin()]
 }
@@ -99,7 +99,7 @@ fn close_to(a: Vec3, b: [f32; 3]) -> bool {
     (a - Vec3::from_array(b)).length() < 1e-3
 }
 
-/// Створка на узле, смещённом от начала координат: петля — начало узла, поворот вокруг Z.
+/// A leaf on a node offset from the origin: the hinge is the node's origin, rotation around Z.
 #[test]
 fn a_single_leaf_on_an_offset_node_gives_its_hinge() {
     let source = nif(vec![
@@ -122,18 +122,18 @@ fn a_single_leaf_on_an_offset_node_gives_its_hinge() {
         "{}",
         leaf.turn_about_z()
     );
-    assert!(leaf.pose_gap < 1e-4, "файл лежит закрытым");
+    assert!(leaf.pose_gap < 1e-4, "the file lies closed");
     assert!(close_to(motion.hinge().unwrap(), [48.8, 2.9, 0.0]));
 
-    // Контроль: поворот в другую сторону меняет знак, а не петлю.
+    // Control: rotating the other way changes the sign, not the hinge.
     let other = door_motion(&source, &open(vec![turning("Door01", 0.0, FRAC_PI_2)])).unwrap();
     assert!((other.leaves[0].turn_about_z() - FRAC_PI_2).abs() < 1e-4);
     assert_eq!(other.hinge(), motion.hinge());
 }
 
-/// Узел `… NonAccum` под корнем накопления: поза его интерполятора повторяет сдвиг родителя, а
-/// сам узел стоит в нуле родителя. Петля — там, где узел стоит в файле, а не вдвое дальше
-/// (дверь Деменции `DEMdoorAnim01`).
+/// A `… NonAccum` node under the accumulation root: its interpolator pose repeats the parent's
+/// translation, while the node itself stands at the parent's zero. The hinge is where the node
+/// stands in the file, not twice as far (the Dementia door `DEMdoorAnim01`).
 #[test]
 fn the_hinge_of_a_non_accum_node_is_where_the_node_stands_in_the_file() {
     let source = nif(vec![
@@ -171,16 +171,17 @@ fn the_hinge_of_a_non_accum_node_is_where_the_node_stands_in_the_file() {
     assert!(leaf.pose_gap < 1e-4, "{}", leaf.pose_gap);
     assert!(
         (leaf.turn_about_z() - 1.44).abs() < 1e-4,
-        "конец Open, а не перелёт"
+        "the end of Open, not an overshoot"
     );
     assert!(close_to(motion.hinge().unwrap(), [48.79, 2.9, 0.0]));
     assert!(motion.opens_counter_clockwise());
     assert_eq!(fate(Some(&motion)), DoorFate::Rehinged);
 }
 
-/// Ключи узла `… NonAccum` записаны в кадре родителя корня накопления: корень в файле повёрнут
-/// (у `DoorLowerINT03` — на 180°), и первый ключ узла повторяет этот поворот. Люк под таким
-/// корнем наклоняется вокруг той оси, что в ключах, а файл при этом лежит закрытым.
+/// Keys of a `… NonAccum` node are written in the frame of the accumulation root's parent: the root
+/// in the file is rotated (by 180° in `DoorLowerINT03`), and the node's first key repeats this
+/// rotation. A hatch under such a root tilts around the axis in the keys, while the file lies
+/// closed.
 #[test]
 fn keys_of_a_non_accum_node_are_in_the_frame_above_the_accum_root() {
     let source = nif(vec![
@@ -189,11 +190,11 @@ fn keys_of_a_non_accum_node_are_in_the_frame_above_the_accum_root() {
         node("Hatch NonAccum", [0.0; 3], IDENTITY, &[3]),
         shape("Hatch:0"),
     ]);
-    // Поворот на 90° вокруг Z (как у корня в файле), затем наклон вокруг X кадра ключей.
+    // A 90° rotation around Z (like the root in the file), then a tilt around X of the key frame.
     let half = std::f32::consts::FRAC_1_SQRT_2;
     let closed = [half, 0.0, 0.0, half];
     let tilt = 1.2f32;
-    // q = наклон(X) · поворот(Z): `w, x, y, z`.
+    // q = tilt(X) · rotation(Z): `w, x, y, z`.
     let (s, c) = ((tilt / 2.0).sin(), (tilt / 2.0).cos());
     let opened = [c * half, s * half, -s * half, c * half];
     let track = Track {
@@ -209,19 +210,19 @@ fn keys_of_a_non_accum_node_are_in_the_frame_above_the_accum_root() {
     let leaf = &motion.leaves[0];
     assert!(
         leaf.pose_gap < 1e-4,
-        "файл лежит закрытым: {}",
+        "the file lies closed: {}",
         leaf.pose_gap
     );
     assert!((leaf.angle - tilt).abs() < 1e-4, "{}", leaf.angle);
     assert!(
         leaf.axis.x > 0.999,
-        "ось — X кадра ключей, а не X повёрнутого корня: {:?}",
+        "the axis is X of the key frame, not X of the rotated root: {:?}",
         leaf.axis
     );
     assert_eq!(motion.kind(), DoorKind::Tilting);
 }
 
-/// Рама в том же меше: петлю переносить нельзя — Morrowind повернул бы и раму.
+/// A frame in the same mesh: the hinge must not be moved — Morrowind would rotate the frame too.
 #[test]
 fn a_frame_in_the_same_mesh_blocks_moving_the_hinge() {
     let source = nif(vec![
@@ -236,12 +237,12 @@ fn a_frame_in_the_same_mesh_blocks_moving_the_hinge() {
     assert_eq!(
         (motion.moving_shapes, motion.fixed_shapes),
         (1, 1),
-        "маркер редактора рамой не считается"
+        "an editor marker does not count as a frame"
     );
     assert_eq!(motion.hinge(), None);
 }
 
-/// Петля уже в начале координат: Morrowind повернёт как надо, переносить нечего.
+/// The hinge is already at the origin: Morrowind will rotate correctly, nothing to move.
 #[test]
 fn a_hinge_at_the_origin_needs_no_move() {
     let source = nif(vec![
@@ -251,10 +252,10 @@ fn a_hinge_at_the_origin_needs_no_move() {
     ]);
     let motion = door_motion(&source, &open(vec![turning("Door01", 0.0, -1.5)])).unwrap();
     assert_eq!(motion.kind(), DoorKind::Hinged);
-    assert_eq!(motion.hinge(), None, "высота петли значения не имеет");
+    assert_eq!(motion.hinge(), None, "the hinge height does not matter");
 }
 
-/// Узел створки под повёрнутым и сдвинутым родителем: петля и ось — в кадре меша.
+/// A leaf node under a rotated and translated parent: the hinge and the axis are in the mesh frame.
 #[test]
 fn the_hinge_is_measured_in_the_mesh_frame() {
     let source = nif(vec![
@@ -263,14 +264,15 @@ fn the_hinge_is_measured_in_the_mesh_frame() {
         node("Door01", [10.0, 0.0, 0.0], IDENTITY, &[3]),
         shape("Door01:0"),
     ]);
-    // Поза файла — первый ключ плюс 0.3 рад: файл лежит приоткрытым.
+    // The file's pose is the first key plus 0.3 rad: the file lies ajar.
     let motion = door_motion(
         &source,
         &open(vec![turning("Door01", 0.3, 0.3 + FRAC_PI_2)]),
     )
     .unwrap();
     let leaf = &motion.leaves[0];
-    // (10, 0, 0) в кадре родителя, повёрнутого на +90° вокруг Z, — (0, 10, 0); плюс сдвиг.
+    // (10, 0, 0) in the frame of a parent rotated by +90° around Z is (0, 10, 0); plus the
+    // translation.
     assert!(close_to(leaf.pivot, [100.0, 10.0, 5.0]), "{:?}", leaf.pivot);
     assert!((leaf.turn_about_z() - FRAC_PI_2).abs() < 1e-4);
     assert!((leaf.pose_gap - 0.3).abs() < 1e-4, "{}", leaf.pose_gap);
@@ -307,7 +309,7 @@ fn a_portcullis_slides_and_two_leaves_are_not_one_hinge() {
         &open(vec![
             turning("GateL", 0.0, -1.51),
             turning("GateR", 0.0, 1.6),
-            // Повтор узла и узел, которого нет в меше, не считаются.
+            // A repeated node and a node missing from the mesh are not counted.
             turning("GateR", 0.0, 1.6),
             turning("Ghost", 0.0, 1.6),
         ]),
@@ -319,7 +321,7 @@ fn a_portcullis_slides_and_two_leaves_are_not_one_hinge() {
     assert_eq!(both.hinge(), None);
 }
 
-/// Люк: поворот вокруг горизонтальной оси Morrowind не умеет.
+/// Hatch: Morrowind cannot rotate around a horizontal axis.
 #[test]
 fn a_trapdoor_tilts() {
     let source = nif(vec![
@@ -327,7 +329,7 @@ fn a_trapdoor_tilts() {
         node("Hatch", [0.0, 30.0, 0.0], IDENTITY, &[2]),
         shape("Hatch:0"),
     ]);
-    // Дорожки Эйлера: только X, от 0 до 1.4 рад.
+    // Euler tracks: only X, from 0 to 1.4 rad.
     let tilt = Track {
         node: "Hatch".to_owned(),
         keys: Some(TransformKeys {
@@ -367,7 +369,7 @@ fn euler_keys_about_z_are_a_hinge_and_noise_is_not_a_leaf() {
         &open(vec![
             euler("Door01", -1.5),
             euler("Handle", 0.01),
-            // Дорожка цвета: ключей преобразования нет.
+            // A color track: there are no transform keys.
             Track {
                 node: "Door01".to_owned(),
                 keys: None,
@@ -375,13 +377,13 @@ fn euler_keys_about_z_are_a_hinge_and_noise_is_not_a_leaf() {
         ]),
     )
     .unwrap();
-    assert_eq!(motion.leaves.len(), 1, "дрожание на 0.01 рад — не створка");
+    assert_eq!(motion.leaves.len(), 1, "a 0.01 rad jitter is not a leaf");
     assert!((motion.leaves[0].turn_about_z() + 1.5).abs() < 1e-4);
     assert_eq!(motion.kind(), DoorKind::Hinged);
 }
 
-/// Ручка на створке сдвигается сама, калитка при повороте садится на несколько юнитов: это всё
-/// та же створка на петле, а не решётка и не вторая створка.
+/// A handle on a leaf slides by itself, a gate sinks a few units while rotating: it is still the
+/// same leaf on a hinge, not a portcullis and not a second leaf.
 #[test]
 fn parts_riding_on_a_leaf_and_small_slides_do_not_change_the_kind() {
     let source = nif(vec![
@@ -420,7 +422,7 @@ fn parts_riding_on_a_leaf_and_small_slides_do_not_change_the_kind() {
     assert_eq!((motion.moving_shapes, motion.fixed_shapes), (2, 0));
     assert!(close_to(motion.hinge().unwrap(), [30.0, 0.0, 0.0]));
 
-    // Контроль: большой сдвиг поворачивающегося узла — уже не петля.
+    // Control: a large translation of a rotating node is no longer a hinge.
     let far = door_motion(
         &source,
         &open(vec![slide(
@@ -453,8 +455,8 @@ fn no_open_sequence_means_no_motion_and_an_idle_open_is_still() {
     assert_eq!((idle.moving_shapes, idle.fixed_shapes), (0, 1));
 }
 
-/// Перенос петли: дети корня сдвигаются на `−hinge`, корень остаётся на месте; при повёрнутом
-/// и растянутом корне сдвиг пересчитывается в его кадр.
+/// Moving the hinge: the root's children shift by `−hinge`, the root stays in place; with a rotated
+/// and scaled root the shift is converted into its frame.
 #[test]
 fn rehinge_shifts_everything_under_the_root() {
     use tes3::nif::{
@@ -506,11 +508,11 @@ fn rehinge_shifts_everything_under_the_root() {
             c.stream.get(root).unwrap().base.translation,
             [5.0, 0.0, 0.0]
         ),
-        "сам корень не трогается"
+        "the root itself is not touched"
     );
 
-    // Корень повёрнут на +90° вокруг Z и растянут вдвое: точка корня (x, y) видна в меше как
-    // 2·(−y, x). Сдвиг меша на (0, 20, 0) — это сдвиг в кадре корня на (10, 0, 0).
+    // The root is rotated by +90° around Z and scaled by two: a root point (x, y) is seen in the
+    // mesh as 2·(−y, x). A mesh shift of (0, 20, 0) is a shift of (10, 0, 0) in the root frame.
     let (mut c, _, leaf, _) = build(TURN_Z, 2.0);
     rehinge(&mut c, Vec3::new(0.0, 20.0, 0.0));
     assert!(

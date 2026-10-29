@@ -1,27 +1,30 @@
-//! `install` и `uninstall`: явная установка мода в `Data Files` с манифестом (T1.10).
+//! `install` and `uninstall`: explicit installation of the mod into `Data Files` with a manifest
+//! (T1.10).
 //!
-//! Установка — отдельное явное действие, никогда не неявное (`docs/ru/pipeline.md`): `all` в
-//! игру ничего не пишет. Всё, что записано, перечисляется в манифесте
-//! `<Data Files>/back2mw-install.tsv`, и по нему `uninstall` откатывает установку.
+//! Installation is a separate explicit action, never an implicit one (`docs/en/pipeline.md`): `all`
+//! writes nothing into the game. Everything written is listed in the manifest
+//! `<Data Files>/back2mw-install.tsv`, and `uninstall` rolls the installation back from it.
 //!
-//! Манифест лежит рядом с файлами, а не в `work/`: рабочий каталог выбрасываем, а откат должен
-//! пережить его очистку. Игра и Construction Set файл с таким расширением игнорируют.
+//! The manifest lives next to the files, not in `work/`: the work directory is disposable, and the
+//! rollback must survive its cleanup. The game and the Construction Set ignore a file with this
+//! extension.
 //!
-//! Строки манифеста (поля через табуляцию):
+//! Manifest lines (fields separated by tabs):
 //!
 //! ```text
-//! F <путь относительно Data Files, "/"> <размер>    записанный файл
-//! D <путь каталога>                                  каталог, созданный установкой
+//! F <path relative to Data Files, "/"> <size>    a written file
+//! D <directory path>                             a directory created by the installation
 //! ```
 //!
-//! **Правила безопасности:**
-//! * чужой файл на том же месте — **отказ до записи чего бы то ни было** (список конфликтов),
-//!   кроме случая, когда там байт-в-байт то же самое: такой файл считается уже установленным и
-//!   в манифест не попадает, значит и `uninstall` его не тронет;
-//! * повторная установка перезаписывает только файлы из прежнего манифеста;
-//! * `uninstall` удаляет файл, только если его размер совпадает с записанным, иначе оставляет и
-//!   сообщает; каталоги убирает лишь созданные нами и лишь пустые;
-//! * `Morrowind.ini` и список плагинов не трогаются: включить плагины (и зарегистрировать архивы) — дело игрока.
+//! **Safety rules:**
+//! * someone else's file in the same place means **refusal before anything is written** (a list of
+//!   conflicts), unless it is byte-for-byte the same: such a file counts as already installed and
+//!   does not go into the manifest, so `uninstall` will not touch it either;
+//! * a repeated installation overwrites only files from the previous manifest;
+//! * `uninstall` deletes a file only if its size matches the recorded one, otherwise leaves it and
+//!   reports it; it removes only directories we created, and only empty ones;
+//! * `Morrowind.ini` and the plugin list are not touched: enabling the plugins (and registering the
+//!   archives) is up to the player.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -39,14 +42,14 @@ pub enum InstallError {
         path: PathBuf,
         source: io::Error,
     },
-    /// Файлы, которые уже лежат в целевой папке и не принадлежат прежней установке.
+    /// Files already in the target folder that do not belong to the previous installation.
     Conflicts(Vec<String>),
-    /// Манифест не разобрался.
+    /// The manifest did not parse.
     Manifest {
         line: usize,
         text: String,
     },
-    /// Каталога `Data Files` нет.
+    /// There is no `Data Files` directory.
     NoTarget(PathBuf),
 }
 
@@ -89,7 +92,7 @@ fn io_err(path: &Path) -> impl FnOnce(io::Error) -> InstallError + '_ {
     }
 }
 
-/// Записанное установкой.
+/// What the installation wrote.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Manifest {
     files: BTreeMap<String, u64>,
@@ -139,31 +142,31 @@ fn write_manifest(target: &Path, m: &Manifest) -> Result<(), InstallError> {
     fs::write(&path, text).map_err(io_err(&path))
 }
 
-/// `Data Files/a/b` из `a/b`.
+/// `Data Files/a/b` from `a/b`.
 fn on_disk(target: &Path, relative: &str) -> PathBuf {
     relative
         .split('/')
         .fold(target.to_owned(), |p, s| p.join(s))
 }
 
-/// Итог установки.
+/// Installation result.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InstallReport {
     pub written: usize,
-    /// Уже лежали байт-в-байт такими же: не записаны и не попали в манифест.
+    /// Already there byte-for-byte the same: not written and not in the manifest.
     pub already_present: usize,
-    /// Файлы прежней установки, которых в новой нет: удалены.
+    /// Files of the previous installation that the new one lacks: deleted.
     pub removed_stale: usize,
 }
 
-/// Устанавливает мод из `output_dir` в `target` (`Data Files`).
+/// Installs the mod from `output_dir` into `target` (`Data Files`).
 pub fn install(output_dir: &Path, target: &Path) -> Result<InstallReport, InstallError> {
     install_replacing(output_dir, target, &[])
 }
 
-/// Какие из `candidates` (пути относительно `Data Files`, «/») уже лежат в `target` и не
-/// принадлежат прежней установке — их [`install`] откажется перезаписывать. Проверка по имени,
-/// без содержимого: до сборки сравнивать не с чем.
+/// Which of the `candidates` (paths relative to `Data Files`, "/") are already in `target` and do
+/// not belong to the previous installation — [`install`] will refuse to overwrite them. The check
+/// is by name, not contents: before the build there is nothing to compare with.
 pub fn foreign_files(target: &Path, candidates: &[String]) -> Result<Vec<String>, InstallError> {
     let previous = read_manifest(target)?.unwrap_or_default();
     Ok(candidates
@@ -173,8 +176,9 @@ pub fn foreign_files(target: &Path, candidates: &[String]) -> Result<Vec<String>
         .collect())
 }
 
-/// Как [`install`], но чужие файлы из `replace` (пути относительно `Data Files`, «/»; игрок
-/// согласился их заменить) перезаписываются и попадают в манифест: `uninstall` их потом удалит.
+/// Like [`install`], but other people's files from `replace` (paths relative to `Data Files`, "/";
+/// the player agreed to replace them) are overwritten and go into the manifest: `uninstall` will
+/// delete them later.
 pub fn install_replacing(
     output_dir: &Path,
     target: &Path,
@@ -186,7 +190,7 @@ pub fn install_replacing(
     let files = collect_mod_files(output_dir).map_err(io_err(output_dir))?;
     let previous = read_manifest(target)?.unwrap_or_default();
 
-    // 1. Проверка до записи: чужие файлы на нашем месте.
+    // 1. Check before writing: other people's files in our place.
     let mut conflicts = Vec::new();
     let mut identical: BTreeSet<&str> = BTreeSet::new();
     for f in &files {
@@ -210,7 +214,7 @@ pub fn install_replacing(
         return Err(InstallError::Conflicts(conflicts));
     }
 
-    // 2. Запись.
+    // 2. Writing.
     let mut manifest = Manifest {
         files: BTreeMap::new(),
         dirs: previous.dirs.clone(),
@@ -228,7 +232,7 @@ pub fn install_replacing(
         report.written += 1;
     }
 
-    // 3. Файлы прежней установки, которых больше нет в моде.
+    // 3. Files of the previous installation that are no longer in the mod.
     let current: BTreeSet<&str> = files.iter().map(|f| f.relative.as_str()).collect();
     for (path, size) in &previous.files {
         if current.contains(path.as_str()) {
@@ -245,7 +249,7 @@ pub fn install_replacing(
     Ok(report)
 }
 
-/// Создаёт недостающие каталоги для `relative` и записывает созданные в `dirs`.
+/// Creates the missing directories for `relative` and records the created ones in `dirs`.
 fn create_dirs(
     target: &Path,
     relative: &str,
@@ -267,18 +271,19 @@ fn create_dirs(
     Ok(())
 }
 
-/// Итог отката.
+/// Rollback result.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UninstallReport {
     pub removed: usize,
-    /// Файлов уже не было.
+    /// Files that were already gone.
     pub missing: usize,
-    /// Файлы, размер которых изменился: не тронуты.
+    /// Files whose size changed: left untouched.
     pub kept_changed: Vec<String>,
     pub dirs_removed: usize,
 }
 
-/// Откатывает установку по манифесту. Нет манифеста — ошибка: откатывать нечего.
+/// Rolls the installation back by the manifest. No manifest is an error: there is nothing to roll
+/// back.
 pub fn uninstall(target: &Path) -> Result<UninstallReport, InstallError> {
     let manifest = read_manifest(target)?.ok_or_else(|| InstallError::Io {
         path: target.join(MANIFEST_NAME),
@@ -305,7 +310,7 @@ pub fn uninstall(target: &Path) -> Result<UninstallReport, InstallError> {
         }
     }
 
-    // Каталоги — от глубоких к мелким, только пустые.
+    // Directories from deepest to shallowest, only empty ones.
     let mut dirs: Vec<&String> = manifest.dirs.iter().collect();
     dirs.sort_by_key(|d| std::cmp::Reverse(d.matches('/').count()));
     for dir in dirs {

@@ -1,9 +1,9 @@
-//! Язык сообщений: журнал, замечания, тексты ошибок, вывод консоли и окно.
+//! Message language: the log, notes, error texts, console output and the window.
 //!
-//! Язык один на процесс. Сообщения собираются в строки там, где возникают (`Display` ошибок,
-//! строки журнала, замечания), поэтому передать язык параметром нельзя: его пришлось бы тянуть
-//! через каждую функцию всех крейтов. Вместо этого консоль и окно один раз вызывают [`set`], а
-//! код пишет обе версии рядом:
+//! There is one language per process. Messages are assembled into strings where they arise (error
+//! `Display`, log lines, notes), so the language cannot be passed as a parameter: it would have to
+//! be threaded through every function of every crate. Instead the console and the window call
+//! [`set`] once, and the code writes both versions side by side:
 //!
 //! ```
 //! let n = 3;
@@ -11,27 +11,28 @@
 //! assert_eq!(line, "3 files written");
 //! ```
 //!
-//! Строки не вынесены в таблицы: пара стоит там, где показывается, её видно при чтении кода, а
-//! пропустить перевод нельзя — второй аргумент обязателен.
+//! The strings are not moved out into tables: a pair stands where it is shown, it is visible when
+//! reading the code, and a translation cannot be skipped — the second argument is required.
 //!
-//! На вывод конвертера язык не влияет: в плагины и ассеты сообщения не попадают, прогон остаётся
-//! байт-в-байт тем же. Сообщения `expect`/`assert!` не переводятся — это пояснения к
-//! инвариантам для разработчика, как комментарии.
+//! The language does not affect the converter's output: messages do not get into plugins and
+//! assets, and a run stays byte-for-byte the same. `expect`/`assert!` messages are not translated —
+//! they are notes on invariants for the developer, written in English like the comments.
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Язык сообщений.
+/// Message language.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Lang {
     Ru,
-    /// По умолчанию: без флага `--lang` и ключа `language` всё пишется по-английски.
+    /// The default: without the `--lang` flag and the `language` key everything is written in
+    /// English.
     #[default]
     En,
 }
 
 impl Lang {
-    /// Значение для этого языка: `ru` или `en`. Годится и для `&str`, и для `String`.
+    /// The value for this language: `ru` or `en`. Works both for `&str` and for `String`.
     pub fn tr<T>(self, ru: T, en: T) -> T {
         match self {
             Self::Ru => ru,
@@ -39,12 +40,12 @@ impl Lang {
         }
     }
 
-    /// Код для `config.toml` (ключ `language`) и флага `--lang`.
+    /// The code for `config.toml` (the `language` key) and the `--lang` flag.
     pub fn code(self) -> &'static str {
         self.tr("ru", "en")
     }
 
-    /// Из кода; незнакомый код — `None`.
+    /// From a code; an unknown code gives `None`.
     pub fn from_code(code: &str) -> Option<Self> {
         match code.to_ascii_lowercase().as_str() {
             "ru" => Some(Self::Ru),
@@ -57,20 +58,21 @@ impl Lang {
 const RU: u8 = 0;
 const EN: u8 = 1;
 
-/// Язык процесса. Атомарный, потому что окно ведёт сборку в отдельном потоке.
+/// The process language. Atomic, because the window runs the build in a separate thread.
 static CURRENT: AtomicU8 = AtomicU8::new(EN);
 
 thread_local! {
-    /// Язык этого потока поверх общего ([`with`]).
+    /// This thread's language on top of the shared one ([`with`]).
     static SCOPED: Cell<Option<Lang>> = const { Cell::new(None) };
 }
 
-/// Выбирает язык процесса. Зовётся один раз при старте консоли и при выборе языка в окне.
+/// Chooses the process language. Called once at console startup and when the language is chosen in
+/// the window.
 pub fn set(lang: Lang) {
     CURRENT.store(lang.tr(RU, EN), Ordering::Relaxed);
 }
 
-/// Текущий язык.
+/// The current language.
 pub fn current() -> Lang {
     SCOPED.get().unwrap_or_else(|| {
         if CURRENT.load(Ordering::Relaxed) == RU {
@@ -81,10 +83,11 @@ pub fn current() -> Lang {
     })
 }
 
-/// Выполняет `body` с языком `lang` в этом потоке, не трогая язык процесса. Для тестов: они
-/// идут параллельно в одном процессе, и [`set`] из одного менял бы тексты в остальных.
+/// Runs `body` with language `lang` in this thread without touching the process language. For
+/// tests: they run in parallel in one process, and [`set`] from one would change the texts in the
+/// others.
 pub fn with<R>(lang: Lang, body: impl FnOnce() -> R) -> R {
-    /// Возвращает прежний язык потока, даже если `body` запаниковал.
+    /// Restores the thread's previous language, even if `body` panicked.
     struct Restore(Option<Lang>);
     impl Drop for Restore {
         fn drop(&mut self) {
@@ -95,14 +98,14 @@ pub fn with<R>(lang: Lang, body: impl FnOnce() -> R) -> R {
     body()
 }
 
-/// Значение для текущего языка. Оба значения уже вычислены — для строк без подстановок;
-/// с подстановками — макрос [`tr!`].
+/// The value for the current language. Both values are already computed — for strings without
+/// substitutions; with substitutions use the [`tr!`] macro.
 pub fn tr<T>(ru: T, en: T) -> T {
     current().tr(ru, en)
 }
 
-/// `format!` на текущем языке: `tr!("русский {x}", "english {x}", …)`. Аргументы общие для
-/// обоих шаблонов и вычисляются один раз — только у выбранного.
+/// `format!` in the current language: `tr!("<russian> {x}", "<english> {x}", …)`. The arguments are
+/// shared by both templates and evaluated once — only for the chosen one.
 #[macro_export]
 macro_rules! tr {
     ($ru:literal, $en:literal $(, $($arg:tt)*)?) => {
@@ -113,7 +116,8 @@ macro_rules! tr {
     };
 }
 
-/// `write!` на текущем языке: `trw!(f, "русский {x}", "english {x}", …)` — для `Display`.
+/// `write!` in the current language: `trw!(f, "<russian> {x}", "<english> {x}", …)` — for
+/// `Display`.
 #[macro_export]
 macro_rules! trw {
     ($dst:expr, $ru:literal, $en:literal $(, $($arg:tt)*)?) => {
@@ -157,7 +161,7 @@ mod tests {
         assert_eq!(with(Lang::Ru, || tr("да", "yes")), "да");
         assert_eq!(current(), Lang::En);
 
-        let caught = std::panic::catch_unwind(|| with(Lang::Ru, || panic!("внутри")));
+        let caught = std::panic::catch_unwind(|| with(Lang::Ru, || panic!("inside")));
         assert!(caught.is_err());
         assert_eq!(current(), Lang::En);
     }
@@ -167,7 +171,7 @@ mod tests {
         with(Lang::Ru, || {
             let other = std::thread::spawn(current)
                 .join()
-                .expect("поток завершился");
+                .expect("the thread finished");
             assert_eq!(other, Lang::En);
         });
     }
@@ -181,7 +185,8 @@ mod tests {
         with(Lang::Ru, || {
             assert_eq!(crate::tr!("файлов {n}", "{n} files"), "файлов 3");
             let mut out = String::new();
-            crate::trw!(out, "файлов {}", "{} files", n).expect("запись в String не падает");
+            crate::trw!(out, "файлов {}", "{} files", n)
+                .expect("writing to a String does not fail");
             assert_eq!(out, "файлов 3");
         });
     }

@@ -1,32 +1,34 @@
-//! Скрипты `SCPT` по шаблонам (T10.3).
+//! `SCPT` scripts from templates (T10.3).
 //!
-//! Ванильный движок исполняет байт-код `SCDT`, а не текст `SCTX`, поэтому скрипт должен прийти
-//! уже скомпилированным. Транслятора нет: у каждого шаблона байт-код собран по образцу ванильных
-//! скриптов и сверен с ними побайтово (`docs/ru/formats/tes3.md`, «Скрипты»):
+//! The vanilla engine executes the `SCDT` bytecode, not the `SCTX` text, so a script must arrive
+//! already compiled. There is no compiler: for each template the bytecode is assembled after
+//! vanilla scripts and checked against them byte for byte (`docs/en/formats/tes3.md`, "Scripts"):
 //!
-//! * [`Script::LoopSound`] — как 22 скрипта `Sound_*` `Morrowind.esm` (`Sound_Cave_Drip`,
-//!   `Sound_Fire`, …): у всех один байт-код, меняются только длина и имя звука и два `f32`.
-//! * [`Script::Locals`] — только объявления `short`, как `nohello`, `noflee`, `LocalState`:
-//!   байт-код — один `End`, имена переменных — в `SCVR`.
+//! * [`Script::LoopSound`] — like the 22 `Sound_*` scripts of `Morrowind.esm` (`Sound_Cave_Drip`,
+//!   `Sound_Fire`, …): they all share one bytecode, only the sound name and its length and two
+//!   `f32` change.
+//! * [`Script::Locals`] — only `short` declarations, like `nohello`, `noflee`, `LocalState`: the
+//!   bytecode is a single `End`, the variable names go into `SCVR`.
 //!
-//! Раскладка инструкций (по ванили): код — `u16` LE; `If` (`06 01`) — байт «сколько инструкций
-//! пропустить, если ложно», байт длины выражения и само выражение текстом, где вызов функции —
-//! `X` и её код; `EndIf` — `09 01`, `End` — `01 01`; `PlayLoopSound3DVP` (`2f 11`) — байт длины
-//! ID звука, ID и два `f32` (громкость, тон). Байты `20 62` после кода `GetSoundPlaying` в
-//! выражении переписаны у ванили как есть, их смысл не выяснен.
+//! Instruction layout (from vanilla): the opcode is a `u16` LE; `If` (`06 01`) — a byte "how many
+//! instructions to skip if false", a byte with the expression length and the expression itself as
+//! text, where a function call is `X` and its code; `EndIf` is `09 01`, `End` is `01 01`;
+//! `PlayLoopSound3DVP` (`2f 11`) — a byte with the sound ID length, the ID and two `f32` (volume,
+//! pitch). The bytes `20 62` after the `GetSoundPlaying` code in the expression are copied from
+//! vanilla as is, their meaning is unknown.
 
 use std::io;
 
 use tes3::esp::{ObjectFlags, Script as Tes3Script, ScriptHeader, TES3Object};
 
-/// Скрипт по шаблону.
+/// A script from a template.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Script {
-    /// Объект, пока его ячейка загружена, играет звук по кругу у себя: громкость и тон 1.0
-    /// (множители к громкости `SOUN`). `CellChanged == 0` — как у ванили: в кадр смены ячейки
-    /// звук не запускается.
+    /// While its cell is loaded, the object plays a sound in a loop at itself: volume and pitch 1.0
+    /// (multipliers to the `SOUN` volume). `CellChanged == 0` — as in vanilla: the sound is not
+    /// started in the frame of a cell change.
     LoopSound { id: String, sound: String },
-    /// Только локальные переменные `short` (метка NPC `ob_npc`, решение 2 фазы 10).
+    /// Only `short` local variables (the NPC marker `ob_npc`, decision 2 of phase 10).
     Locals { id: String, shorts: Vec<String> },
 }
 
@@ -38,14 +40,15 @@ impl Script {
     }
 }
 
-/// Предел длины ID скрипта: `SCHD` хранит его в 32 байтах с нулём.
+/// Length limit of a script ID: `SCHD` stores it in 32 bytes with the zero.
 const MAX_ID_LEN: usize = 31;
 
 const OP_END: [u8; 2] = [0x01, 0x01];
 const OP_IF: [u8; 2] = [0x06, 0x01];
 const OP_ENDIF: [u8; 2] = [0x09, 0x01];
 const OP_PLAY_LOOP_SOUND_3D_VP: [u8; 2] = [0x2f, 0x11];
-/// Вызов функции в выражении: `X` и код `CellChanged` (`0x101f`), `GetSoundPlaying` (`0x1188`).
+/// A function call in an expression: `X` and the code of `CellChanged` (`0x101f`),
+/// `GetSoundPlaying` (`0x1188`).
 const EXPR_CELL_CHANGED: &[u8] = b" X\x1f\x10";
 const EXPR_GET_SOUND_PLAYING: &[u8] = b" X\x88\x11 b";
 const EXPR_EQUALS_ZERO: &[u8] = b" == 0";
@@ -54,8 +57,9 @@ fn invalid(message: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-/// Имя, которое попадает в скрипт: ID в кавычках текста и байт длины в байт-коде. Кавычка и
-/// перевод строки сломали бы текст, не-ASCII — сверку текста с байт-кодом.
+/// A name that goes into the script: an ID in quotes in the text and a length byte in the bytecode.
+/// A quote or a newline would break the text, non-ASCII would break matching the text against the
+/// bytecode.
 fn check_name(script: &str, what: &str, name: &str) -> io::Result<()> {
     if name.is_empty()
         || name.len() > MAX_ID_LEN
@@ -70,15 +74,17 @@ fn check_name(script: &str, what: &str, name: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// `If ( <выражение> )`, пропуск `skip` инструкций.
+/// `If ( <expression> )`, skipping `skip` instructions.
 fn push_if(code: &mut Vec<u8>, skip: u8, expression: &[u8]) {
     code.extend_from_slice(&OP_IF);
     code.push(skip);
-    code.push(u8::try_from(expression.len()).expect("выражения шаблонов короче 255 байт"));
+    code.push(
+        u8::try_from(expression.len()).expect("template expressions are shorter than 255 bytes"),
+    );
     code.extend_from_slice(expression);
 }
 
-/// Текст, байт-код, `SCVR` и число `short`.
+/// Text, bytecode, `SCVR` and the number of `short`s.
 struct Compiled {
     text: String,
     bytecode: Vec<u8>,
@@ -92,10 +98,10 @@ fn compile(script: &Script) -> io::Result<Compiled> {
     Ok(match script {
         Script::LoopSound { sound, .. } => {
             check_name(id, lang::tr("звук", "sound"), sound)?;
-            let name_len = u8::try_from(sound.len()).expect("check_name держит длину ≤ 31");
+            let name_len = u8::try_from(sound.len()).expect("check_name keeps the length ≤ 31");
             let mut code = Vec::new();
-            // Внешний `If` пропускает три инструкции (внутренний `If`, звук, его `EndIf`),
-            // внутренний — одну.
+            // The outer `If` skips three instructions (the inner `If`, the sound, its `EndIf`), the
+            // inner one skips one.
             push_if(
                 &mut code,
                 3,
@@ -154,11 +160,11 @@ fn compile(script: &Script) -> io::Result<Compiled> {
     })
 }
 
-/// Запись `SCPT`. Ошибка — ID или имя не ложится в шаблон.
+/// An `SCPT` record. The error means the ID or name does not fit the template.
 pub(crate) fn script(script: &Script) -> io::Result<TES3Object> {
     let c = compile(script)?;
     let length = |bytes: &[u8]| {
-        u32::try_from(bytes.len()).expect("шаблон даёт десятки байт, а не гигабайты")
+        u32::try_from(bytes.len()).expect("a template gives tens of bytes, not gigabytes")
     };
     Ok(TES3Object::Script(Tes3Script {
         flags: ObjectFlags::default(),

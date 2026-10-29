@@ -1,12 +1,12 @@
 [package]
 name = "lang"
-description = "Язык сообщений (русский или английский): один на процесс, общий для всех крейтов."
+description = "Message language (Russian or English): one per process, shared by all crates."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-# Зависимостей нет и быть не должно: от этого крейта зависят все остальные
+# There are no dependencies and there must be none: all other crates depend on this one
 # (`crates/back2mw/tests/dependency_boundaries.rs`).
 [dependencies]
 

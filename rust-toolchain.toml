@@ -1,6 +1,6 @@
 [toolchain]
-# Намеренно "stable", а не конкретная версия: пин точной версии заставил бы rustup
-# качать отдельный тулчейн на каждой машине. Нижняя граница держится через
-# rust-version в Cargo.toml — её проверяет cargo, а не документация.
+# Deliberately "stable" rather than a specific version: pinning an exact version would make rustup
+# download a separate toolchain on every machine. The lower bound is kept through
+# rust-version in Cargo.toml — cargo checks it, not the documentation.
 channel = "stable"
 components = ["rustfmt", "clippy"]

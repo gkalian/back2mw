@@ -5,7 +5,8 @@ fn field(tag: &[u8; 4], data: &[u8]) -> Vec<u8> {
     synth::field(tag, data)
 }
 
-/// `CREA` с обязательными полями: флаги `ACBS`, уровень, урон, атрибуты; модель — в `folder`.
+/// A `CREA` with the required fields: `ACBS` flags, level, damage, attributes; the model is in
+/// `folder`.
 fn crea(
     form_id: u32,
     edid: &str,
@@ -15,16 +16,16 @@ fn crea(
     extra: &[Vec<u8>],
 ) -> Vec<u8> {
     let mut acbs = flags.to_le_bytes().to_vec();
-    acbs.extend(25u16.to_le_bytes()); // базовые очки заклинаний
-    acbs.extend(150u16.to_le_bytes()); // усталость
+    acbs.extend(25u16.to_le_bytes()); // base spell points
+    acbs.extend(150u16.to_le_bytes()); // fatigue
     acbs.extend(0u16.to_le_bytes());
     acbs.extend(level.to_le_bytes());
     acbs.extend(5u16.to_le_bytes()); // calcMin
     acbs.extend(0u16.to_le_bytes()); // calcMax
     let mut data = vec![2, 40, 5, 5, 2, 0];
-    data.extend(80u16.to_le_bytes()); // здоровье
+    data.extend(80u16.to_le_bytes()); // health
     data.extend([0, 0]);
-    data.extend(10u16.to_le_bytes()); // урон
+    data.extend(10u16.to_le_bytes()); // damage
     data.extend([50, 30, 35, 20, 12, 60, 10, 25]);
     let mut fields = vec![
         field(b"EDID", format!("{edid}\0").as_bytes()),
@@ -48,7 +49,7 @@ fn crea(
 fn plugin_with(records: &[Vec<u8>]) -> Plugin {
     let group = synth::group(GameFormat::Tes4, b"CREA", 0, &records.concat());
     let bytes = synth::plugin(GameFormat::Tes4, &synth::header_fields(3), &[group]);
-    Plugin::parse(&bytes).expect("синтетический плагин разбирается")
+    Plugin::parse(&bytes).expect("the synthetic plugin parses")
 }
 
 fn vanilla() -> Vec<VanillaCreature> {
@@ -114,7 +115,7 @@ fn donor_gives_model_sound_soul_and_motion_and_oblivion_gives_numbers() {
             0x10,
             "CreatureSkeleton1",
             "Skeleton",
-            CREATURE_ESSENTIAL | 0x40, // ходит у Oblivion, но у донора-скелета флага нет
+            CREATURE_ESSENTIAL | 0x40, // walks in Oblivion, but the skeleton donor lacks the flag
             3,
             &[
                 field(b"SCRI", &0x99u32.to_le_bytes()),
@@ -124,7 +125,7 @@ fn donor_gives_model_sound_soul_and_motion_and_oblivion_gives_numbers() {
                 field(b"BNAM", &1.0f32.to_le_bytes()),
             ],
         ),
-        crea(0x11, "CreatureRat", "Rat", 0x80, 2, &[]), // уровень от игрока: calcMin 5 + 2
+        crea(0x11, "CreatureRat", "Rat", 0x80, 2, &[]), // level relative to the player: calcMin 5 + 2
         crea(0x12, "CreatureGnarl", "Gnarl", 0, 1, &[]),
         crea(0x13, "CreatureGhost", "Ghost", 0, 1, &[]),
     ]);
@@ -136,7 +137,7 @@ fn donor_gives_model_sound_soul_and_motion_and_oblivion_gives_numbers() {
     assert_eq!(out.creatures.len(), 2);
     let (form, skel) = &out.creatures[0];
     assert_eq!(*form, 0x10);
-    // ID актёра: без слова `Creature` и не длиннее 23 знаков.
+    // Actor ID: without the word `Creature` and no longer than 23 characters.
     assert_eq!(skel.id, "ob_Skeleton1_000000g");
     assert_eq!(skel.name, "CreatureSkeleton1 name");
     assert_eq!(
@@ -146,7 +147,7 @@ fn donor_gives_model_sound_soul_and_motion_and_oblivion_gives_numbers() {
     assert_eq!((skel.soul, skel.blood_type), (30, 1));
     assert!(
         skel.biped && skel.weapon_and_shield && !skel.walks,
-        "движение — от донора"
+        "movement comes from the donor"
     );
     assert!(skel.essential && !skel.respawn);
     assert_eq!(skel.kind, 2);
@@ -160,7 +161,7 @@ fn donor_gives_model_sound_soul_and_motion_and_oblivion_gives_numbers() {
     assert_eq!(skel.inventory, [(2, "ob_Bone_a".to_owned())]);
     assert_eq!(skel.spells, ["ob_Ability_b"]);
     assert_eq!(skel.scale, None);
-    assert_eq!(skel.ai.fight, 90, "агрессия 70 — нападает");
+    assert_eq!(skel.ai.fight, 90, "aggression 70 — attacks");
 
     let (_, rat) = &out.creatures[1];
     assert_eq!(rat.level, 7);
@@ -202,7 +203,8 @@ fn wanted_set_limits_what_is_converted() {
     assert_eq!(out.report.seen, 1);
 }
 
-/// С `--worldspace` предметы существ мира конвертируются вместе с ними — как инвентарь NPC.
+/// With `--worldspace` the items of the world's creatures are converted along with them — like NPC
+/// inventory.
 #[test]
 fn inventory_of_wanted_creatures_with_a_donor_reaches_through_item_lists() {
     let mut lvlo = 1i16.to_le_bytes().to_vec();
@@ -241,8 +243,9 @@ fn inventory_of_wanted_creatures_with_a_donor_reaches_through_item_lists() {
             synth::group(GameFormat::Tes4, b"LVLI", 0, &list),
         ],
     );
-    let plugin = Plugin::parse(&bytes).expect("синтетический плагин разбирается");
-    // 0x11 не просили; у 0x12 нет донора — он не переносится, и его предмет не нужен.
+    let plugin = Plugin::parse(&bytes).expect("the synthetic plugin parses");
+    // 0x11 was not requested; 0x12 has no donor — it is not carried over, and its item is not
+    // needed.
     let wanted = BTreeSet::from([0x10, 0x12]);
     assert_eq!(
         inventory_of(&plugin, Some, &wanted).unwrap(),
@@ -254,13 +257,13 @@ fn inventory_of_wanted_creatures_with_a_donor_reaches_through_item_lists() {
     );
 }
 
-/// Существо без донора (T11.5e): модель своя — из скелета и частей `NIFZ`; душа — по размеру
-/// камня; движение — флаги Oblivion; звука донора нет.
+/// A creature without a donor (T11.5e): its own model — from the skeleton and the `NIFZ` parts; the
+/// soul by gem size; movement from the Oblivion flags; no donor sound.
 #[test]
 fn a_creature_without_a_donor_gets_its_own_model() {
     let parts = field(b"NIFZ", b"GnarlBody.NIF\0HeadSet00.nif\0");
     let plugin = plugin_with(&[
-        // Плавает и летает, «ходит» не задано.
+        // Swims and flies, "walks" is not set.
         crea(
             0x10,
             "CreatureGnarl",
@@ -269,9 +272,9 @@ fn a_creature_without_a_donor_gets_its_own_model() {
             4,
             std::slice::from_ref(&parts),
         ),
-        // Тот же набор частей — та же модель; движение не задано вовсе — ходит.
+        // The same set of parts — the same model; no movement set at all — walks.
         crea(0x11, "CreatureGnarlBoss", "Gnarl", 0, 9, &[parts]),
-        // Другой набор — другая модель.
+        // Another set — another model.
         crea(
             0x12,
             "CreatureGnarlMania",
@@ -280,9 +283,9 @@ fn a_creature_without_a_donor_gets_its_own_model() {
             4,
             &[field(b"NIFZ", b"ManiaBody.nif\0")],
         ),
-        // Ни донора, ни частей — показать нечем.
+        // Neither a donor nor parts — nothing to show it with.
         crea(0x13, "CreatureGnarlBare", "Gnarl", 0, 1, &[]),
-        // У папки есть донор — части записи не нужны, модель донора.
+        // The folder has a donor — the record's parts are not needed, the donor's model is used.
         crea(
             0x14,
             "CreatureRat",
@@ -300,19 +303,19 @@ fn a_creature_without_a_donor_gets_its_own_model() {
     let gnarl = &out.creatures[0].1;
     assert!(gnarl.mesh.starts_with("ob\\gnarl_"), "{}", gnarl.mesh);
     assert!(gnarl.mesh.ends_with(".nif"));
-    assert_eq!(gnarl.sound, "", "звуков пока нет — T11.6");
-    // `DATA` тестовой записи: размер души 2 — малая, камень Lesser.
+    assert_eq!(gnarl.sound, "", "no sounds yet — T11.6");
+    // `DATA` of the test record: soul size 2 — lesser, the Lesser gem.
     assert_eq!(gnarl.soul, 60);
     assert!(gnarl.swims && gnarl.flies && !gnarl.walks);
     assert!(!gnarl.biped && !gnarl.weapon_and_shield);
     assert_eq!(gnarl.blood_type, 0);
-    // Числа — те же, что у существ на доноре.
+    // The numbers are the same as for creatures on a donor.
     assert_eq!((gnarl.level, gnarl.health, gnarl.attack), (4, 80, (4, 10)));
 
     let boss = &out.creatures[1].1;
     assert_eq!(
         boss.mesh, gnarl.mesh,
-        "один скелет и набор частей — одна модель"
+        "one skeleton and set of parts — one model"
     );
     assert!(boss.walks && !boss.swims && !boss.flies);
     let mania = &out.creatures[2].1;
@@ -347,22 +350,32 @@ fn a_creature_without_a_donor_gets_its_own_model() {
 
 #[test]
 fn souls_follow_the_gem_table() {
-    // Встроенная таблица: существо ловится в тот же камень (вместимость 30, 60, 120, 180, 600).
+    // The built-in table: the creature is caught in the same gem (capacity 30, 60, 120, 180, 600).
     assert_eq!(*SOULS, [0, 30, 60, 120, 180, 400]);
     assert_eq!(soul_of(0), 0);
     assert_eq!(soul_of(3), 120);
     assert_eq!(soul_of(5), 400);
-    assert_eq!(soul_of(9), 400, "размер за таблицей — последняя строка");
+    assert_eq!(
+        soul_of(9),
+        400,
+        "a size beyond the table gives the last row"
+    );
 
-    assert_eq!(parse_souls("# шапка\n0\t0\tнет\n1\t30\n"), Ok(vec![0, 30]));
-    assert!(parse_souls("1\t30\n").is_err(), "размеры — с нуля");
-    assert!(parse_souls("0\t0\n2\t60\n").is_err(), "без пропусков");
-    assert!(parse_souls("0\t50\n1\t30\n").is_err(), "душа не убывает");
+    assert_eq!(
+        parse_souls("# header\n0\t0\tnone\n1\t30\n"),
+        Ok(vec![0, 30])
+    );
+    assert!(parse_souls("1\t30\n").is_err(), "sizes start from zero");
+    assert!(parse_souls("0\t0\n2\t60\n").is_err(), "no gaps");
+    assert!(
+        parse_souls("0\t50\n1\t30\n").is_err(),
+        "the soul does not decrease"
+    );
     assert!(parse_souls("0\n").is_err());
-    assert!(parse_souls("0\tмного\n").is_err());
+    assert!(parse_souls("0\tmany\n").is_err());
 }
 
-/// С `--worldspace` предметы существа со своей моделью тоже конвертируются.
+/// With `--worldspace` the items of a creature with its own model are converted too.
 #[test]
 fn inventory_of_takes_items_of_creatures_with_their_own_model() {
     let cnto = |item: u32| {
@@ -398,7 +411,7 @@ fn snd(kind: u32, sound: u32, chance: u8) -> CreatureSound {
 
 #[test]
 fn sound_slots_map_to_morrowind_kinds() {
-    // Aware → Moan, Attack → Roar, Hit → Scream; простой, смерть и оружие пары не имеют.
+    // Aware → Moan, Attack → Roar, Hit → Scream; idle, death and weapon have no counterpart.
     let all = [
         snd(0, 1, 100),
         snd(1, 2, 100),
@@ -412,9 +425,10 @@ fn sound_slots_map_to_morrowind_kinds() {
     assert_eq!(
         sound_gens(&all),
         [(0, 1), (1, 2), (4, 4), (5, 5), (6, 6)],
-        "слот 4, 8 и 9 не переносятся"
+        "slots 4, 8 and 9 are not carried over"
     );
-    // Задние лапы — только если передних нет; из нескольких звуков слота — с большим шансом.
+    // Hind feet — only if there are no front ones; of several sounds in a slot — the one with the
+    // higher chance.
     let rear = [
         snd(2, 10, 100),
         snd(3, 11, 100),
@@ -423,7 +437,11 @@ fn sound_slots_map_to_morrowind_kinds() {
     ];
     assert_eq!(sound_gens(&rear), [(0, 13), (1, 11)]);
     let tie = [snd(6, 20, 50), snd(6, 21, 50)];
-    assert_eq!(sound_gens(&tie), [(5, 20)], "при равных шансах — первый");
+    assert_eq!(
+        sound_gens(&tie),
+        [(5, 20)],
+        "with equal chances — the first"
+    );
     assert!(sound_gens(&[]).is_empty());
 }
 
@@ -437,8 +455,15 @@ fn sounds_are_inherited_through_cscr_and_cycles_end() {
     table.insert(5, (Vec::new(), Some(6)));
     table.insert(6, (Vec::new(), Some(5)));
     assert_eq!(inherited_sounds(3, &table), [snd(6, 9, 100)]);
-    assert_eq!(inherited_sounds(4, &table), [snd(7, 5, 100)], "свои важнее");
-    assert!(inherited_sounds(5, &table).is_empty(), "цикл не вешает");
+    assert_eq!(
+        inherited_sounds(4, &table),
+        [snd(7, 5, 100)],
+        "its own sounds win"
+    );
+    assert!(
+        inherited_sounds(5, &table).is_empty(),
+        "a cycle does not hang"
+    );
     assert!(inherited_sounds(77, &table).is_empty());
 }
 
@@ -459,7 +484,7 @@ fn a_creature_with_its_own_model_gets_its_own_sounds_and_cname() {
                 field(b"CSDC", &[80]),
             ],
         ),
-        // Своих звуков нет — берутся у Gnarl по `CSCR`.
+        // No sounds of its own — they are taken from Gnarl via `CSCR`.
         crea(
             0x11,
             "GnarlKin",
@@ -498,6 +523,6 @@ fn a_creature_with_its_own_model_gets_its_own_sounds_and_cname() {
         ]
     );
     for (_, c) in &out.creatures {
-        assert_eq!(c.sound, c.id, "CNAM — само существо");
+        assert_eq!(c.sound, c.id, "CNAM is the creature itself");
     }
 }

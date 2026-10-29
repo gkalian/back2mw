@@ -1,21 +1,20 @@
-//! Декларативное чтение полей записи.
+//! Declarative reading of record fields.
 //!
-//! Смысл в том, чтобы спека на тип записи была таблицей полей, а не рукописным
-//! разбором по смещениям. Referenc-проект делает второе — `struct.unpack` на
-//! каждое поле в каждой стадии, — и платит за это объёмом и целым классом
-//! ошибок. Здесь разбор контейнера полей общий, а спека записи только называет
-//! поля и их типы.
+//! The point is for a record type's spec to be a table of fields, not a hand-written parse by
+//! offsets. The reference project does the latter — a `struct.unpack` for every field at every
+//! stage — and pays for it in volume and a whole class of bugs. Here the parsing of the field
+//! container is shared, and a record spec only names the fields and their types.
 
 use crate::container::{Record, Tag};
 use crate::cp1252;
 use crate::error::{Error, Result};
 
-/// Поле, размер которого не влезает в `u16`: следующее за ним поле берёт размер
-/// отсюда, а своё поле размера держит нулём.
+/// A field whose size does not fit into `u16`: the field following it takes its size from here and
+/// keeps its own size field at zero.
 const XXXX: Tag = *b"XXXX";
 
-/// Разобранные поля записи в порядке файла. Повторы сохраняются — у многих
-/// записей одно и то же поле встречается по нескольку раз.
+/// The record's parsed fields in file order. Repeats are kept — many records have the same field
+/// several times.
 #[derive(Debug, Clone)]
 pub struct Fields<'a> {
     subs: Vec<(Tag, &'a [u8])>,
@@ -37,11 +36,13 @@ impl<'a> Fields<'a> {
                     have: available,
                 });
             }
-            let tag: Tag = data[pos..pos + 4].try_into().expect("срез ровно 4 байта");
+            let tag: Tag = data[pos..pos + 4]
+                .try_into()
+                .expect("the slice is exactly 4 bytes");
             let small = u16::from_le_bytes(
                 data[pos + 4..pos + 6]
                     .try_into()
-                    .expect("срез ровно 2 байта"),
+                    .expect("the slice is exactly 2 bytes"),
             );
             pos += 6;
 
@@ -60,7 +61,7 @@ impl<'a> Fields<'a> {
                     have: data.len() - pos,
                 })?;
                 size_override = Some(u32::from_le_bytes(
-                    bytes.try_into().expect("срез ровно 4 байта"),
+                    bytes.try_into().expect("the slice is exactly 4 bytes"),
                 ) as usize);
                 pos += 4;
                 continue;
@@ -91,13 +92,13 @@ impl<'a> Fields<'a> {
         self.subs.len()
     }
 
-    /// Теги в порядке файла — для диагностики нераспознанных полей.
+    /// Tags in file order — for diagnosing unrecognized fields.
     pub fn tags(&self) -> impl Iterator<Item = Tag> + '_ {
         self.subs.iter().map(|(tag, _)| *tag)
     }
 
-    /// Поля в порядке файла. Нужно там, где смысл поля задаёт предыдущее: `VTXT` относится к
-    /// ближайшему `ATXT` перед ним, `RDWT` — к ближайшему `RDAT`.
+    /// Fields in file order. Needed where a field's meaning is set by the previous one: a `VTXT`
+    /// belongs to the nearest `ATXT` before it, an `RDWT` to the nearest `RDAT`.
     pub fn iter(&self) -> impl Iterator<Item = (Tag, &'a [u8])> + '_ {
         self.subs.iter().copied()
     }
@@ -167,7 +168,7 @@ impl<'a> Fields<'a> {
     }
 }
 
-/// Спека записи: сигнатура плюс отображение полей в типизированную структуру.
+/// A record spec: a signature plus a mapping of the fields into a typed structure.
 pub trait FromFields: Sized {
     const SIG: Tag;
     const NAME: &'static str;
@@ -204,7 +205,7 @@ mod tests {
             [*b"EDID", *b"MODL", *b"MODL"]
         );
         assert_eq!(fields.zstring(*b"EDID").unwrap(), "Bowl01");
-        // `first` берёт первое, `all` — все.
+        // `first` takes the first one, `all` takes all.
         assert_eq!(fields.opt_zstring(*b"MODL").unwrap(), "a.nif");
         assert_eq!(fields.all(*b"MODL").count(), 2);
     }
@@ -219,7 +220,7 @@ mod tests {
         let fields = Fields::parse(&data, "TEST").unwrap();
         assert_eq!(fields.first(*b"HUGE").unwrap().len(), big.len());
         assert_eq!(fields.zstring(*b"EDID").unwrap(), "x");
-        // Сам XXXX в списке полей не остаётся — это служебная обёртка.
+        // The XXXX itself does not stay in the field list — it is a technical wrapper.
         assert!(!fields.tags().any(|t| t == XXXX));
     }
 
@@ -253,7 +254,7 @@ mod tests {
 
     #[test]
     fn truncated_field_is_an_error() {
-        // Заявлено 10 байт, приложено 2.
+        // 10 bytes declared, 2 attached.
         let mut data = Vec::new();
         data.extend_from_slice(b"EDID");
         data.extend_from_slice(&10u16.to_le_bytes());

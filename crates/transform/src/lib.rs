@@ -1,7 +1,7 @@
-//! Преобразования из модели источника в модель Morrowind.
+//! Conversions from the source model to the Morrowind model.
 //!
-//! Это **единственный** крейт, который знает про обе игры одновременно.
-//! `tes4_read` не знает про TES3, `tes3_out` не знает про форматы источника.
+//! This is the **only** crate that knows about both games at once. `tes4_read` knows nothing about
+//! TES3, `tes3_out` knows nothing about the source formats.
 
 pub mod classes;
 pub mod creature_lists;

@@ -1,5 +1,5 @@
-//! Головы (T8.2): в каком пространстве лежит ванильная голова Morrowind и куда после ретаргета
-//! (T9.2) попадает голова Oblivion. Требует `BACK2MW_GAME_DATA` с `Morrowind.bsa` и
+//! Heads (T8.2): in what space the vanilla Morrowind head lies and where the Oblivion head ends up
+//! after retargeting (T9.2). Needs `BACK2MW_GAME_DATA` with `Morrowind.bsa` and
 //! `Oblivion - Meshes.bsa`.
 //!
 //! ```text
@@ -30,12 +30,12 @@ fn show(label: &str, (lo, hi): (Vec3, Vec3)) {
     let c = (lo + hi) / 2.0;
     let s = hi - lo;
     println!(
-        "{label:40} центр ({:7.2}, {:7.2}, {:7.2})  размер ({:6.2}, {:6.2}, {:6.2})",
+        "{label:40} center ({:7.2}, {:7.2}, {:7.2})  size ({:6.2}, {:6.2}, {:6.2})",
         c.x, c.y, c.z, s.x, s.y, s.z
     );
 }
 
-/// Вершины всех форм потока в пространстве его корня.
+/// Vertices of all shapes of the stream in its root's space.
 fn stream_vertices(stream: &NiStream) -> Vec<Vec3> {
     let world = stream.world_transforms();
     let mut out = Vec::new();
@@ -49,12 +49,12 @@ fn stream_vertices(stream: &NiStream) -> Vec<Vec3> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn oblivion_head_lands_where_a_vanilla_head_is() {
     let mw = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
     let file = |p: &str| {
         mw.get(p)
-            .unwrap_or_else(|| panic!("нет {p}"))
+            .unwrap_or_else(|| panic!("no {p}"))
             .as_bytes()
             .to_vec()
     };
@@ -69,20 +69,21 @@ fn oblivion_head_lands_where_a_vanilla_head_is() {
     let head_bone = skeleton.index_of("Bip01 Head").expect("Bip01 Head");
     let head_world = skeleton.bones[head_bone].world;
     println!(
-        "Bip01 Head Morrowind: позиция {:?}, ось X {:?}",
+        "Morrowind Bip01 Head: position {:?}, X axis {:?}",
         head_world.translation, head_world.matrix3.x_axis
     );
 
-    // Куда смотрит персонаж Morrowind: носок впереди ступни.
+    // Where the Morrowind character faces: the toe is ahead of the foot.
     for bone in ["Bip01 L Foot", "Bip01 L Toe0"] {
         if let Some(i) = skeleton.index_of(bone) {
             println!("{bone}: {:?}", skeleton.bones[i].world.translation);
         }
     }
-    // Узлы креплений `base_anim.nif` около головы: к ним движок цепляет части тела.
+    // Attachment nodes of `base_anim.nif` near the head: the engine attaches body parts to them.
     let anim = NiStream::from_bytes(&file("meshes\\base_anim.nif")).unwrap();
     let anim_world = anim.world_transforms();
-    // Ступня: меш на узле `Left Foot` — в какую сторону по Y он длиннее от лодыжки.
+    // Foot: the mesh on the `Left Foot` node — in which Y direction it extends further from the
+    // ankle.
     if let Some((link, _)) = anim
         .objects_of_type_with_link::<NiNode>()
         .find(|(_, n)| n.base.base.name == "Left Foot")
@@ -93,15 +94,15 @@ fn oblivion_head_lands_where_a_vanilla_head_is() {
             .into_iter()
             .map(|v| w.transform_point3(v))
             .collect();
-        println!("узел Left Foot в мире: {:?}", w.translation);
-        show("ступня в мире", bounds(world));
+        println!("Left Foot node in the world: {:?}", w.translation);
+        show("foot in the world", bounds(world));
     }
     for (link, n) in anim.objects_of_type_with_link::<NiNode>() {
         let name = &n.base.base.name;
         if name.eq_ignore_ascii_case("Head") || name.contains("Head") || name.contains("Neck") {
             let w = anim_world.get(&link.key).copied().unwrap_or_default();
             println!(
-                "base_anim {name:16} локально t={:?} r={:?}; мир t={:?} ось X={:?} Y={:?} Z={:?}",
+                "base_anim {name:16} local t={:?} r={:?}; world t={:?} X axis={:?} Y={:?} Z={:?}",
                 n.base.translation,
                 n.base.rotation,
                 w.translation,
@@ -128,15 +129,15 @@ fn oblivion_head_lands_where_a_vanilla_head_is() {
                 )
             })
             .collect();
-        println!("{name}: узлы {roots:?}");
-        show(&format!("ваниль {name}"), bounds(stream_vertices(&stream)));
+        println!("{name}: nodes {roots:?}");
+        show(&format!("vanilla {name}"), bounds(stream_vertices(&stream)));
     }
 
     let mut r = BufReader::new(File::open(common::game_file("Oblivion - Meshes.bsa")).unwrap());
     let idx = BsaIndex::read_from(&mut r).unwrap();
 
-    // Формула T8.2: v (система формы головы Oblivion) → Bip01 Head Oblivion → Bip01 Head
-    // Morrowind (поза привязки) → узел крепления `Head` (base_anim, локально от Bip01 Head).
+    // The T8.2 formula: v (Oblivion head shape system) → Oblivion Bip01 Head → Morrowind Bip01 Head
+    // (bind pose) → the `Head` attachment node (base_anim, local to Bip01 Head).
     let head_local = anim
         .objects_of_type::<NiNode>()
         .find(|n| n.base.base.name == "Head")
@@ -146,7 +147,7 @@ fn oblivion_head_lands_where_a_vanilla_head_is() {
                 n.base.translation,
             )
         })
-        .expect("узел Head");
+        .expect("Head node");
     let head_node = head_world * head_local;
     let e = idx
         .find("meshes\\characters\\imperial\\headhuman.nif")
@@ -178,48 +179,49 @@ fn oblivion_head_lands_where_a_vanilla_head_is() {
     let to_mw =
         head_node.inverse() * head_world * bone_world.unwrap().inverse() * shape_world.unwrap();
     show(
-        "Oblivion HeadHuman → узел Head (кость в кость)",
+        "Oblivion HeadHuman → Head node (bone to bone)",
         bounds(raw.iter().map(|&v| to_mw.transform_point3(v))),
     );
-    // Контроль: без поворота кости (только сдвиг к кости головы) — голова ляжет не так.
+    // Control: without the bone rotation (only a translation to the head bone) the head lands
+    // wrong.
     let shift = head_node.inverse()
         * tes3::nif::glam::Affine3A::from_translation(Vec3::from(head_world.translation))
         * tes3::nif::glam::Affine3A::from_translation(-Vec3::from(bone_world.unwrap().translation))
         * shape_world.unwrap();
     show(
-        "контроль: только сдвиг",
+        "control: translation only",
         bounds(raw.iter().map(|&v| shift.transform_point3(v))),
     );
     for part in ["headhuman", "earshuman", "eyelefthuman", "mouthhuman"] {
         let path = format!("meshes\\characters\\imperial\\{part}.nif");
-        let e = idx.find(&path).unwrap_or_else(|| panic!("нет {path}"));
+        let e = idx.find(&path).unwrap_or_else(|| panic!("no {path}"));
         let source = parse(&idx.extract(&mut r, e).unwrap()).unwrap();
-        // Сырые данные: узлы, кости скиннинга и их преобразования, габариты вершин как в файле.
+        // Raw data: nodes, skinning bones and their transforms, vertex bounds as in the file.
         for (i, b) in source.blocks.iter().enumerate() {
             match b {
                 mesh_convert::read::Block::Node(n) => println!(
-                    "  [{i}] узел {:?} t={:?} r={:?}",
+                    "  [{i}] node {:?} t={:?} r={:?}",
                     n.av.net.name, n.av.translation, n.av.rotation
                 ),
                 mesh_convert::read::Block::TriShape(s)
                 | mesh_convert::read::Block::TriStrips(s) => {
                     println!(
-                        "  [{i}] форма {:?} t={:?} r={:?} скин {:?}",
+                        "  [{i}] shape {:?} t={:?} r={:?} skin {:?}",
                         s.av.net.name, s.av.translation, s.av.rotation, s.skin_instance
                     );
                 }
                 mesh_convert::read::Block::TriShapeData(d)
                 | mesh_convert::read::Block::TriStripsData(d) => show(
-                    &format!("  [{i}] данные как в файле"),
+                    &format!("  [{i}] data as in the file"),
                     bounds(d.vertices.iter().map(|&v| Vec3::from(v))),
                 ),
                 mesh_convert::read::Block::SkinInstance(s) => {
-                    println!("  [{i}] скин: костей {}", s.bones.len());
+                    println!("  [{i}] skin: bones {}", s.bones.len());
                 }
                 mesh_convert::read::Block::SkinData(d) => {
                     for b in &d.bones {
                         println!(
-                            "  [{i}] кость: t={:?} r={:?} весов {}",
+                            "  [{i}] bone: t={:?} r={:?} weights {}",
                             b.transform.translation,
                             b.transform.rotation,
                             b.weights.len()
@@ -231,22 +233,22 @@ fn oblivion_head_lands_where_a_vanilla_head_is() {
         }
         let mut registry = TextureRegistry::default();
         let converted = convert_skinned(&source, &mut registry, &skeleton).unwrap();
-        // Вершины — в пространстве `Bip01`; в пространство кости головы.
+        // The vertices are in `Bip01` space; into head bone space.
         let root = skeleton.bones[0].world;
         let to_head = head_world.inverse() * root;
         let raw = stream_vertices(&converted.stream);
         let local: Vec<Vec3> = raw.iter().map(|&v| to_head.transform_point3(v)).collect();
         println!(
-            "{part}: вершин {}, объединено костей {}",
+            "{part}: vertices {}, bones merged {}",
             local.len(),
             converted.stats.merged_bones
         );
-        show(&format!("Oblivion {part} (кость головы)"), bounds(local));
+        show(&format!("Oblivion {part} (head bone)"), bounds(local));
     }
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn an_imperial_npc_head_bakes_from_all_parts() {
     use mesh_convert::facegen::Egm;
     use mesh_convert::head::{
@@ -257,7 +259,7 @@ fn an_imperial_npc_head_bakes_from_all_parts() {
     let mw = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
     let file = |p: &str| {
         mw.get(p)
-            .unwrap_or_else(|| panic!("нет {p}"))
+            .unwrap_or_else(|| panic!("no {p}"))
             .as_bytes()
             .to_vec()
     };
@@ -280,7 +282,7 @@ fn an_imperial_npc_head_bakes_from_all_parts() {
     let anim =
         NiStream::from_bytes(&file("meshes/base_anim.nif".replace('/', "\\").as_str())).unwrap();
     let mw_bone = skeleton.bones[skeleton.index_of("Bip01 Head").unwrap()].world;
-    let attach = attach_local(&anim, HEAD_ATTACH).expect("узел Head");
+    let attach = attach_local(&anim, HEAD_ATTACH).expect("Head node");
 
     let ob = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&ob).unwrap();
@@ -312,7 +314,7 @@ fn an_imperial_npc_head_bakes_from_all_parts() {
     let mut egms = Vec::new();
     let mut tris = Vec::new();
     for part in &race.head_parts {
-        // Уши: мужские — 1, женские — 2; NPC мужчина.
+        // Ears: male 1, female 2; the NPC is male.
         if part.index == 2 {
             continue;
         }
@@ -363,7 +365,7 @@ fn an_imperial_npc_head_bakes_from_all_parts() {
     )
     .unwrap();
     println!(
-        "{edid}: частей {}, с .egm {}, форм {}, треугольников {}, текстур {}",
+        "{edid}: parts {}, with .egm {}, shapes {}, triangles {}, textures {}",
         parts.len(),
         egms.iter().filter(|e| e.is_some()).count(),
         baked.stats.shapes,
@@ -372,17 +374,18 @@ fn an_imperial_npc_head_bakes_from_all_parts() {
     );
     let lid = stream_vertices(&baked.stream);
     let base = stream_vertices(&plain.stream);
-    show(&format!("{edid} (лицо NPC)"), bounds(lid.iter().copied()));
-    show("без коэффициентов", bounds(base.iter().copied()));
+    show(&format!("{edid} (NPC face)"), bounds(lid.iter().copied()));
+    show("without coefficients", bounds(base.iter().copied()));
     let moved = lid
         .iter()
         .zip(&base)
         .map(|(a, b)| a.distance(*b))
         .fold(0.0f32, f32::max);
-    println!("наибольший сдвиг вершины от лица NPC: {moved:.2}");
-    assert!(moved > 0.1, "коэффициенты NPC должны менять лицо");
+    println!("largest vertex shift from the NPC face: {moved:.2}");
+    assert!(moved > 0.1, "NPC coefficients must change the face");
 
-    // Мимика: сколько вершин и насколько двигают цели «говорит» и «моргает» у каждой формы.
+    // Expressions: how many vertices the "talks" and "blinks" targets move in each shape, and how
+    // far.
     let mut talk_total = 0usize;
     let mut blink_total = 0usize;
     for d in baked.stream.objects_of_type::<tes3::nif::NiMorphData>() {
@@ -396,21 +399,25 @@ fn an_imperial_npc_head_bakes_from_all_parts() {
         talk_total += tn;
         blink_total += bn;
         println!(
-            "  морфы формы: вершин {}, «говорит» {tn} (до {tm:.2}), «моргает» {bn} (до {bm:.2})",
+            "  shape morphs: vertices {}, \"talks\" {tn} (up to {tm:.2}), \"blinks\" {bn} (up to {bm:.2})",
             d.targets[0].vertices.len()
         );
     }
-    assert!(talk_total > 0 && blink_total > 0, "мимика должна быть");
+    assert!(
+        talk_total > 0 && blink_total > 0,
+        "there must be expressions"
+    );
 
-    // Файл для NifSkope и niftest.
+    // A file for NifSkope and niftest.
     let out = std::env::temp_dir().join("back2mw_head_test.nif");
     std::fs::write(&out, baked.stream.save_bytes().unwrap()).unwrap();
-    println!("записано: {}", out.display());
+    println!("written: {}", out.display());
 }
 
-/// Сколько вершин у частей головы в NIF, `.tri` и `.egm`, и совпадает ли порядок вершин NIF и `.tri`.
+/// How many vertices head parts have in the NIF, `.tri` and `.egm`, and whether the NIF and `.tri`
+/// vertex order matches.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn nif_tri_and_egm_vertex_counts_of_head_parts() {
     use mesh_convert::facegen::{Egm, Tri};
     let mut r = BufReader::new(File::open(common::game_file("Oblivion - Meshes.bsa")).unwrap());
@@ -452,7 +459,7 @@ fn nif_tri_and_egm_vertex_counts_of_head_parts() {
         } else {
             other += 1;
             println!(
-                "{stem}: NIF {}, .egm {}, статических {stat}",
+                "{stem}: NIF {}, .egm {}, static {stat}",
                 verts.len(),
                 egm.vertices
             );
@@ -473,14 +480,14 @@ fn nif_tri_and_egm_vertex_counts_of_head_parts() {
         }
     }
     println!(
-        ".egm = NIF: {exact}; .egm = NIF + статические .tri: {prefix_stat}; иначе: {other}; \
-         порядок вершин NIF и .tri совпадает у {order_same}, нет у {order_diff}"
+        ".egm = NIF: {exact}; .egm = NIF + static .tri: {prefix_stat}; otherwise: {other}; \
+         NIF and .tri vertex order matches in {order_same}, not in {order_diff}"
     );
 }
 
-/// Мимика ванильной головы (T8.3): как устроены морфы `Talk`/`Blink`.
+/// Expressions of a vanilla head (T8.3): how the `Talk`/`Blink` morphs are built.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn vanilla_head_morphs_and_text_keys() {
     use tes3::nif::{NiFloatKey, NiGeomMorpherController, NiMorphData, NiTextKeyExtraData};
     let mw = Archive::from_path(common::game_file("Morrowind.bsa")).expect("Morrowind.bsa");
@@ -499,20 +506,20 @@ fn vanilla_head_morphs_and_text_keys() {
                 .map(|k| format!("{:.3} {:?}", k.time, k.value))
                 .collect();
             println!(
-                "  текстовые ключи: {list:?}; bytes_remaining {}",
+                "  text keys: {list:?}; bytes_remaining {}",
                 keys.base.bytes_remaining
             );
         }
         for c in stream.objects_of_type::<NiGeomMorpherController>() {
             let t = &c.base.base;
             println!(
-                "  контроллер: flags {:#x} частота {} фаза {} старт {} стоп {} всегда {}",
+                "  controller: flags {:#x} frequency {} phase {} start {} stop {} always {}",
                 t.flags, t.frequency, t.phase, t.start_time, t.stop_time, c.always_update
             );
         }
         for d in stream.objects_of_type::<NiMorphData>() {
             println!(
-                "  морфы: относительные {}, целей {}",
+                "  morphs: relative {}, targets {}",
                 d.relative_targets,
                 d.targets.len()
             );
@@ -533,7 +540,7 @@ fn vanilla_head_morphs_and_text_keys() {
                 let moved = m.vertices.iter().filter(|v| v.length() > 1e-4).count();
                 let max = m.vertices.iter().map(|v| v.length()).fold(0.0f32, f32::max);
                 println!(
-                    "    цель {i}: вершин {}, ненулевых {moved}, наибольшая длина {max:.2}; ключи {keys}",
+                    "    target {i}: vertices {}, non-zero {moved}, largest length {max:.2}; keys {keys}",
                     m.vertices.len()
                 );
             }
@@ -541,9 +548,10 @@ fn vanilla_head_morphs_and_text_keys() {
     }
 }
 
-/// Причёска NPC (T8.4): в той же ли системе, что части головы, и как сидит на голове.
+/// NPC hair (T8.4): whether it is in the same system as the head parts, and how it sits on the
+/// head.
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn npc_hair_sits_on_the_baked_head() {
     use mesh_convert::head::{
         FaceShape, HEAD_ATTACH, HeadFrame, HeadPart, attach_local, bake_head,
@@ -582,7 +590,7 @@ fn npc_hair_sits_on_the_baked_head() {
         .map(|r| Hair::from_record(r).unwrap())
         .unwrap();
     println!(
-        "{}: причёска {} {:?}, цвет {:?}",
+        "{}: hair {} {:?}, color {:?}",
         npc.editor_id, hair.editor_id, hair.model, npc.hair_color
     );
 
@@ -599,11 +607,11 @@ fn npc_hair_sits_on_the_baked_head() {
     for (i, b) in hair_nif.blocks.iter().enumerate() {
         match b {
             mesh_convert::read::Block::Node(n) => {
-                println!("  [{i}] узел {:?} t={:?}", n.av.net.name, n.av.translation)
+                println!("  [{i}] node {:?} t={:?}", n.av.net.name, n.av.translation)
             }
             mesh_convert::read::Block::TriShape(s) | mesh_convert::read::Block::TriStrips(s) => {
                 println!(
-                    "  [{i}] форма {:?} t={:?} скин {:?}",
+                    "  [{i}] shape {:?} t={:?} skin {:?}",
                     s.av.net.name, s.av.translation, s.skin_instance
                 );
             }
@@ -645,29 +653,29 @@ fn npc_hair_sits_on_the_baked_head() {
     )
     .unwrap();
     show(
-        "голова (узел Head)",
+        "head (Head node)",
         bounds(stream_vertices(&head_out.stream)),
     );
     show(
-        &format!("причёска {} (.egm {})", hair.editor_id, egm.is_some()),
+        &format!("hair {} (.egm {})", hair.editor_id, egm.is_some()),
         bounds(stream_vertices(&hair_out.stream)),
     );
 
-    // Цвет волос (T8.4) по `HCLR` — от среднего цвета текстуры. Кожа — запеканием `.egt` (T8.8,
-    // `real_face_textures`).
+    // Hair color (T8.4) from `HCLR` — relative to the texture's average color. Skin — by baking
+    // `.egt` (T8.8, `real_face_textures`).
     let mut t = BufReader::new(
         File::open(common::game_file("Oblivion - Textures - Compressed.bsa")).unwrap(),
     );
     let tidx = BsaIndex::read_from(&mut t).unwrap();
     let mut texture = |path: &str| {
         let key = format!(r"textures\{}", path.to_ascii_lowercase());
-        let e = tidx.find(&key).unwrap_or_else(|| panic!("нет {key}"));
+        let e = tidx.find(&key).unwrap_or_else(|| panic!("no {key}"));
         mesh_convert::icons::mean_color(&tidx.extract(&mut t, e).unwrap()).unwrap()
     };
     let hair_mean = texture(hair.texture.as_ref().unwrap());
     let tint = mesh_convert::head::hair_tint(npc.hair_color.unwrap(), hair_mean);
     println!(
-        "волосы: средний цвет текстуры {hair_mean:?}, HCLR {:?}, множитель {tint:?}",
+        "hair: average texture color {hair_mean:?}, HCLR {:?}, multiplier {tint:?}",
         npc.hair_color
     );
 }

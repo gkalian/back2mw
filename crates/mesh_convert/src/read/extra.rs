@@ -1,7 +1,7 @@
 use super::cursor::Cursor;
 use super::error::Result;
 
-/// `NiStringExtraData`: имя и строка (`NiOptimizeKeep`, `MRK` маркера и т. п.).
+/// `NiStringExtraData`: a name and a string (`NiOptimizeKeep`, a marker's `MRK` and so on).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StringExtraData {
     pub name: String,
@@ -15,8 +15,8 @@ pub fn read_string_extra(cur: &mut Cursor<'_>) -> Result<StringExtraData> {
     })
 }
 
-/// `NiBinaryExtraData`: у Oblivion — тангенты и битангенты (`Tangent space (binormal &
-/// tangent vectors)`).
+/// `NiBinaryExtraData`: in Oblivion, tangents and bitangents
+/// (`Tangent space (binormal & tangent vectors)`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryExtraData {
     pub name: String,
@@ -32,8 +32,9 @@ pub fn read_binary_extra(cur: &mut Cursor<'_>) -> Result<BinaryExtraData> {
     })
 }
 
-/// `BSBound` — габариты актёра: центр и половины сторон коробки, в юнитах. Стоит на корне
-/// скелета (T11.5b: у всех скелетов существ); у Morrowind ту же роль играет узел `Bounding Box`.
+/// `BSBound` — the actor's bounds: the center and half-extents of a box, in units. It sits on the
+/// skeleton root (T11.5b: on all creature skeletons); in Morrowind the `Bounding Box` node plays
+/// the same role.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BsBound {
     pub name: String,
@@ -49,7 +50,7 @@ pub fn read_bs_bound(cur: &mut Cursor<'_>) -> Result<BsBound> {
     })
 }
 
-/// `BSXFlags` — `NiIntegerExtraData` с флагами движка Oblivion.
+/// `BSXFlags` — a `NiIntegerExtraData` with Oblivion engine flags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BsxFlags {
     pub name: String,

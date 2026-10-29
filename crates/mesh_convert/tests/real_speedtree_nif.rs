@@ -1,5 +1,5 @@
-//! T2.4f: NIF всех деревьев `Oblivion.esm` — кора, листва (по `ICON` записи `TREE`), коллизия;
-//! `niftest` из OpenMW читает каждый без ошибок, текстуры есть в архивах.
+//! T2.4f: NIFs of all `Oblivion.esm` trees — bark, foliage (from the `TREE` record's `ICON`),
+//! collision; OpenMW's `niftest` reads each without errors, the textures are in the archives.
 
 mod common;
 
@@ -21,7 +21,7 @@ fn niftest_failures(tool: &Path, target: &Path) -> Vec<String> {
         .arg("-q")
         .arg(target)
         .output()
-        .unwrap_or_else(|e| panic!("не запустить niftest: {e}"));
+        .unwrap_or_else(|e| panic!("cannot start niftest: {e}"));
     String::from_utf8_lossy(&out.stderr)
         .lines()
         .chain(String::from_utf8_lossy(&out.stdout).lines())
@@ -31,12 +31,12 @@ fn niftest_failures(tool: &Path, target: &Path) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA, BACK2MW_NIFTEST"]
+#[ignore = "real data: BACK2MW_GAME_DATA, BACK2MW_NIFTEST"]
 fn every_tree_becomes_a_readable_nif() {
     let niftest = PathBuf::from(std::env::var_os("BACK2MW_NIFTEST").expect("BACK2MW_NIFTEST"));
     let bytes = std::fs::read(common::game_file("Oblivion.esm")).unwrap();
     let plugin = Plugin::parse(&bytes).unwrap();
-    // Модель `.spt` → текстура листвы (ICON).
+    // `.spt` model → foliage texture (ICON).
     let mut icons: BTreeMap<String, String> = BTreeMap::new();
     for record in plugin.records() {
         if &record.header.tag != b"TREE" || record.data.is_empty() {
@@ -47,7 +47,7 @@ fn every_tree_becomes_a_readable_nif() {
         };
         if let (Some(model), Some(icon)) = (f.opt_zstring(*b"MODL"), f.opt_zstring(*b"ICON")) {
             icons.insert(
-                // MODL записан относительно `trees\` и начинается с `\` (`\Dbush16.spt`).
+                // MODL is written relative to `trees\` and starts with `\` (`\Dbush16.spt`).
                 format!(
                     "trees\\{}",
                     model.trim_start_matches('\\').to_ascii_lowercase()
@@ -106,11 +106,11 @@ fn every_tree_becomes_a_readable_nif() {
     }
     let failures = niftest_failures(&niftest, &out);
     println!(
-        "=== NIF деревьев {written}, niftest отказов {} ===",
+        "=== tree NIFs {written}, niftest failures {} ===",
         failures.len()
     );
-    println!("  треугольников коры {bark_tris}, листвы (с обратными сторонами) {leaf_tris}");
-    println!("  текстур нет в архивах: {missing_textures:?}");
+    println!("  bark triangles {bark_tris}, foliage (with back sides) {leaf_tris}");
+    println!("  textures missing from archives: {missing_textures:?}");
     for f in failures.iter().take(10) {
         println!("  {f}");
     }

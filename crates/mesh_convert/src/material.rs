@@ -1,17 +1,17 @@
-//! Материал: свойства Oblivion → свойства Morrowind, T1.5.
+//! Material: Oblivion properties → Morrowind properties, T1.5.
 //!
-//! У Oblivion, в отличие от Skyrim, нет `BSShader*`: материал задают те же свойства, что
-//! у Morrowind (`NiMaterialProperty`, `NiTexturingProperty`, `NiAlphaProperty`,
-//! `NiVertexColorProperty`), поэтому здесь только отображение полей 20.0.0.x → 4.0.0.2,
-//! таблица которого — в `docs/ru/formats/nif-oblivion.md`. Связывание блоков между собой
-//! делает [`crate::geometry`], здесь функции на один блок.
+//! Unlike Skyrim, Oblivion has no `BSShader*`: the material is set by the same properties as in
+//! Morrowind (`NiMaterialProperty`, `NiTexturingProperty`, `NiAlphaProperty`,
+//! `NiVertexColorProperty`), so here there is only a mapping of 20.0.0.x → 4.0.0.2 fields, whose
+//! table is in `docs/en/formats/nif-oblivion.md`. Linking blocks to each other is done by
+//! [`crate::geometry`]; the functions here work on one block.
 //!
-//! Чего нет в выходе намеренно:
+//! What is deliberately missing from the output:
 //!
-//! * `NiTexturingProperty`: остались слоты base и glow. Dark, detail, gloss, bump и decal
-//!   ванильный Morrowind не использует.
-//! * Преобразование UV (`Has Texture Transform`): у слота Morrowind поля для него нет.
-//! * Контроллеры и дополнительные данные у свойств (`NiObjectNET`) — как у узлов.
+//! * `NiTexturingProperty`: only the base and glow slots remain. Vanilla Morrowind does not use
+//!   dark, detail, gloss, bump and decal.
+//! * UV transform (`Has Texture Transform`): a Morrowind slot has no field for it.
+//! * Controllers and extra data on properties (`NiObjectNET`) — as for nodes.
 
 use tes3::nif::glam::Vec3;
 use tes3::nif::{
@@ -30,14 +30,14 @@ use crate::read::{
     NiVertexColorProperty as SrcVertexColor,
 };
 
-/// Биты `AlphaFlags`, существующие в 4.0.0.2: смешивание (0), режимы источника и приёмника
-/// (1–8), тест (9) и функция теста (10–12). Биты 13–15 (`No Sorter`, `Clone Unique`,
-/// `Editor Alpha Threshold`) — Bethesda-only, у Morrowind их нет.
+/// `AlphaFlags` bits that exist in 4.0.0.2: blending (0), source and destination modes (1–8), test
+/// (9) and test function (10–12). Bits 13–15 (`No Sorter`, `Clone Unique`,
+/// `Editor Alpha Threshold`) are Bethesda-only, Morrowind does not have them.
 const ALPHA_FLAGS_MASK: u16 = 0x1FFF;
 
-/// Число слотов в выходном `NiTexturingProperty`: base, dark, detail, gloss, glow, bump,
-/// decal 0. Занят из них только base и (редко) glow. Что именно столько слотов у свойств
-/// ванильного Morrowind — **не проверено** на мешах `Morrowind.bsa`.
+/// Number of slots in the output `NiTexturingProperty`: base, dark, detail, gloss, glow, bump,
+/// decal 0. Only base and (rarely) glow are used. That vanilla Morrowind properties have exactly
+/// this many slots is **not verified** on the meshes of `Morrowind.bsa`.
 pub(crate) const OUT_SLOTS: usize = 7;
 pub(crate) const SLOT_BASE: usize = 0;
 const SLOT_GLOW: usize = 4;
@@ -57,14 +57,15 @@ fn unknown(block: usize, field: &'static str, value: u32) -> ConvertError {
     }
 }
 
-/// `NiMaterialProperty`: цвета, блеск и альфа — как есть, кроме нулевого ambient. Флагов в
-/// 20.0.0.4 у этого блока нет, в 4.0.0.2 они есть и остаются нулевыми.
+/// `NiMaterialProperty`: colors, glossiness and alpha — as is, except a zero ambient. In 20.0.0.4
+/// this block has no flags; in 4.0.0.2 it does, and they stay zero.
 ///
-/// **Нулевой ambient → diffuse** (решение владельца 2026-09-30). Morrowind освещает материал
-/// рассеянным светом × ambient плюс прямым × diffuse, и всё, что отвёрнуто от ламп, с ambient 0
-/// выходит чисто чёрным: рукава рубашек NPC `SEWorld` в тёмных домах (игра, 2026-09-30). Oblivion
-/// ambient материала, судя по виду тех же вещей в нём, не использует. В `SEWorld` таких форм 956,
-/// у 371 из них (184 меша: одежда, эффекты, деревья) ambient не заменяют и цвета вершин.
+/// **Zero ambient → diffuse** (owner's decision 2026-09-30). Morrowind lights a material with
+/// ambient light × ambient plus direct light × diffuse, and everything turned away from the lamps
+/// comes out pure black with ambient 0: the shirt sleeves of `SEWorld` NPCs in dark houses (game,
+/// 2026-09-30). Judging by how the same items look in it, Oblivion does not use the material's
+/// ambient. `SEWorld` has 956 such shapes; for 371 of them (184 meshes: clothing, effects, trees)
+/// vertex colors do not replace ambient either.
 pub fn material(src: &SrcMaterial) -> NiMaterialProperty {
     let ambient = if src.ambient == [0.0; 3] {
         src.diffuse
@@ -85,8 +86,8 @@ pub fn material(src: &SrcMaterial) -> NiMaterialProperty {
     }
 }
 
-/// `NiVertexColorProperty`: флаги и оба режима переносятся; значение вне известных —
-/// ошибка, а не молчаливая замена.
+/// `NiVertexColorProperty`: the flags and both modes are carried over; a value outside the known
+/// ones is an error, not a silent replacement.
 pub fn vertex_color(
     block: usize,
     src: &SrcVertexColor,
@@ -112,7 +113,7 @@ pub fn vertex_color(
     })
 }
 
-/// `NiSpecularProperty`: флаги как есть.
+/// `NiSpecularProperty`: flags as is.
 pub fn specular(src: &SrcSpecular) -> NiSpecularProperty {
     NiSpecularProperty {
         base: NiProperty {
@@ -122,12 +123,13 @@ pub fn specular(src: &SrcSpecular) -> NiSpecularProperty {
     }
 }
 
-/// `NiStencilProperty`: поля и их значения одинаковы в обеих версиях; у 20.0.0.4 нет только
-/// `flags`, в выходе они нулевые. Главное здесь — режим двусторонности (`draw_mode`).
+/// `NiStencilProperty`: the fields and their values are the same in both versions; 20.0.0.4 lacks
+/// only `flags`, which are zero in the output. The main thing here is the two-sided mode
+/// (`draw_mode`).
 pub fn stencil(src: &SrcStencil) -> NiStencilProperty {
-    // Экспортёры (3ds Max и др.) иногда пишут в эти поля мусор, например `1.0f` как целое
-    // (1065353216). У Morrowind из стенсила важен только режим двусторонности, поэтому
-    // непонятное значение заменяется значением по умолчанию, а не валит весь меш.
+    // Exporters (3ds Max and others) sometimes write junk into these fields, for example `1.0f` as
+    // an integer (1065353216). Of the stencil, Morrowind cares only about the two-sided mode, so an
+    // unclear value is replaced by the default instead of failing the whole mesh.
     let function = match src.function {
         0 => StencilTestFunction::Never,
         1 => StencilTestFunction::Less,
@@ -171,7 +173,7 @@ pub fn stencil(src: &SrcStencil) -> NiStencilProperty {
     }
 }
 
-/// `NiAlphaProperty`: флаги (без Bethesda-only битов) и порог теста.
+/// `NiAlphaProperty`: flags (without the Bethesda-only bits) and the test threshold.
 pub fn alpha(src: &SrcAlpha) -> NiAlphaProperty {
     NiAlphaProperty {
         base: NiProperty {
@@ -182,9 +184,9 @@ pub fn alpha(src: &SrcAlpha) -> NiAlphaProperty {
     }
 }
 
-/// `NiSourceTexture` с внешним файлом. Внутренние текстуры (пиксели в самом NIF) в мешах
-/// `STAT` не встречаются, и переносить их нечем — ошибка. `file_name` — уже итоговое имя
-/// (его выбирает вызывающий).
+/// A `NiSourceTexture` with an external file. Internal textures (pixels in the NIF itself) do not
+/// occur in `STAT` meshes, and there is nothing to carry them over with — an error. `file_name` is
+/// already the final name (the caller chooses it).
 pub fn source_texture(
     block: usize,
     src: &SrcSourceTexture,
@@ -229,17 +231,17 @@ pub fn source_texture(
     })
 }
 
-/// Слоты, которые переживают конвертацию: base и glow.
+/// Slots that survive the conversion: base and glow.
 pub fn kept_slots(src: &SrcTexturing) -> (Option<&TexDesc>, Option<&TexDesc>) {
     (src.base.as_ref(), src.glow.as_ref())
 }
 
-/// Что потеряно в `NiTexturingProperty` при отображении; для отчёта.
+/// What was lost in `NiTexturingProperty` during the mapping; for the report.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TexturingLoss {
-    /// Занятые слоты, которых нет в выходе (dark, detail, gloss, bump, decals, шейдерные).
+    /// Used slots missing from the output (dark, detail, gloss, bump, decals, shader slots).
     pub dropped_slots: usize,
-    /// Слоты с преобразованием UV, которое в выходе не представимо.
+    /// Slots with a UV transform that cannot be represented in the output.
     pub dropped_transforms: usize,
 }
 
@@ -253,8 +255,8 @@ fn clamp_mode(block: usize, v: u32) -> Result<ClampMode, ConvertError> {
     })
 }
 
-/// Фильтр 6 (`FILTER_ANISOTROPIC`) у Morrowind не существует: берётся `Trilerp`, ближайший
-/// по смыслу. Остальные значения одинаковы в обеих версиях.
+/// Filter 6 (`FILTER_ANISOTROPIC`) does not exist in Morrowind: `Trilerp`, the closest in meaning,
+/// is taken. The other values are the same in both versions.
 fn filter_mode(block: usize, v: u32) -> Result<FilterMode, ConvertError> {
     Ok(match v {
         0 => FilterMode::Nearest,
@@ -287,13 +289,13 @@ fn map(
         texture,
         clamp_mode: clamp_mode(block, desc.clamp_mode)?,
         filter_mode: filter_mode(block, desc.filter_mode)?,
-        // У Morrowind в геометрии остаётся один набор UV (нулевой), см. `geometry`.
+        // In Morrowind the geometry keeps one UV set (set zero), see `geometry`.
         texture_index: 0,
         ..Map::default()
     }))
 }
 
-/// `NiTexturingProperty`: слоты base и glow с уже сконвертированными текстурами.
+/// `NiTexturingProperty`: the base and glow slots with already converted textures.
 pub fn texturing(
     block: usize,
     src: &SrcTexturing,

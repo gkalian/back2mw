@@ -1,5 +1,6 @@
-//! FaceGen-файлы Oblivion (T8.1): все `.egm`, `.egt`, `.tri` архивов мешей читаются. Требует
-//! `BACK2MW_GAME_DATA` с `Oblivion - Meshes.bsa` и `DLCShiveringIsles - Meshes.bsa`.
+//! Oblivion FaceGen files (T8.1): all `.egm`, `.egt`, `.tri` files of the mesh archives are
+//! readable. Needs `BACK2MW_GAME_DATA` with `Oblivion - Meshes.bsa` and
+//! `DLCShiveringIsles - Meshes.bsa`.
 //!
 //! ```text
 //! BACK2MW_GAME_DATA='…\tes' cargo test --release -p mesh_convert --test real_facegen -- --ignored --nocapture
@@ -15,7 +16,7 @@ use mesh_convert::facegen::{Egm, Egt, Tri};
 use tes4_read::BsaIndex;
 
 #[test]
-#[ignore = "реальные данные: BACK2MW_GAME_DATA"]
+#[ignore = "real data: BACK2MW_GAME_DATA"]
 fn every_facegen_file_of_oblivion_parses() {
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     let mut shapes: BTreeMap<String, usize> = BTreeMap::new();
@@ -75,8 +76,8 @@ fn every_facegen_file_of_oblivion_parses() {
                 .or_default() += 1;
         }
     }
-    println!("файлов: {counts:?}");
-    println!("формы: {shapes:?}");
-    println!("морфы .tri: {names:?}");
+    println!("files: {counts:?}");
+    println!("shapes: {shapes:?}");
+    println!(".tri morphs: {names:?}");
     assert!(counts["egm"] > 100 && counts["egt"] > 10 && counts["tri"] > 10);
 }
