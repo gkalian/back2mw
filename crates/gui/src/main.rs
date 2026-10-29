@@ -813,8 +813,10 @@ impl App {
         answer
     }
 
-    /// Result of the last action, above the log.
-    fn show_outcome(ui: &mut egui::Ui, lang: Lang, outcome: &Outcome) {
+    /// Result of the last action, above the log. Returns the offset the player chose to take
+    /// from the run's suggestion (phase 5), if the button was pressed.
+    fn show_outcome(ui: &mut egui::Ui, lang: Lang, outcome: &Outcome) -> Option<(i32, i32)> {
+        let mut take_offset = None;
         let error = |ui: &mut egui::Ui, e: &str| {
             ui.colored_label(RED, lang.tr(format!("Ошибка: {e}"), format!("Error: {e}")));
         };
@@ -866,6 +868,24 @@ impl App {
                             r.cells, r.interiors
                         ),
                     ));
+                }
+                if let Some((dx, dy)) = r.suggested_offset {
+                    ui.colored_label(
+                        AMBER,
+                        lang.tr(
+                            format!("Мир лёг на ячейки включённых модов (см. замечания). Свободное место — смещение {dx}, {dy}: возьмите его и соберите заново."),
+                            format!("The world landed on cells of enabled mods (see the notes). A free place is offset {dx}, {dy}: take it and build again."),
+                        ),
+                    );
+                    if ui
+                        .button(lang.tr(
+                            format!("Взять смещение {dx}, {dy}"),
+                            format!("Take offset {dx}, {dy}"),
+                        ))
+                        .clicked()
+                    {
+                        take_offset = Some((dx, dy));
+                    }
                 }
                 match (&r.install, &r.built_into) {
                     (Some(i), _) => {
@@ -999,6 +1019,7 @@ impl App {
                 }
             }
         }
+        take_offset
     }
 
     fn show_package(ui: &mut egui::Ui, lang: Lang, p: &PackageReport) {
@@ -1193,6 +1214,7 @@ impl eframe::App for App {
         });
 
         // The log and the result.
+        let mut taken_offset = None;
         if busy || !self.log.is_empty() || self.result.is_some() {
             egui::TopBottomPanel::bottom("log")
                 .resizable(true)
@@ -1200,7 +1222,9 @@ impl eframe::App for App {
                 .show(ctx, |ui| {
                     if let Some(outcome) = &self.result {
                         ui.add_space(4.0);
-                        Self::show_outcome(ui, lang, outcome);
+                        if let Some(offset) = Self::show_outcome(ui, lang, outcome) {
+                            taken_offset = Some(offset);
+                        }
                     }
                     egui::ScrollArea::vertical()
                         .stick_to_bottom(true)
@@ -1211,6 +1235,13 @@ impl eframe::App for App {
                             }
                         });
                 });
+        }
+        // The player took the suggested free offset: it becomes the custom one and is saved, like
+        // an offset typed into the field.
+        if let Some(offset) = taken_offset {
+            self.custom_offset = true;
+            self.offset = offset;
+            self.save();
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {

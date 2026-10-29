@@ -33,8 +33,11 @@ Result on `Oblivion.esm`: 1,397 of 1,398 lists, 0 broken references.
 
 - **The count in an entry**: 50 arrows become one arrow, 150 gold one coin worth 100.
 - The "use all" flag inside a nested list.
-- With `--worldspace` lists only get items placed in the world: in `SEWorld` 702 of 1,398 lists ended
-  up empty.
+- With `--worldspace` the lists and items reachable from the world are carried over: from placed
+  containers and plants, from the inventories of the world's NPCs and creatures, through nested
+  lists. `SEWorld` (2026-10-29): `LEVI` 574, 1 entry dropped, 1 list ended up empty; nothing removed
+  from containers (before, when only items placed in the world were taken, 702 of 1,398 lists ended
+  up empty).
 
 !!! warning "Not verified in the game"
     That a picked-up `Gold_025` becomes 25 × `Gold_001`; drops from lists in chests.

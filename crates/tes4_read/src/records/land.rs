@@ -113,9 +113,9 @@ impl FromFields for Land {
         let triples = |tag: Tag| -> Result<Option<Vec<[u8; 3]>>> {
             match fields.first(tag) {
                 None => Ok(None),
-                Some(raw) if raw.len() == LAND_VERTS * 3 => Ok(Some(
-                    raw.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect(),
-                )),
+                Some(raw) if raw.len() == LAND_VERTS * 3 => {
+                    Ok(Some(raw.as_chunks::<3>().0.to_vec()))
+                }
                 Some(raw) => Err(size_error(tag, LAND_VERTS * 3, raw.len())),
             }
         };
@@ -165,7 +165,7 @@ impl FromFields for Land {
                             .into(),
                         });
                     };
-                    for c in raw.chunks_exact(8) {
+                    for c in raw.as_chunks::<8>().0 {
                         let position = u16::from_le_bytes([c[0], c[1]]);
                         if usize::from(position) >= OPACITY_SIDE * OPACITY_SIDE {
                             return Err(Error::BadValue {

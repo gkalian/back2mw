@@ -123,7 +123,9 @@ impl<'a> Cursor<'a> {
     fn i16x3(&mut self, n: usize) -> Result<Vec<[i16; 3]>> {
         let raw = self.take(n.checked_mul(6).ok_or_else(|| self.overflow())?)?;
         Ok(raw
-            .chunks_exact(6)
+            .as_chunks::<6>()
+            .0
+            .iter()
             .map(|c| [0, 2, 4].map(|k| i16::from_le_bytes([c[k], c[k + 1]])))
             .collect())
     }
@@ -131,7 +133,9 @@ impl<'a> Cursor<'a> {
     fn f32x3(&mut self, n: usize) -> Result<Vec<[f32; 3]>> {
         let raw = self.take(n.checked_mul(12).ok_or_else(|| self.overflow())?)?;
         Ok(raw
-            .chunks_exact(12)
+            .as_chunks::<12>()
+            .0
+            .iter()
             .map(|c| {
                 [0, 4, 8].map(|k| f32::from_le_bytes(c[k..k + 4].try_into().expect("4 bytes")))
             })

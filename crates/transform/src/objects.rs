@@ -640,8 +640,10 @@ fn tree(record: &tes4_read::Record, model: &str) -> Result<Vec<TreeSource>, Stri
     let seeds: Vec<Option<i32>> = fields
         .first(*b"SNAM")
         .unwrap_or_default()
-        .chunks_exact(4)
-        .map(|b| Some(i32::from_le_bytes(b.try_into().expect("4 bytes"))))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|&b| Some(i32::from_le_bytes(b)))
         .map(|s| s.filter(|&s| s != 0 && s != 1))
         .collect();
     let seeds = if seeds.is_empty() { vec![None] } else { seeds };

@@ -122,6 +122,9 @@ pub struct JobReport {
     /// Exterior cells and interiors in all plugins (when carrying over a worldspace).
     pub cells: usize,
     pub interiors: usize,
+    /// Phase 5: the world landed on cells of an enabled mod, and this offset is free
+    /// (`pipeline::Outcome::suggested_offset`). Not applied: the window offers it.
+    pub suggested_offset: Option<(i32, i32)>,
 }
 
 /// Staging directory inside the work directory.
@@ -377,6 +380,7 @@ pub fn run(job: &Job, log: &mut dyn FnMut(&str)) -> Result<JobReport, PipelineEr
         validated: validate,
         cells: outcome.plugins.iter().map(|p| p.cells).sum(),
         interiors: outcome.plugins.iter().map(|p| p.interiors).sum(),
+        suggested_offset: outcome.suggested_offset,
     })
 }
 

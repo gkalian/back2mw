@@ -70,17 +70,28 @@ impl FromFields for PathGrid {
             return Err(size_error(*b"PGRP", count * 16, pgrp.len()));
         }
         let points: Vec<[f32; 3]> = pgrp
-            .chunks_exact(16)
+            .as_chunks::<16>()
+            .0
+            .iter()
             .map(|c| [f32_at(c, 0), f32_at(c, 4), f32_at(c, 8)])
             .collect();
-        let degrees: Vec<usize> = pgrp.chunks_exact(16).map(|c| usize::from(c[12])).collect();
+        let degrees: Vec<usize> = pgrp
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .map(|c| usize::from(c[12]))
+            .collect();
 
         let pgrr = fields.first(*b"PGRR").unwrap_or_default();
         let total: usize = degrees.iter().sum();
         if pgrr.len() != total * 2 {
             return Err(size_error(*b"PGRR", total * 2, pgrr.len()));
         }
-        let mut neighbours = pgrr.chunks_exact(2).map(|c| u16_at(c, 0));
+        let mut neighbours = pgrr
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| u16::from_le_bytes(c));
         let mut edges = Vec::with_capacity(count);
         for degree in degrees {
             let list: Vec<u16> = neighbours
@@ -105,7 +116,7 @@ impl FromFields for PathGrid {
             if !raw.len().is_multiple_of(16) {
                 return Err(size_error(*b"PGRI", raw.len() / 16 * 16 + 16, raw.len()));
             }
-            for c in raw.chunks_exact(16) {
+            for c in raw.as_chunks::<16>().0 {
                 let point = u16_at(c, 0);
                 if usize::from(point) >= count {
                     return Err(bad_value(

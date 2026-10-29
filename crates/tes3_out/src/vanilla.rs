@@ -156,6 +156,25 @@ pub fn topics(master: &[u8]) -> io::Result<Vec<VanillaTopic>> {
     Ok(out)
 }
 
+/// Exterior cells a Morrowind plugin (any `.esm`/`.esp`, `bytes`) has: the grids of its exterior
+/// `CELL` records, without repeats, in ascending order. Used to see which part of the exterior grid
+/// other installed mods occupy (phase 5). `LAND` is not read: every exterior cell with land has a
+/// `CELL`, and landscape is the heavy part of a big mod. A plugin that only edits cells of its
+/// masters lists them too: an edited cell is occupied as well.
+pub fn exterior_cells(bytes: &[u8]) -> io::Result<Vec<(i32, i32)>> {
+    use tes3::esp::{Cell, CellFlags, Plugin};
+    let mut plugin = Plugin::new();
+    plugin.load_bytes_filtered(bytes, |tag| &tag == b"CELL")?;
+    let mut cells: Vec<(i32, i32)> = plugin
+        .objects_of_type::<Cell>()
+        .filter(|c| !c.data.flags.contains(CellFlags::IS_INTERIOR))
+        .map(|c| c.data.grid)
+        .collect();
+    cells.sort_unstable();
+    cells.dedup();
+    Ok(cells)
+}
+
 /// Global variables of the master: ID and type.
 pub fn globals(master: &[u8]) -> io::Result<Vec<(String, crate::dialogue::VarType)>> {
     use crate::dialogue::VarType;

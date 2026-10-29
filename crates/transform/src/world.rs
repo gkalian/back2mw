@@ -40,6 +40,39 @@ pub struct ConvertedWorld {
     pub contents: Vec<ContainerItem>,
 }
 
+/// Contents of the set's containers and plants (absolute `FormID`s of `CONT`/`FLOR`) and everything
+/// reachable from them through the plugin's leveled lists `LVLI`. With `--worldspace` they have to be
+/// converted even though they do not stand in the world, like NPC inventory
+/// (`crate::npcs::inventory_of`): without them the chests and the lists they use would be emptied
+/// (`SEWorld`: 702 of 1,398 lists, 2026-09-27).
+pub fn contents_of(
+    plugin: &tes4_read::Plugin,
+    map: impl Fn(u32) -> Option<u32>,
+    wanted: &std::collections::BTreeSet<u32>,
+) -> Result<std::collections::BTreeSet<u32>, crate::npcs::ActorError> {
+    let mut start = Vec::new();
+    for r in plugin
+        .records_of(*b"CONT")
+        .chain(plugin.records_of(*b"FLOR"))
+    {
+        if !map(r.header.form_id).is_some_and(|id| wanted.contains(&id)) {
+            continue;
+        }
+        let source = WorldSource::from_record(r)
+            .map_err(|e| crate::npcs::ActorError::Read(format!("{:08X}: {e}", r.header.form_id)))?;
+        match &source.data {
+            WorldData::Container { items, .. } => {
+                start.extend(items.iter().filter_map(|i| map(i.form_id)));
+            }
+            WorldData::Flora {
+                ingredient: Some(i),
+            } => start.extend(map(*i)),
+            _ => {}
+        }
+    }
+    crate::npcs::reachable_items(plugin, &map, start)
+}
+
 /// A world object from an Oblivion record; `id`, `mesh`, `icon` are already issued (`mesh` is empty
 /// for a light without a model). Sounds are set by the shared core once the whole plugin is read
 /// (T10.1).

@@ -48,39 +48,19 @@ One subcommand per stage plus `all`. Each reads the previous one's result from d
 be rerun on its own.
 
 !!! note "What exists today"
-    Available as separate commands are `all`, `validate`, `package`, `install`, `uninstall`. The
-    stages from `discover` to `write` are run by `all` in one go (every log line starts with the
-    stage name); they cannot be started on their own.
-
-**A stage with no material in the source is simply skipped.** This is not a special mode but normal
-behavior: a models-only run does not touch `world`, `faces` and `audio`, and that is exactly what the
-first working result looks like.
-
-| Stage | What it does |
-|---|---|
-| `discover` | Finds installations, lists the source plugins. **If the source has landscape**, scans the target load order and computes the offset |
-| `extract` | Unpacks the needed source BSAs into `work/`, cached by manifest. The BSA v103 reader is our own (`tes4_read::bsa`): `tes3::bsa` only knows the TES3 format |
-| `read` | Parses a source plugin into a typed model |
-| `transform` | IDs from FormIDs, object types, NPC stats, item properties (prices as in Oblivion or, on request, raised to Morrowind's), asset paths |
-| `world` | 2×2 merge, `LAND` stitching, applying the offset, placements |
-| `meshes` | NIF 20.0.0.4/20.0.0.5 → 4.0.0.2 (Oblivion's main version is 20.0.0.4, see [formats/nif-oblivion.md](formats/nif-oblivion.md)). **Textures are not converted but copied** next to the new model: Morrowind understands Oblivion's DDS. Only the slots that survive the `NiTexturingProperty` conversion are carried — base and glow; normal and specular maps are not used by vanilla. Paths are rewritten, name collisions from flattening the tree are resolved deterministically |
-| `creatures` | Own models of creatures without a donor: the skeleton, body parts and clips of a folder → three files per model (`<name>.nif`, `x<name>.nif`, `x<name>.kf`); records with the same set of parts share a model. A creature whose model failed to build does not go into the plugin |
-| `faces` | Baking `EGM`/`EGT` with the NPC's coefficients → unique heads and textures, deduplicating identical sets |
-| `audio` | `SOUN` sounds: `.wav` from BSAs, stereo is mixed to mono by our own code (`mesh_convert::audio`); voices are mp3, joined frame by frame (`mesh_convert::audio::mp3`). ffmpeg is not needed — Oblivion's and Morrowind's formats match |
-| `write` | Writes the `.esp`/`.esm`, lays out the assets |
-| `validate` | `esmtool dump` on the plugin, `niftest` on each mesh. Any error found fails the run. **The tools have different criteria:** for `esmtool` it is the exit code, while `niftest` always returns 0 and an error is visible only as `Failed to read` lines on stderr (measured) |
-| `package` | loose files or BSAs, a zip of the finished mod |
-
----
-
-## Choosing the offset
-
-!!! note "What exists today"
-    For now the default offset places the world east of the vanilla lands (western edge at x = 32,
-    southern edge at y = −19); mods in `Data Files` are not taken into account. Your own offset is
-    the `--offset` flag, the `offset = [dx, dy]` key in `config.toml` or the checkbox in the
-    window; the console and the window read the same key. The occupied-cell scanner and the
-    automatic choice of a free spot (items 1–3) are not implemented yet.
+    The default offset places the world east of the vanilla lands (western edge at x = 32, southern
+    edge at y = −19). Your own offset is the `--offset` flag, the `offset = [dx, dy]` key in
+    `config.toml` or the checkbox in the window; the console and the window read the same key.
+    **The scanner (phase 5) reads only the plugins enabled in `[Game Files]` of `Morrowind.ini`**
+    (the folder above `Data Files`), except the vanilla masters and the plugins of this run, and
+    collects their exterior `CELL` grids. If the world with the chosen offset lands on any of them,
+    the run lists the mods and how many world cells collide, and names the nearest free offset
+    (`WORLD_GAP` = 8 cells from vanilla and from the mods, search within 400 cells). The offset is
+    **not** changed on its own (item 5): the console prints the note, the window shows a "Take
+    offset" button that writes it into the custom offset; then the world is built again. Plugins
+    that lie in `Data Files` but are not enabled are not scanned (item 1 is narrower than planned —
+    the owner's decision, 2026-10-29). A plugin that cannot be read is named in the notes and not
+    counted.
 
 Needed only when the source has landscape. TES3 has no worldspaces: one exterior with `int32` cell
 coordinates — practically infinite — plus interiors.

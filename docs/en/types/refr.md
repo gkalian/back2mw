@@ -44,8 +44,10 @@ In `SEWorld`: 178 locked references, 72 with a key.
 
 ## What is lost
 
-- **Scale outside 0.5…2.0** is clamped (2,950 references in `SEWorld` with trees). Mesh variants with
-  the scale baked into the root are planned.
+- **Scale outside 0.5…2.0** is clamped (2,950 references in `SEWorld` with trees): such objects,
+  mostly large trees, come out smaller than in Oblivion. The engine allows no more than 2.0; mesh
+  copies with the extra scale baked into the root would avoid it, but the owner decided against
+  them (2026-10-29): the scale stays clamped at 2.0, no extra meshes.
 - **Enable parents** (`XESP`): initially disabled references are not placed at all; quest enabling
   does not work.
 - **Ownership** (`XOWN`): taking an item is not theft.

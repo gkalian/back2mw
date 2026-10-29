@@ -33,12 +33,8 @@ impl FromFields for Stat {
 
 fn decode_bounds(raw: [u8; 12]) -> [i16; 6] {
     let mut out = [0i16; 6];
-    for (slot, chunk) in out.iter_mut().zip(raw.chunks_exact(2)) {
-        *slot = i16::from_le_bytes(
-            chunk
-                .try_into()
-                .expect("chunks_exact(2) gives exactly 2 bytes"),
-        );
+    for (slot, &chunk) in out.iter_mut().zip(raw.as_chunks::<2>().0) {
+        *slot = i16::from_le_bytes(chunk);
     }
     out
 }

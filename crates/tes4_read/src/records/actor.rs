@@ -412,8 +412,10 @@ fn floats(fields: &Fields<'_>, tag: Tag) -> Result<Vec<f32>> {
     match fields.first(tag) {
         None => Ok(Vec::new()),
         Some(raw) if raw.len().is_multiple_of(4) => Ok(raw
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes(c.try_into().expect("4 bytes")))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&c| f32::from_le_bytes(c))
             .collect()),
         Some(raw) => Err(size_error(
             fields.record_name(),

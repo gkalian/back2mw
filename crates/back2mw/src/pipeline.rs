@@ -278,6 +278,9 @@ pub struct Outcome {
     /// Empty item slots removed: Oblivion skin is cut out of their meshes, and the Morrowind body
     /// shows.
     pub worn_slots_unhidden: usize,
+    /// Phase 5: the world landed on cells of an enabled mod, and this offset is free. The run does
+    /// not apply it (the offset ends up in saved games): the window offers it to the player.
+    pub suggested_offset: Option<(i32, i32)>,
     pub meshes_written: usize,
     /// Oblivion particle systems in the run's meshes (T2.7): those that became Morrowind emitters,
     /// those of them with losses, and the dropped ones (event effects, mesh particles).
@@ -389,8 +392,8 @@ pub const VANILLA_EXTERIOR: (i32, i32, i32, i32) = (-29, -19, 23, 28);
 pub const WORLD_GAP: i32 = 8;
 
 /// Default offset: the worldspace's western edge is [`WORLD_GAP`] cells east of vanilla, the
-/// southern edge is level with vanilla's southern edge. There is no scanner of cells occupied by
-/// mods yet (phase 5), so Tamriel Rebuilt and other neighbors are not taken into account.
+/// southern edge is level with vanilla's southern edge. Mods are not taken into account here:
+/// `check_neighbours` warns when the world lands on their cells (phase 5).
 pub fn default_offset(source: &ExteriorSource) -> Offset {
     let min_x = source.cells.iter().map(|c| c.grid.0.div_euclid(2)).min();
     let min_y = source.cells.iter().map(|c| c.grid.1.div_euclid(2)).min();
@@ -398,6 +401,79 @@ pub fn default_offset(source: &ExteriorSource) -> Offset {
         dx: VANILLA_EXTERIOR.2 + 1 + WORLD_GAP - min_x.unwrap_or(0),
         dy: VANILLA_EXTERIOR.1 - min_y.unwrap_or(0),
     }
+}
+
+/// How far from the chosen offset a free place is looked for, in cells.
+const NEIGHBOUR_REACH: i32 = 400;
+
+/// Phase 5: whether the world with `offset` lands on cells of mods enabled in `Morrowind.ini`. The
+/// offset is not changed (it is part of saved games): on a collision the run warns, names a free
+/// offset and keeps it in [`Outcome::suggested_offset`] for the window to offer.
+fn check_neighbours(
+    target_data: &Path,
+    outputs: &[String],
+    source: &ExteriorSource,
+    offset: Offset,
+    outcome: &mut Outcome,
+    log: &mut dyn FnMut(&str),
+) {
+    let scan = crate::neighbours::scan(target_data, outputs);
+    for (name, why) in &scan.unreadable {
+        outcome.problems.push(lang::tr!(
+            "{name}: не прочитать ячейки мода — при выборе смещения он не учтён: {why}",
+            "{name}: cannot read the mod's cells — it is not taken into account for the offset: {why}"
+        ));
+    }
+    for o in &scan.occupants {
+        if let Some((x0, y0, x1, y1)) = o.bounds() {
+            log(&lang::tr!(
+                "world: мод {} занимает ячеек {} (x {x0}…{x1}, y {y0}…{y1})",
+                "world: mod {} occupies {} cells (x {x0}…{x1}, y {y0}…{y1})",
+                o.plugin,
+                o.cells.len()
+            ));
+        }
+    }
+    let mut world: Vec<(i32, i32)> = source
+        .cells
+        .iter()
+        .map(|c| (c.grid.0.div_euclid(2), c.grid.1.div_euclid(2)))
+        .collect();
+    world.sort_unstable();
+    world.dedup();
+    let hits = crate::neighbours::collisions(&world, &scan.occupants, (offset.dx, offset.dy), 0);
+    if hits.is_empty() {
+        return;
+    }
+    let who = hits
+        .iter()
+        .map(|(p, n)| format!("{p} ({n})"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let free = crate::neighbours::free_offset(
+        &world,
+        &scan.occupants,
+        (offset.dx, offset.dy),
+        WORLD_GAP,
+        NEIGHBOUR_REACH,
+    );
+    outcome.problems.push(match free {
+        Some((dx, dy)) => lang::tr!(
+            "{}: со смещением {},{} мир ложится на ячейки включённых модов: {who} (в скобках — ячеек мира). Свободное место — смещение {dx},{dy}: флаг --offset {dx},{dy}, ключ offset = [{dx}, {dy}] или поле в окне. Само смещение не меняется: оно попадает в сохранения",
+            "{}: with offset {},{} the world lands on cells of enabled mods: {who} (world cells in brackets). A free place is offset {dx},{dy}: the flag --offset {dx},{dy}, the key offset = [{dx}, {dy}] or the field in the window. The offset never changes on its own: it ends up in saved games",
+            source.editor_id,
+            offset.dx,
+            offset.dy
+        ),
+        None => lang::tr!(
+            "{}: со смещением {},{} мир ложится на ячейки включённых модов: {who}; свободного места в пределах {NEIGHBOUR_REACH} ячеек не найдено",
+            "{}: with offset {},{} the world lands on cells of enabled mods: {who}; no free place within {NEIGHBOUR_REACH} cells",
+            source.editor_id,
+            offset.dx,
+            offset.dy
+        ),
+    });
+    outcome.suggested_offset = free;
 }
 
 /// Unpacking from the "loose" files of `Data` and the source archives (`extract::extract_all`).
@@ -926,18 +1002,25 @@ fn read_plugins<'a>(
                 transform::creatures::inventory_of(&source, map, &creatures)
                     .map_err(failed(&format!("CREA ({})", info.name)))?,
             );
+            // Placed containers and plants: their contents and the leveled lists they use do not
+            // stand in the world either, and without them the chests and lists would be emptied.
+            let placed = bases.clone();
+            bases.extend(
+                transform::world::contents_of(&source, map, &placed)
+                    .map_err(failed(&format!("CONT ({})", info.name)))?,
+            );
             world_creatures = Some(creatures);
             world_creature_lists = Some(spawned.lists);
             let mut kinds = HashMap::new();
             let mut edids = BTreeSet::new();
             for r in source.records() {
-                // Leveled lists do not stand in the world, but placed containers use them: we take
-                // all of them, and lines with unplaced items fall away when translated into IDs.
-                // Spells do not stand in the world at all, but NPCs will need them (phase 7) — we
-                // take all of them too. Enchantments do not go through the filter: they are written
-                // by the items that reference them.
-                if matches!(&r.header.tag, b"LVLI" | b"SPEL") {
-                    if let Some(edid) = tes4_read::Fields::parse(&r.data, "LVLI")
+                // Leveled lists do not stand in the world: only those reachable from placed
+                // containers and from NPC and creature inventories are taken (they are already in
+                // `bases`, see `contents_of` and `inventory_of`). Spells do not stand in the world
+                // at all, but NPCs will need them (phase 7) — we take all of them. Enchantments do
+                // not go through the filter: they are written by the items that reference them.
+                if &r.header.tag == b"SPEL" {
+                    if let Some(edid) = tes4_read::Fields::parse(&r.data, "SPEL")
                         .ok()
                         .and_then(|f| f.opt_zstring(*b"EDID"))
                     {
@@ -1888,12 +1971,14 @@ fn write_world_maps(
 /// reference is placed only if its object made it into the plugin.
 fn convert_worlds(
     request: &Request,
+    target_data: &Path,
     works: &mut [PluginWork<'_>],
     ids: &mut IdAllocator,
     door_pivots: &HashMap<u32, [f32; 3]>,
     outcome: &mut Outcome,
     log: &mut dyn FnMut(&str),
 ) -> Result<(), PipelineError> {
+    let outputs: Vec<String> = works.iter().map(PluginWork::output_name).collect();
     for work in works.iter_mut() {
         let Some(world) = &mut work.world else {
             continue;
@@ -1976,6 +2061,7 @@ fn convert_worlds(
             || default_offset(&world.source),
             |(dx, dy)| Offset { dx, dy },
         );
+        check_neighbours(target_data, &outputs, &world.source, offset, outcome, log);
         let base =
             |form_id: u32| match (placed.get(&form_id), trees.get(&form_id)) {
                 (Some((id, model, actor)), _) => BaseObject::Placed {
@@ -2642,6 +2728,7 @@ pub fn run(
     let door_pivots = report_doors(&works, &door_info, &mut outcome, log);
     convert_worlds(
         request,
+        &config.target_data,
         &mut works,
         &mut ids,
         &door_pivots,

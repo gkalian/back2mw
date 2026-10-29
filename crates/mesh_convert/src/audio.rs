@@ -125,7 +125,7 @@ pub fn to_mono(bytes: &[u8]) -> Result<Option<Vec<u8>>, AudioError> {
         1 => Ok(None),
         2 => {
             let mut samples = Vec::with_capacity(data.len() / 2);
-            for frame in data.chunks_exact(4) {
+            for frame in data.as_chunks::<4>().0 {
                 let left = i32::from(i16::from_le_bytes([frame[0], frame[1]]));
                 let right = i32::from(i16::from_le_bytes([frame[2], frame[3]]));
                 let mixed = i16::try_from((left + right) / 2)

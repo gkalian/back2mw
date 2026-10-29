@@ -26,7 +26,7 @@ Limitations come in four kinds:
 | Procedural grass | not in Morrowind | `GRAS` is just a `STAT`, not scattered over the land |
 | Look of the weather (sky, fog, clouds) | not in Morrowind | only one of 10 weather types and a chance; the look is set by `Morrowind.ini` |
 | Several regions per cell | format limit | one, by priority |
-| Object scale outside 0.5…2.0 | format limit | clamped |
+| Object scale outside 0.5…2.0 | format limit | clamped; large trees come out smaller (no scaled mesh copies — owner's decision, 2026-10-29) |
 | Path grids across cells | not in Morrowind | links across a cell border are lost |
 | Enable parents, quest-disabled objects | not in Morrowind | initially disabled objects are not placed |
 | One object placed twice at the same point | author's decision | one is placed: the Construction Set removes such pairs itself |

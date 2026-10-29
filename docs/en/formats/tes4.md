@@ -578,9 +578,10 @@ Measured 2026-09-27, test `statics::every_leveled_list_of_oblivion_esm_is_writte
 | Broken references from lists and containers | 0 |
 
 `back2mw all --plugin Oblivion.esm --worldspace SEWorld` (2026-09-27): `LEVI` 696, `esmtool` and `niftest`
-clean. With `--worldspace` all lists are taken but only items placed in the world, so 12,198 entries have
-no ID and 702 lists end up empty. **A loose end:** loot in `SEWorld` chests is poorer than in Oblivion as
-long as items from lists are not converted independently of placements.
+clean. Back then all lists were taken but only items placed in the world, so 12,198 entries had no ID and
+702 lists ended up empty. Since 2026-10-29 the lists and items reachable from placed containers and
+plants and from NPC and creature inventories are taken (`transform::world::contents_of`): `LEVI` 574,
+1 entry without an ID, 1 empty list, nothing removed from containers; `esmtool` and `niftest` clean.
 
 **Not verified in the game:** that a picked-up `Gold_025` becomes 25 × `Gold_001` (as in OpenMW); drops
 from lists in chests.

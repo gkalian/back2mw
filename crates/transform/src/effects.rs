@@ -271,7 +271,7 @@ mod tests {
         );
         assert_eq!(
             lang::with(lang::Lang::Ru, || convert_effect(&item(b"SEFF", 8))).unwrap_err(),
-            "SEFF: Script Effect: Oblivion scripts are not carried over"
+            "SEFF: Script Effect: скрипты Oblivion не переносятся"
         );
         assert!(
             convert_effect(&item(b"QQQQ", 8))

@@ -12,6 +12,7 @@ pub mod extract;
 pub(crate) mod faces;
 pub mod install;
 pub mod job;
+pub mod neighbours;
 pub mod package;
 pub mod pipeline;
 pub mod plugins;
