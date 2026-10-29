@@ -5,7 +5,7 @@
 //! is used correctly, but not that the file is a TES3 plugin at all. The independent format readers
 //! are the OpenMW tools and the Construction Set; the first of them is here.
 //!
-//! Where to get `esmtool`: it ships with the OpenMW build (Windows) and in the `openmw` package
+//! Where to get `esmtool`: it ships with the OpenMW build (Windows) and in the `openmw-cs` package
 //! (Debian/Ubuntu). The path is set by `BACK2MW_ESMTOOL`, otherwise it is taken from `PATH`. If the
 //! tool is missing, the check is skipped — except when `BACK2MW_REQUIRE_ESMTOOL` is set: on CI a
 //! skip is not acceptable, there its absence must fail the run rather than pass quietly.
@@ -26,12 +26,19 @@ fn esmtool() -> Option<PathBuf> {
         return Some(path);
     }
 
+    // `esmtool --version` prints "ESMTool version …" but exits with 1, so the exit status says
+    // nothing: the tool is there if it started and named itself.
     let on_path = PathBuf::from("esmtool");
     Command::new(&on_path)
         .arg("--version")
         .output()
         .ok()
-        .filter(|out| out.status.success())
+        .filter(|out| {
+            let text = [&out.stdout[..], &out.stderr[..]].concat();
+            String::from_utf8_lossy(&text)
+                .to_ascii_lowercase()
+                .contains("esmtool")
+        })
         .map(|_| on_path)
 }
 
