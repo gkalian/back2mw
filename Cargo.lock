@@ -119,7 +119,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "back2mw"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lang",
  "mesh_convert",
@@ -950,7 +950,7 @@ dependencies = [
 
 [[package]]
 name = "gui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "back2mw",
  "eframe",
@@ -1224,7 +1224,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "lang"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "lazy_static"
@@ -1325,7 +1325,7 @@ dependencies = [
 
 [[package]]
 name = "mesh_convert"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "iced-x86",
  "lang",
@@ -2294,7 +2294,7 @@ dependencies = [
 
 [[package]]
 name = "tes3_out"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lang",
  "tes3",
@@ -2302,7 +2302,7 @@ dependencies = [
 
 [[package]]
 name = "tes4_read"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "lang",
@@ -2462,7 +2462,7 @@ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 
 [[package]]
 name = "transform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lang",
  "tes3_out",
