@@ -31,7 +31,7 @@ cargo test   --workspace --all-targets
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same on Ubuntu (the window — on Windows) and installs
-`esmtool` from the OpenMW package: tests on synthetic data write a plugin and check it with an
+`esmtool` from the OpenMW package (`openmw-cs` on Ubuntu 24.04): tests on synthetic data write a plugin and check it with an
 independent reader.
 
 ## Tests on real data

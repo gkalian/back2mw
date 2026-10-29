@@ -98,7 +98,7 @@ BACK2MW_BSATOOL='<OpenMW>/bsatool.exe' \
 
 | Trigger | Workflow | What it does |
 |---|---|---|
-| push / PR touching `crates/`, `data/`, `docs/notes_en.tsv`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` | `.github/workflows/ci.yml` | Ubuntu: fmt, clippy (without `gui`), tests with `esmtool` from apt; Windows: clippy and tests of `gui` + `back2mw`. Tag pushes do not trigger it |
+| push / PR touching `crates/`, `data/`, `docs/notes_en.tsv`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` | `.github/workflows/ci.yml` | Ubuntu: fmt, clippy (without `gui`), tests with `esmtool` from apt (package `openmw-cs`, `/usr/games`); Windows: clippy and tests of `gui` + `back2mw`. Tag pushes do not trigger it |
 | push to master/main touching `docs/`, `zensical*.toml`, `data/*.tsv` | `docs.yml` | `gen_tables.py`, builds ru and en, deploys `site/` to GitHub Pages (Settings → Pages → Source: GitHub Actions) |
 | tag `v*` | `release.yml` | Windows: tests, release build, zip + both exe + `SHA256SUMS.txt`, notes from `.github/scripts/changelog.sh`, `gh release create`; a tag with `-` is a pre-release |
 

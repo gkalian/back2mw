@@ -56,12 +56,14 @@ jobs:
       # A tool, not the game: `esmtool` is an independent TES3 reader that
       # checks our own output. `command -v` is here on purpose —
       # if the package stops installing it, the step must fail rather than let the tests
-      # silently skip the check.
+      # silently skip the check. On Ubuntu 24.04 the tools (`esmtool`, `niftest`,
+      # `bsatool`) ship in `openmw-cs`, not `openmw`, and live in `/usr/games`.
       - name: esmtool from OpenMW
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openmw
-          command -v esmtool
+          sudo apt-get install -y --no-install-recommends openmw-cs
+          echo /usr/games >> "$GITHUB_PATH"
+          PATH="/usr/games:$PATH" command -v esmtool
 
       # The tests deliberately do not require installed games: everything checked
       # is built on synthetic data. This is what the reference cannot do —
